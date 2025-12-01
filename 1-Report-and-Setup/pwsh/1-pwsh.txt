@@ -1,0 +1,2 @@
+$msi = "C:\Staging\PowerShell-7.4.x-win-x64.msi"
+Start-Process msiexec.exe -Wait -ArgumentList "/i `"$msi`" /qn ADD_PATH=1 ENABLE_MU=1"

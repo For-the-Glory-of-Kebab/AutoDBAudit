@@ -1,0 +1,14 @@
+[
+  {
+    "Server": "localhost",
+    "Instance": "InTheEnd",
+    "Port": null,
+    "Auth": "Sql",
+    "SqlUser": "sa",
+    "SecretPath": null,
+    "Encrypt": false,
+    "TrustServerCertificate": true,
+    "ConnectTimeout": 15,
+    "ApplicationName": "SqlInventory"
+  }
+]
