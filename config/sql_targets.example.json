@@ -1,0 +1,15 @@
+{
+  "targets": [
+    {
+      "id": "example-sql1",
+      "server": "localhost",
+      "instance": "SQLEXPRESS",
+      "port": null,
+      "auth": "integrated",
+      "username": null,
+      "credential_file": null,
+      "connect_timeout": 30,
+      "tags": ["development", "test"]
+    }
+  ]
+}

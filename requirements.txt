@@ -1,0 +1,17 @@
+# AutoDBAudit - Core Dependencies
+# Minimal, production-ready dependencies for PyInstaller compatibility
+
+# SQL Server connectivity (ODBC-based, SQL 2008 R2 through 2022+ compatible)
+pyodbc>=5.0.0,<6.0.0
+
+# Excel generation (pure Python, no Excel installation required)
+# Supports advanced formatting: icons, charts, conditional formatting
+openpyxl>=3.1.0,<4.0.0
+
+# Windows API access for DPAPI credential encryption
+# Platform-specific: Windows only
+pywin32>=306
+
+# PyInstaller for building standalone executable
+# Development/build dependency
+pyinstaller>=6.0.0,<7.0.0

@@ -1,0 +1,23 @@
+{
+    "organization": "Example Corporation",
+    "audit_year": 2025,
+    "audit_date": "2025-12-02",
+    "output": {
+        "directory": "./output",
+        "filename_pattern": "{organization}_SQL_Audit_{date}.xlsx",
+        "include_charts": true,
+        "verbosity": "detailed"
+    },
+    "requirements": {
+        "minimum_sql_version": "2019",
+        "allow_sa_enabled": false,
+        "allow_default_instance": false,
+        "allowed_test_databases": [],
+        "password_complexity": true
+    },
+    "remediation": {
+        "generate_scripts": true,
+        "script_format": "sectioned",
+        "include_rollback": true
+    }
+}
