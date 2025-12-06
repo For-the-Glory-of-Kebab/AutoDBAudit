@@ -11,26 +11,28 @@ from autodbaudit.domain.models import (
     RequirementStatus,
     Severity,
     ActionType,
-    # Models
+    # Core Models (Phase 1)
     AuditRun,
     Server,
     Instance,
+    # Future Models (Phase 2+)
     Requirement,
     RequirementResult,
     Action,
-    Exception_,
 )
 
 __all__ = [
+    # Enums
     "AuditStatus",
     "RequirementStatus",
     "Severity",
     "ActionType",
+    # Core Models
     "AuditRun",
     "Server",
     "Instance",
+    # Future Models
     "Requirement",
     "RequirementResult",
     "Action",
-    "Exception_",
 ]

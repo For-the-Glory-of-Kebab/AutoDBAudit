@@ -26,6 +26,7 @@ class SqlTarget:
     port: int | None = None
     auth: str = "integrated"  # 'integrated' or 'sql'
     username: str | None = None
+    password: str | None = None  # For testing; production should use credential_file
     credential_file: str | None = None
     connect_timeout: int = 30
     tags: List[str] = field(default_factory=list)
@@ -112,6 +113,7 @@ class ConfigLoader:
                 port=item.get("port"),
                 auth=item.get("auth", "integrated"),
                 username=item.get("username"),
+                password=item.get("password"),  # For testing only
                 credential_file=item.get("credential_file"),
                 connect_timeout=item.get("connect_timeout", 30),
                 tags=item.get("tags", [])

@@ -13,22 +13,39 @@ from autodbaudit.application.audit_service import AuditService
 from autodbaudit.infrastructure.config_loader import ConfigLoader
 from autodbaudit.infrastructure.logging_config import setup_logging
 from autodbaudit.infrastructure.odbc_check import check_odbc_drivers
+from autodbaudit.infrastructure.history_store import HistoryStore
+
+logger = logging.getLogger(__name__)
+
+# Default paths
+DEFAULT_CONFIG_DIR = Path("config")
+DEFAULT_OUTPUT_DIR = Path("output")
+DEFAULT_HISTORY_DB = DEFAULT_OUTPUT_DIR / "history.db"
 
 
-def main():
+def main() -> int:
     """Main entry point for AutoDBAudit CLI."""
     parser = argparse.ArgumentParser(
         description="AutoDBAudit - SQL Server Security Audit Tool",
-        formatter_class=argparse.RawDescriptionHelpFormatter
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python main.py --audit                         Run audit with default config
+  python main.py --audit --targets custom.json   Use custom targets file
+  python main.py --check-drivers                 List available ODBC drivers
+  python main.py --validate-config               Validate configuration files
+        """
     )
     
     # Audit commands
     parser.add_argument("--audit", action="store_true",
                        help="Run SQL Server security audit")
-    parser.add_argument("--config", type=str,
-                       help="Path to audit configuration file")
-    parser.add_argument("--targets", type=str,
-                       help="Path to SQL targets configuration file")
+    parser.add_argument("--config", type=str, default="audit_config.json",
+                       help="Audit configuration file (default: audit_config.json)")
+    parser.add_argument("--targets", type=str, default="sql_targets.json",
+                       help="SQL targets configuration file (default: sql_targets.json)")
+    parser.add_argument("--organization", type=str,
+                       help="Organization name for the audit report")
     parser.add_argument("--append-to", type=str,
                        help="Append audit results to existing workbook (incremental)")
     
@@ -67,36 +84,120 @@ def main():
     # Setup logging
     log_level = logging.DEBUG if args.verbose else logging.INFO
     setup_logging(log_level, args.log_file)
-    logger = logging.getLogger(__name__)
     
     logger.info("AutoDBAudit starting...")
     
     try:
         if args.audit:
-            logger.info("Running audit mode")
-            # TODO: Implement audit workflow
-            print("Audit mode - implementation pending")
+            return run_audit(args)
         
         elif args.generate_remediation:
             logger.info("Generating remediation scripts")
-            # TODO: Implement remediation generation
-            print("Remediation generation - implementation pending")
+            print("Remediation generation - implementation pending (Phase 4)")
+            return 0
         
         elif args.deploy_hotfixes:
             logger.info("Deploying hotfixes")
-            # TODO: Implement hotfix deployment
-            print("Hotfix deployment - implementation pending")
+            print("Hotfix deployment - implementation pending (Phase 5)")
+            return 0
         
         elif args.check_drivers:
             check_odbc_drivers()
+            return 0
+        
+        elif args.validate_config:
+            return validate_config(args)
         
         else:
             parser.print_help()
             return 1
         
-        logger.info("AutoDBAudit completed successfully")
-        return 0
-    
+    except KeyboardInterrupt:
+        logger.warning("Interrupted by user")
+        return 130
     except Exception as e:
-        logger.exception(f"Fatal error: {e}")
+        logger.exception("Fatal error: %s", e)
         return 1
+
+
+def run_audit(args: argparse.Namespace) -> int:
+    """
+    Run the audit workflow.
+    
+    Args:
+        args: Parsed command line arguments
+        
+    Returns:
+        Exit code (0 = success)
+    """
+    logger.info("Running audit mode")
+    
+    # Ensure output directory exists
+    DEFAULT_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    
+    # Initialize history store
+    history_store = HistoryStore(DEFAULT_HISTORY_DB)
+    history_store.initialize_schema()
+    
+    try:
+        # Create audit service
+        service = AuditService(
+            history_store=history_store,
+            config_dir=DEFAULT_CONFIG_DIR,
+            output_dir=DEFAULT_OUTPUT_DIR
+        )
+        
+        # Run audit
+        report_path = service.run_audit(
+            config_file=args.config,
+            targets_file=args.targets,
+            organization=args.organization
+        )
+        
+        print(f"\n✅ Audit completed successfully!")
+        print(f"📊 Instance inventory report: {report_path}")
+        print(f"💾 History database: {DEFAULT_HISTORY_DB}")
+        
+        return 0
+        
+    finally:
+        history_store.close()
+
+
+def validate_config(args: argparse.Namespace) -> int:
+    """
+    Validate configuration files.
+    
+    Args:
+        args: Parsed command line arguments
+        
+    Returns:
+        Exit code (0 = valid)
+    """
+    logger.info("Validating configuration files")
+    
+    loader = ConfigLoader(str(DEFAULT_CONFIG_DIR))
+    
+    try:
+        # Validate SQL targets
+        targets = loader.load_sql_targets(args.targets)
+        print(f"✅ SQL targets valid: {len(targets)} targets configured")
+        for target in targets:
+            print(f"   - {target.display_name} ({target.auth} auth)")
+        
+        # Validate audit config
+        config = loader.load_audit_config(args.config)
+        print(f"✅ Audit config valid: {config.organization} ({config.audit_year})")
+        
+        return 0
+        
+    except FileNotFoundError as e:
+        print(f"❌ Configuration file not found: {e}")
+        return 1
+    except Exception as e:
+        print(f"❌ Configuration validation failed: {e}")
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

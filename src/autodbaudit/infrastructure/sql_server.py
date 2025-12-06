@@ -173,26 +173,29 @@ class SqlConnector:
             cursor = conn.cursor()
             
             # Get version information
+            # Note: CAST IsClustered to INT to avoid ODBC type -16 error
+            # Note: Use PARSENAME to extract major version for SQL 2008 compatibility
+            #       (ProductMajorVersion was added in SQL 2012)
             cursor.execute("""
                 SELECT 
-                    SERVERPROPERTY('ServerName') AS ServerName,
-                    SERVERPROPERTY('InstanceName') AS InstanceName,
-                    SERVERPROPERTY('ProductVersion') AS Version,
-                    SERVERPROPERTY('ProductMajorVersion') AS VersionMajor,
-                    SERVERPROPERTY('Edition') AS Edition,
-                    SERVERPROPERTY('ProductLevel') AS ProductLevel,
-                    SERVERPROPERTY('IsClustered') AS IsClustered
+                    CAST(SERVERPROPERTY('ServerName') AS NVARCHAR(256)) AS ServerName,
+                    CAST(SERVERPROPERTY('InstanceName') AS NVARCHAR(256)) AS InstanceName,
+                    CAST(SERVERPROPERTY('ProductVersion') AS NVARCHAR(128)) AS Version,
+                    CAST(PARSENAME(CAST(SERVERPROPERTY('ProductVersion') AS NVARCHAR(128)), 4) AS INT) AS VersionMajor,
+                    CAST(SERVERPROPERTY('Edition') AS NVARCHAR(256)) AS Edition,
+                    CAST(SERVERPROPERTY('ProductLevel') AS NVARCHAR(128)) AS ProductLevel,
+                    CAST(SERVERPROPERTY('IsClustered') AS INT) AS IsClustered
             """)
             
             row = cursor.fetchone()
             
             self._server_info = SqlServerInfo(
-                server_name=row.ServerName,
+                server_name=row.ServerName or "",
                 instance_name=row.InstanceName,
-                version=row.Version,
-                version_major=int(row.VersionMajor) if row.VersionMajor else 0,
-                edition=row.Edition,
-                product_level=row.ProductLevel,
+                version=row.Version or "",
+                version_major=row.VersionMajor or 0,
+                edition=row.Edition or "",
+                product_level=row.ProductLevel or "",
                 is_clustered=bool(row.IsClustered)
             )
             

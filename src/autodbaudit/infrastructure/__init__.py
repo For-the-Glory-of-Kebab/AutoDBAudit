@@ -7,6 +7,8 @@ Contains all I/O and external system integrations:
 - Logging setup
 - ODBC driver detection
 - Query file loading
+- SQLite history store
+- Excel report generation
 """
 
 from autodbaudit.infrastructure.config_loader import (
@@ -21,6 +23,8 @@ from autodbaudit.infrastructure.sql_server import (
 from autodbaudit.infrastructure.sql_queries import load_queries_for_version
 from autodbaudit.infrastructure.logging_config import setup_logging
 from autodbaudit.infrastructure.odbc_check import check_odbc_drivers
+from autodbaudit.infrastructure.history_store import HistoryStore
+from autodbaudit.infrastructure.excel_report import write_instance_inventory
 
 __all__ = [
     # Config
@@ -36,4 +40,8 @@ __all__ = [
     "setup_logging",
     # ODBC
     "check_odbc_drivers",
+    # History
+    "HistoryStore",
+    # Excel
+    "write_instance_inventory",
 ]
