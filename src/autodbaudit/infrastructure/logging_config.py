@@ -7,7 +7,6 @@ Provides structured logging with file and console output.
 import logging
 import sys
 from pathlib import Path
-from datetime import datetime
 
 
 def setup_logging(level: int = logging.INFO, log_file: str | None = None):
@@ -54,7 +53,7 @@ def setup_logging(level: int = logging.INFO, log_file: str | None = None):
     logger = logging.getLogger(__name__)
     logger.info("=" * 60)
     logger.info("AutoDBAudit Logging Initialized")
-    logger.info(f"Log level: {logging.getLevelName(level)}")
+    logger.info("Log level: %s", logging.getLevelName(level))
     if log_file:
-        logger.info(f"Log file: {log_file}")
+        logger.info("Log file: %s", log_file)
     logger.info("=" * 60)

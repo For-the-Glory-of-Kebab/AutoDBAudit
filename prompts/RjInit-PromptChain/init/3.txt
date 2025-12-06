@@ -1,3 +1,8 @@
+================================================================================
+HISTORICAL PROMPT – Early discussion (2025-11)
+Superseded by: Project_Overview.md, implementation_plan.md, architecture_snapshot.md
+================================================================================
+
 i need you to do something for me. as we think about the project  and it's structure and we delve into the implementation, our decisions may slightly adapt like changing the structure a bit, having some modules separated or for example the SqlTargets.json schema, or the audit_config.json schema you've proposed.
 in the setting you're suggesting for example minimum sql server version, requiring complex passwords etc. we might want to add to these or  evolve them as we approach the final product.
 also some of these might be needed to be enforced on a databse level so it would optionally go in the SqlTargets.json for each of them. 

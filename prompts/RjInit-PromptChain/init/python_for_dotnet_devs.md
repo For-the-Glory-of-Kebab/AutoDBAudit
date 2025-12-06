@@ -73,6 +73,79 @@ AutoDBAudit/                    # Solution root
 
 ---
 
+## AutoDBAudit Layered Structure (Updated)
+
+The project now uses a **domain-driven layered layout** that maps nicely to familiar .NET concepts:
+
+```
+src/autodbaudit/
+├── domain/          # Pure models & business rules (like a .NET Core library)
+├── application/     # Use-case services (like Application layer in Clean Architecture)
+├── infrastructure/  # I/O: DB, files, network (like Infrastructure project)
+├── interface/       # CLI entry points (like a Console/Web project)
+└── hotfix/          # Specialised module for SQL patching
+```
+
+| autodbaudit Layer | .NET Equivalent |
+|-------------------|-----------------|
+| `domain/` | Core domain library (no I/O, pure logic) |
+| `application/` | Application services / Use cases |
+| `infrastructure/` | Data access, file I/O, external integrations |
+| `interface/` | Presentation layer (Console app, API project) |
+
+---
+
+## Packages, Namespace Packages, and Wheels
+
+These concepts trip up .NET devs, so here's a quick clarification.
+
+### Regular Packages (what we use)
+
+A **regular package** is a directory with an `__init__.py` file. This is the traditional Python way:
+
+```
+mypackage/
+├── __init__.py      # <-- Makes it a package (can be empty)
+├── module_a.py
+└── subpackage/
+    ├── __init__.py
+    └── module_b.py
+```
+
+`.NET analogy`: A project folder that compiles into a DLL.
+
+### Namespace Packages (we do NOT use)
+
+A **namespace package** has **no** `__init__.py`. It's a special mechanism that allows multiple *separate* distributions to contribute to the same package name.
+
+```
+# Two separate pip packages can both contribute to "mynamespace":
+mynamespace/          # No __init__.py!
+    contrib_a/
+        __init__.py
+mynamespace/          # From another wheel
+    contrib_b/
+        __init__.py
+```
+
+`.NET analogy`: Multiple NuGet packages all adding to the same root namespace. Rarely needed.
+
+**We use regular packages** because everything lives in one repo—no need for the complexity.
+
+### What is a Wheel?
+
+A **wheel** (`.whl` file) is Python's pre-built distribution format:
+
+- It's a ZIP file with metadata + compiled code.
+- `pip install some-package` downloads a wheel and extracts it.
+- You never edit wheels by hand; you just `pip install` them.
+
+`.NET analogy`: A `.nupkg` file is the NuGet equivalent. You don't hand-edit NuGet packages either.
+
+**For AutoDBAudit**: PyInstaller bundles our code + all wheel contents into one `.exe`. We don't publish our own wheels.
+
+---
+
 ## Package Management
 
 ### .NET (NuGet)

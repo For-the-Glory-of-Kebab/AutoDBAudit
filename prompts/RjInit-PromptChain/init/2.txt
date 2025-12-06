@@ -1,3 +1,8 @@
+================================================================================
+HISTORICAL PROMPT – Early discussion (2025-11)
+Superseded by: Project_Overview.md, implementation_plan.md, architecture_snapshot.md
+================================================================================
+
 okay we're going with a python based environment then. first off do you know of a sure-fire ultra relieeable fully self-contained deployment method for the entire thing ? 
 Also i forgot to mention, the syntax of the access is universally sql-server 2019 and up (you can differentiate between higher versions too if big benefits) but there's mostly a pesky legacy sofwtare that has sql server 2008 R2 and that must also be in the audit, reports and etc and the app logic needs to understand and handle that specifically because sql server management libraries or ORMS or even Direct queries mostly differ drastically between 2008 and then 2019+.
 also i failed to mention, the repository i've initiated thus far contains a folder called "1-Report-and-setup" as you can see, this is our legacy implementation, i want to have this in the repo as reference, even though we don't want to use anything from it. so the project structure and definition should consider this.

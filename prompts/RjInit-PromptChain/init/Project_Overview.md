@@ -25,6 +25,54 @@
 >
 > **When in doubt**: Adapt and document reasoning rather than force-fit to this specification.
 
+---
+
+## Architecture Snapshot (Current)
+
+> [!IMPORTANT]
+> This section reflects the **current architectural direction** as of 2025-12. For a concise standalone reference, see [`architecture_snapshot.md`](architecture_snapshot.md).
+
+### Package Layout (`src/autodbaudit/`)
+
+```
+autodbaudit/
+├── domain/          # Requirement metadata, result models, exceptions, actions
+├── application/     # Audit service, remediation generator, history service, hotfix orchestrator
+├── infrastructure/  # pyodbc connector, versioned query loader, sqlite store, openpyxl writer, remote exec
+├── interface/       # CLI (argparse → later Typer/Rich)
+└── hotfix/          # Hotfix planner, executor, resume logic
+```
+
+| Layer             | Responsibility |
+|-------------------|----------------|
+| **domain**        | Pure data models & business rules; no I/O |
+| **infrastructure**| All external I/O: SQL, files, Excel, remote commands |
+| **application**   | Use-case orchestration; calls domain + infra |
+| **interface**     | CLI parsing, user prompts, entry points |
+| **hotfix**        | Specialised orchestrator for patching SQL Servers remotely |
+
+### Key Technology Choices
+
+| Concern           | Choice | Notes |
+|-------------------|--------|-------|
+| SQL connectivity  | `pyodbc` | Supports SQL Server 2008 R2 → 2022+ via ODBC |
+| History store     | `sqlite3` (stdlib) | Canonical store; no ORM, explicit SQL |
+| Excel reports     | `openpyxl` | Styling, charts, conditional formatting |
+| Credentials       | Windows DPAPI (`pywin32`) | Offline-safe, user-scoped encryption |
+| Deployment        | PyInstaller `--onefile` | Single exe + bundled queries/config |
+
+### Important Notes
+
+- **SQLite** is the canonical history store (`output/history.db`). Excel reports are *generated from* this database. If an old Excel is lost, it can be regenerated.
+- **Hotfix orchestrator** runs installers on **remote servers** via PowerShell Remoting—not just locally. It handles parallelism, sequencing, resume, and retry.
+- **`1-Report-and-Setup/`** is **legacy PowerShell reference only**—do not modify.
+- **Versioned queries** live in `queries/{sql2008,sql2019plus}/`; the tool auto-selects based on detected SQL version.
+
+> [!NOTE]
+> Earlier documentation may reference a `src/core/`, `src/utils/`, or `src/remediation/` structure. That layout is **superseded** by the layered `autodbaudit` package above.
+
+---
+
 ## Critical Context
 
 ### Target Environment Constraints

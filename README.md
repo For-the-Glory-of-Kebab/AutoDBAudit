@@ -67,8 +67,7 @@ d:\Raja-Initiative\
 │   └── hotfix/                # Hotfix deployment module
 ├── queries/                   # SQL query files (version-specific)
 │   ├── sql2008/              # SQL Server 2008 R2 compatible
-│   ├── sql2016/              # SQL Server 2012-2016
-│   └── sql2017/              # SQL Server 2017+
+│   └── sql2019plus/          # SQL Server 2012+ (modern)
 ├── config/                    # Configuration files
 ├── output/                    # Generated reports and scripts
 ├── credentials/               # Encrypted credentials (gitignored)

@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).parent / "src"))
 def test_imports():
     """Test all core imports."""
     print("=" * 60)
-    print("Testing AutoDBAudit Project Setup")
+    print("Testing AutoDBAudit Project Setup (Refactored Layout)")
     print("=" * 60)
     
     try:
@@ -43,12 +43,13 @@ def test_imports():
         import win32crypt
         print("  ✅ pywin32 OK - DPAPI available")
         
-        print("\n✓ Testing project modules...")
-        from core.config_loader import ConfigLoader, SqlTarget, AuditConfig
-        from core.sql_connector import SqlConnector, SqlServerInfo
-        from core.audit_engine import AuditEngine
-        from utils.logger import setup_logging
-        from utils.odbc_check import check_odbc_drivers
+        print("\n✓ Testing project modules (NEW LAYOUT)...")
+        from autodbaudit.infrastructure.config_loader import ConfigLoader, SqlTarget, AuditConfig
+        from autodbaudit.infrastructure.sql_server import SqlConnector, SqlServerInfo
+        from autodbaudit.application.audit_service import AuditService
+        from autodbaudit.infrastructure.logging_config import setup_logging
+        from autodbaudit.infrastructure.odbc_check import check_odbc_drivers
+        from autodbaudit.infrastructure.sql_queries import load_queries_for_version
         print("  ✅ All project modules import successfully")
         
         print("\n✓ Testing dataclass instantiation...")
@@ -64,22 +65,18 @@ def test_imports():
         config_loader = ConfigLoader("config")
         print("  ✅ ConfigLoader instantiated")
         
+        print("\n✓ Testing AuditService...")
+        audit_service = AuditService()
+        print("  ✅ AuditService instantiated")
+
         print("\n" + "=" * 60)
         print("✅ ALL TESTS PASSED - Project setup complete!")
         print("=" * 60)
-        print("\nNext steps:")
-        print("1. Copy config/sql_targets.example.json to config/sql_targets.json")
-        print("2. Edit sql_targets.json with your SQL Server details")
-        print("3. Test connection: python main.py --validate-config")
-        print("4. Start Phase 1 development!")
-        print("\n")
         
         return True
         
     except ImportError as e:
         print(f"\n❌ Import Error: {e}")
-        print("\nTry:")
-        print("  pip install -r requirements.txt")
         return False
     except Exception as e:
         print(f"\n❌ Unexpected Error: {e}")

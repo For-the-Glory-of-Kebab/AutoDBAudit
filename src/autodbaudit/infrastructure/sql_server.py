@@ -59,7 +59,7 @@ class SqlConnector:
         self._connection_string: str | None = None
         self._server_info: SqlServerInfo | None = None
         
-        logger.info(f"SqlConnector initialized for {server_instance} (auth={auth})")
+        logger.info("SqlConnector initialized for %s (auth=%s)", server_instance, auth)
     
     def _detect_odbc_driver(self) -> str:
         """
@@ -72,7 +72,7 @@ class SqlConnector:
             RuntimeError: If no suitable driver found
         """
         drivers = pyodbc.drivers()
-        logger.debug(f"Available ODBC drivers: {drivers}")
+        logger.debug("Available ODBC drivers: %s", drivers)
         
         # Preferred drivers (newest first)
         preferred = [
@@ -84,7 +84,7 @@ class SqlConnector:
         
         for driver in preferred:
             if driver in drivers:
-                logger.info(f"Using ODBC driver: {driver}")
+                logger.info("Using ODBC driver: %s", driver)
                 return driver
         
         # Fallback drivers
@@ -96,7 +96,7 @@ class SqlConnector:
         
         for driver in fallback:
             if driver in drivers:
-                logger.warning(f"Using fallback ODBC driver: {driver}")
+                logger.warning("Using fallback ODBC driver: %s", driver)
                 return driver
         
         raise RuntimeError("No SQL Server ODBC driver found. Please install ODBC Driver 17 or 18.")
@@ -147,11 +147,11 @@ class SqlConnector:
                 cursor = conn.cursor()
                 cursor.execute("SELECT @@VERSION")
                 version = cursor.fetchone()[0]
-                logger.info(f"Connection test successful: {self.server_instance}")
-                logger.debug(f"SQL Server version: {version[:50]}...")
+                logger.info("Connection test successful: %s", self.server_instance)
+                logger.debug("SQL Server version: %s...", version[:50])
                 return True
         except Exception as e:
-            logger.error(f"Connection test failed for {self.server_instance}: {e}")
+            logger.error("Connection test failed for %s: %s", self.server_instance, e)
             return False
     
     def detect_version(self) -> SqlServerInfo:
@@ -196,8 +196,10 @@ class SqlConnector:
                 is_clustered=bool(row.IsClustered)
             )
             
-            logger.info(f"Detected SQL Server {self._server_info.version} "
-                       f"({self._server_info.edition})")
+            logger.info(
+                "Detected SQL Server %s (%s)",
+                self._server_info.version, self._server_info.edition
+            )
             return self._server_info
     
     def execute_query(self, query: str) -> List[Dict[str, Any]]:
@@ -240,7 +242,7 @@ class SqlConnector:
                         row_dict[column] = str(value)
                 results.append(row_dict)
             
-            logger.debug(f"Query returned {len(results)} rows, {len(columns)} columns")
+            logger.debug("Query returned %d rows, %d columns", len(results), len(columns))
             return results
     
     def execute_scalar(self, query: str) -> Any:

@@ -78,7 +78,7 @@ class ConfigLoader:
             config_dir: Directory containing configuration files
         """
         self.config_dir = Path(config_dir)
-        logger.info(f"ConfigLoader initialized with directory: {self.config_dir}")
+        logger.info("ConfigLoader initialized with directory: %s", self.config_dir)
     
     def load_sql_targets(self, filename: str = "sql_targets.json") -> List[SqlTarget]:
         """
@@ -95,7 +95,7 @@ class ConfigLoader:
             ValueError: If config is invalid
         """
         filepath = self.config_dir / filename
-        logger.info(f"Loading SQL targets from: {filepath}")
+        logger.info("Loading SQL targets from: %s", filepath)
         
         if not filepath.exists():
             raise FileNotFoundError(f"SQL targets config not found: {filepath}")
@@ -117,9 +117,9 @@ class ConfigLoader:
                 tags=item.get("tags", [])
             )
             targets.append(target)
-            logger.debug(f"Loaded target: {target.display_name}")
+            logger.debug("Loaded target: %s", target.display_name)
         
-        logger.info(f"Loaded {len(targets)} SQL Server targets")
+        logger.info("Loaded %d SQL Server targets", len(targets))
         return targets
     
     def load_audit_config(self, filename: str = "audit_config.json") -> AuditConfig:
@@ -136,7 +136,7 @@ class ConfigLoader:
             FileNotFoundError: If config file doesn't exist
         """
         filepath = self.config_dir / filename
-        logger.info(f"Loading audit config from: {filepath}")
+        logger.info("Loading audit config from: %s", filepath)
         
         if not filepath.exists():
             raise FileNotFoundError(f"Audit config not found: {filepath}")
@@ -157,7 +157,10 @@ class ConfigLoader:
             requirements=data.get("requirements", {})
         )
         
-        logger.info(f"Loaded audit config for: {config.organization} ({config.audit_year})")
+        logger.info(
+            "Loaded audit config for: %s (%d)",
+            config.organization, config.audit_year
+        )
         return config
     
     def validate_config(self, config_type: str = "all") -> bool:
@@ -178,5 +181,5 @@ class ConfigLoader:
             logger.info("Configuration validation passed")
             return True
         except Exception as e:
-            logger.error(f"Configuration validation failed: {e}")
+            logger.error("Configuration validation failed: %s", e)
             return False

@@ -64,5 +64,7 @@ def check_odbc_drivers():
     print("=" * 60 + "\n")
     
     # Log summary
-    logger.info(f"ODBC drivers detected: {len(drivers)} total, "
-               f"{len(sql_server_drivers)} SQL Server")
+    logger.info(
+        "ODBC drivers detected: %d total, %d SQL Server",
+        len(drivers), len(sql_server_drivers)
+    )

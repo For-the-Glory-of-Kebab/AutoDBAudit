@@ -1191,3 +1191,73 @@ AutoDBAudit.exe --deploy-hotfixes --targets config/sql_targets.json --hotfix-dir
 5. **Day 4**: Begin Phase 2 (remediation)
 
 **Ready to start? Let's build Phase 0!** 🚀
+
+---
+
+## Update – Current Direction (2025-12)
+
+> [!IMPORTANT]
+> The sections above represent **early planning iterations**. This update consolidates decisions made during initial implementation and supersedes conflicting details.
+
+### Revised Phase Plan
+
+| Phase | Goal |
+|-------|------|
+| **0** | Documentation & prompts aligned with current architecture (this update) |
+| **1** | Refactor codebase into `autodbaudit/{domain,application,infrastructure,interface,hotfix}` layered structure; update all imports |
+| **2** | Implement domain models + SQLite history store (`output/history.db`) |
+| **3** | Implement Excel reporting via `openpyxl` (generate from SQLite) |
+| **4** | Real audit logic: versioned query loading, map results to requirements |
+| **5** | Hotfix planner + remote executor (PowerShell Remoting, concurrency, resume) |
+| **6** | Remediation script generation; integrate with reports & action tracking |
+| **7** | CLI polish (Typer/Rich) and optional TUI niceties |
+
+### Confirmed Tooling
+
+| Concern | Choice |
+|---------|--------|
+| SQL connectivity | `pyodbc` (supports 2008 R2 → 2022+) |
+| History store | `sqlite3` (stdlib, no ORM) |
+| Excel reports | `openpyxl` |
+| Credential encryption | Windows DPAPI via `pywin32` |
+| Logging | stdlib `logging` |
+| Deployment | PyInstaller `--onefile` |
+| CLI | `argparse` initially; Typer/Rich in Phase 7 |
+
+### Superseded Structures
+
+The earlier sections describe a `src/core/`, `src/utils/`, `src/remediation/` layout. That structure is **superseded** by:
+
+```
+src/autodbaudit/
+├── domain/
+├── application/
+├── infrastructure/
+├── interface/
+└── hotfix/
+```
+
+Future development should extend these layers only; do not reintroduce flat `core`/`utils` modules.
+
+### SQLite as Canonical Store
+
+- All audit runs, server info, requirement results, actions, exceptions, and hotfix progress are stored in `output/history.db`.
+- Excel reports are **generated from** the database; they are views, not source-of-truth.
+- If an Excel file is lost, regenerate with `--regenerate-report --audit-id <id>`.
+
+### Hotfix Orchestrator Clarification
+
+The hotfix module is a **centralized orchestrator** that:
+
+1. Reads current SQL version/build from audit data.
+2. Matches against `config/hotfix_mapping.json`.
+3. Copies installers to remote servers and executes via PowerShell Remoting.
+4. Supports limited parallelism (configurable), sequential installers per server.
+5. Logs every step to SQLite (`hotfix_runs`, `hotfix_targets`, `hotfix_steps`).
+6. Supports `--resume` and `--retry-failed` modes.
+
+This is explicitly **more than a local script**—it's a remote deployment coordinator.
+
+---
+
+*Document last updated: 2025-12-06*
