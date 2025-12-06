@@ -9,6 +9,7 @@ Contains all I/O and external system integrations:
 - Query file loading
 - SQLite history store
 - Excel report generation
+- Version-specific query providers
 """
 
 from autodbaudit.infrastructure.config_loader import (
@@ -25,6 +26,12 @@ from autodbaudit.infrastructure.logging_config import setup_logging
 from autodbaudit.infrastructure.odbc_check import check_odbc_drivers
 from autodbaudit.infrastructure.history_store import HistoryStore
 from autodbaudit.infrastructure.excel_report import write_instance_inventory
+from autodbaudit.infrastructure.query_provider import (
+    QueryProvider,
+    Sql2008Provider,
+    Sql2019PlusProvider,
+    get_query_provider,
+)
 
 __all__ = [
     # Config
@@ -36,6 +43,10 @@ __all__ = [
     "SqlServerInfo",
     # Queries
     "load_queries_for_version",
+    "QueryProvider",
+    "Sql2008Provider",
+    "Sql2019PlusProvider",
+    "get_query_provider",
     # Logging
     "setup_logging",
     # ODBC
