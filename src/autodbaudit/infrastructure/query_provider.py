@@ -20,7 +20,20 @@ from typing import ClassVar
 
 
 class SqlVersion(Enum):
-    """SQL Server major version identifiers."""
+    """
+    SQL Server major version identifiers.
+    
+    Version mapping:
+        10 = 2008/2008R2
+        11 = 2012
+        12 = 2014
+        13 = 2016
+        14 = 2017
+        15 = 2019
+        16 = 2022
+        17 = 2025
+        18+ = Future versions (use Sql2019PlusProvider)
+    """
     SQL_2008 = 10
     SQL_2012 = 11
     SQL_2014 = 12
@@ -28,6 +41,7 @@ class SqlVersion(Enum):
     SQL_2017 = 14
     SQL_2019 = 15
     SQL_2022 = 16
+    SQL_2025 = 17
 
 
 @dataclass(frozen=True)
@@ -909,12 +923,26 @@ def get_query_provider(version_major: int) -> QueryProvider:
     """
     Factory function to get the appropriate query provider for a SQL Server version.
     
+    This function is future-proof: any version >= 11 (SQL 2012) uses 
+    Sql2019PlusProvider, which works for 2012, 2014, 2016, 2017, 2019, 
+    2022, 2025, and future versions since T-SQL syntax is stable.
+    
     Args:
-        version_major: Major version number (10=2008, 11=2012, ..., 16=2022)
+        version_major: Major version number
+            - 10 = SQL Server 2008/2008R2
+            - 11 = SQL Server 2012
+            - 12 = SQL Server 2014
+            - 13 = SQL Server 2016
+            - 14 = SQL Server 2017
+            - 15 = SQL Server 2019
+            - 16 = SQL Server 2022
+            - 17 = SQL Server 2025
+            - 18+ = Future versions (uses Sql2019PlusProvider)
         
     Returns:
         QueryProvider instance appropriate for the version
     """
     if version_major <= 10:
         return Sql2008Provider()
+    # All versions 2012+ use the same provider (T-SQL is stable)
     return Sql2019PlusProvider()
