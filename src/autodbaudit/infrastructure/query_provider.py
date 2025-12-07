@@ -455,6 +455,7 @@ class Sql2008Provider(QueryProvider):
         SELECT 
             d.name AS DatabaseName,
             d.recovery_model_desc AS RecoveryModel,
+            d.state_desc AS DatabaseState,
             bs.backup_finish_date AS BackupDate,
             bs.type AS BackupType,
             CASE bs.type 
@@ -467,12 +468,18 @@ class Sql2008Provider(QueryProvider):
             DATEDIFF(MINUTE, bs.backup_start_date, bs.backup_finish_date) AS DurationMinutes,
             bmf.physical_device_name AS BackupPath,
             bs.server_name AS BackupServer,
-            bs.user_name AS BackupUser
+            bs.user_name AS BackupUser,
+            DATEDIFF(DAY, bs.backup_finish_date, GETDATE()) AS DaysSinceBackup
         FROM sys.databases d
-        LEFT JOIN msdb.dbo.backupset bs ON d.name = bs.database_name
+        LEFT JOIN (
+            SELECT database_name, MAX(backup_set_id) AS max_id
+            FROM msdb.dbo.backupset WHERE type = 'D' GROUP BY database_name
+        ) latest ON d.name = latest.database_name
+        LEFT JOIN msdb.dbo.backupset bs ON latest.max_id = bs.backup_set_id
         LEFT JOIN msdb.dbo.backupmediafamily bmf ON bs.media_set_id = bmf.media_set_id
         WHERE d.database_id > 4  -- Exclude system DBs
-        ORDER BY d.name, bs.backup_finish_date DESC
+          AND d.state_desc = 'ONLINE'  -- Only online databases
+        ORDER BY d.name
         """
     
     def get_backup_jobs(self) -> str:
