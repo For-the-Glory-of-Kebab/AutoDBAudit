@@ -1,41 +1,29 @@
 """
 Server Logins Sheet Module.
 
-Handles the Server Logins worksheet for SQL Server login audit.
-This sheet provides a comprehensive inventory of all server-level
-logins including security status assessment.
-
-Sheet Purpose:
-    - Document all SQL Server logins
-    - Identify security risks (enabled SA, missing password policies)
-    - Track login types (SQL, Windows, Certificate)
-    - Flag disabled and problematic logins
-
-Security Checks:
-    - SA account should be disabled
-    - SQL logins should have password policy enforced
-    - SQL logins should have password expiration enabled
-    - Empty passwords are critical vulnerabilities
-
 Visual Features:
-    - Alternating row colors per server for multi-server reports
-    - Status column with Pass/Fail icons
-    - Boolean icons for security settings
-    - Gray background for manual notes column
+    - Server column merged with main color
+    - Instance column merged with alternating shade within server
+    - Enabled/Policy columns keep status colors (green/red/yellow)
 """
 
 from __future__ import annotations
 
+from openpyxl.styles import PatternFill
+
 from autodbaudit.infrastructure.excel_styles import (
     ColumnDef,
     Alignments,
+    Fonts,
     Fills,
-    apply_boolean_styling,
-    apply_status_styling,
+    Icons,
+    merge_server_cells,
+    SERVER_GROUP_COLORS,
 )
 from autodbaudit.infrastructure.excel.base import (
     BaseSheetMixin,
     SheetConfig,
+    LAST_REVISED_COLUMN,
 )
 
 
@@ -43,45 +31,30 @@ __all__ = ["LoginSheetMixin", "LOGIN_CONFIG"]
 
 
 LOGIN_COLUMNS = (
-    ColumnDef("Server", 18, Alignments.LEFT),
-    ColumnDef("Instance", 15, Alignments.LEFT),
+    ColumnDef("Server", 16, Alignments.LEFT),
+    ColumnDef("Instance", 14, Alignments.LEFT),
     ColumnDef("Login Name", 28, Alignments.LEFT),
-    ColumnDef("Type", 18, Alignments.LEFT),
-    ColumnDef("Disabled", 10, Alignments.CENTER),
-    ColumnDef("SA Account", 10, Alignments.CENTER),
-    ColumnDef("Pwd Policy", 10, Alignments.CENTER),
-    ColumnDef("Default DB", 14, Alignments.LEFT),
-    ColumnDef("Status", 10, Alignments.CENTER, is_status=True),
-    ColumnDef("Notes", 35, Alignments.LEFT, is_manual=True),
+    ColumnDef("Login Type", 18, Alignments.LEFT),
+    ColumnDef("Enabled", 10, Alignments.CENTER),
+    ColumnDef("Password Policy", 14, Alignments.CENTER),
+    ColumnDef("Default Database", 18, Alignments.LEFT),
+    ColumnDef("Notes", 30, Alignments.LEFT, is_manual=True),
+    LAST_REVISED_COLUMN,
 )
 
 LOGIN_CONFIG = SheetConfig(name="Server Logins", columns=LOGIN_COLUMNS)
 
 
 class LoginSheetMixin(BaseSheetMixin):
-    """
-    Mixin for Server Logins sheet functionality.
-    
-    Provides the `add_login` method to record SQL Server logins
-    with security assessment. Each login is checked against
-    security best practices.
-    
-    Security Rules Applied:
-        - SA account enabled without being disabled = FAIL
-        - SQL logins without password policy = WARN
-        - All other logins = PASS
-    
-    Attributes:
-        _login_sheet: Reference to the Server Logins worksheet
-        _login_count: Counter for number of logins processed
-        _login_last_server: Tracks server for alternating colors
-        _login_alt: Toggles alternating background per server
-    """
+    """Mixin for Server Logins sheet with server/instance grouping."""
     
     _login_sheet = None
-    _login_count: int = 0
     _login_last_server: str = ""
-    _login_alt: bool = False
+    _login_last_instance: str = ""
+    _login_server_start_row: int = 2
+    _login_instance_start_row: int = 2
+    _login_server_idx: int = 0      # Color rotation for servers
+    _login_instance_alt: bool = False  # Alternate shade for instances
     
     def add_login(
         self,
@@ -90,91 +63,138 @@ class LoginSheetMixin(BaseSheetMixin):
         login_name: str,
         login_type: str,
         is_disabled: bool,
-        is_sa: bool,
-        pwd_policy: bool | None,
-        default_db: str,
+        pwd_policy: bool | None = None,
+        default_db: str = "",
     ) -> None:
-        """
-        Add a server login row with security assessment.
-        
-        Each login is automatically assessed for security compliance:
-        - SA account that is not disabled triggers a FAIL status
-        - Other logins get PASS status
-        
-        Args:
-            server_name: Server hostname
-            instance_name: SQL Server instance name
-            login_name: Login name (e.g., "sa", "DOMAIN\\User")
-            login_type: Type of login:
-                - "SQL_LOGIN" - SQL Server authentication
-                - "WINDOWS_LOGIN" - Windows authentication
-                - "CERTIFICATE_MAPPED_LOGIN" - Certificate mapped
-                - "ASYMMETRIC_KEY_MAPPED_LOGIN" - Asymmetric key mapped
-            is_disabled: True if the login is disabled
-            is_sa: True if this is the SA account (SID 0x01)
-            pwd_policy: True if password policy enforced (None for Windows)
-            default_db: Default database for the login
-        
-        Example:
-            writer.add_login(
-                server_name="SQLPROD01",
-                instance_name="",
-                login_name="app_service",
-                login_type="SQL_LOGIN",
-                is_disabled=False,
-                is_sa=False,
-                pwd_policy=True,
-                default_db="ApplicationDB",
-            )
-        """
-        # Lazy-initialize the worksheet
+        """Add a login row with server/instance grouping."""
+        # Lazy-initialize
         if self._login_sheet is None:
             self._login_sheet = self._ensure_sheet(LOGIN_CONFIG)
             self._login_last_server = ""
-            self._login_alt = False
+            self._login_last_instance = ""
+            self._login_server_start_row = 2
+            self._login_instance_start_row = 2
+            self._login_server_idx = 0
+            self._login_instance_alt = False
         
         ws = self._login_sheet
+        current_row = self._row_counters[LOGIN_CONFIG.name]
+        inst_display = instance_name or "(Default)"
         
-        # Toggle alternating color when server changes
+        # Check if SERVER changed
         if server_name != self._login_last_server:
-            self._login_alt = not self._login_alt
+            # Finalize previous server group (merges both server & instance)
+            if self._login_last_server:
+                self._merge_login_groups(ws)
+                self._login_server_idx += 1
+            
+            # Start new server
+            self._login_server_start_row = current_row
+            self._login_instance_start_row = current_row
             self._login_last_server = server_name
+            self._login_last_instance = inst_display
+            self._login_instance_alt = False
         
-        # Determine security status
-        # SA should be disabled - if enabled, it's a critical issue
-        status = "fail" if is_sa and not is_disabled else "pass"
-        if status == "fail":
-            self._increment_issue()
-        else:
-            self._increment_pass()
+        # Check if INSTANCE changed (within same server)
+        elif inst_display != self._login_last_instance:
+            # Merge previous instance group
+            self._merge_login_instance(ws)
+            self._login_instance_start_row = current_row
+            self._login_last_instance = inst_display
+            self._login_instance_alt = not self._login_instance_alt  # Toggle shade
+        
+        # Get colors
+        color_main, color_light = SERVER_GROUP_COLORS[
+            self._login_server_idx % len(SERVER_GROUP_COLORS)
+        ]
+        # Use main color for even instances, light for odd
+        row_color = color_main if self._login_instance_alt else color_light
         
         # Prepare row data
+        is_enabled = not is_disabled
         data = [
             server_name,
-            instance_name or "(Default)",
+            inst_display,
             login_name,
             login_type,
-            None,  # Disabled - styled separately
-            None,  # SA Account - styled separately
-            None,  # Pwd Policy - styled separately
+            None,  # Enabled
+            None,  # Password Policy
             default_db or "",
-            None,  # Status - styled separately
-            "",    # Notes (manual)
+            "",    # Notes
+            "",    # Last Revised
         ]
         
         row = self._write_row(ws, LOGIN_CONFIG, data)
         
-        # Apply alternating background for server grouping
-        if self._login_alt:
-            for col in range(1, len(LOGIN_COLUMNS) + 1):
-                cell = ws.cell(row=row, column=col)
-                if not LOGIN_COLUMNS[col-1].is_manual and not LOGIN_COLUMNS[col-1].is_status:
-                    cell.fill = Fills.SERVER_ALT
+        # Apply shade to informational columns (not status)
+        fill = PatternFill(start_color=row_color, end_color=row_color, fill_type="solid")
+        for col in [1, 2, 3, 4, 7]:  # Server, Instance, Name, Type, Default DB
+            ws.cell(row=row, column=col).fill = fill
         
-        # Apply boolean styling with icons
-        apply_boolean_styling(ws.cell(row=row, column=5), is_disabled)
-        apply_boolean_styling(ws.cell(row=row, column=6), is_sa, invert=True)
-        apply_boolean_styling(ws.cell(row=row, column=7), pwd_policy)
-        apply_status_styling(ws.cell(row=row, column=9), status)
+        # Style Enabled column with icon + color
+        enabled_cell = ws.cell(row=row, column=5)
+        if is_enabled:
+            enabled_cell.value = f"{Icons.PASS} Yes"
+            enabled_cell.font = Fonts.PASS
+            enabled_cell.fill = Fills.PASS
+        else:
+            enabled_cell.value = f"{Icons.FAIL} No"
+            enabled_cell.font = Fonts.FAIL
+            enabled_cell.fill = Fills.FAIL
         
-        self._login_count += 1
+        # Style Password Policy
+        policy_cell = ws.cell(row=row, column=6)
+        if pwd_policy is None:
+            policy_cell.value = "N/A"
+            policy_cell.fill = fill
+        elif pwd_policy:
+            policy_cell.value = f"{Icons.PASS} Yes"
+            policy_cell.font = Fonts.PASS
+            policy_cell.fill = Fills.PASS
+        else:
+            policy_cell.value = f"{Icons.FAIL} No"
+            policy_cell.font = Fonts.WARN
+            policy_cell.fill = Fills.WARN
+    
+    def _merge_login_instance(self, ws) -> None:
+        """Merge Instance cells for current instance group."""
+        current_row = self._row_counters[LOGIN_CONFIG.name]
+        if current_row > self._login_instance_start_row:
+            merge_server_cells(
+                ws,
+                server_col=2,  # Instance column
+                start_row=self._login_instance_start_row,
+                end_row=current_row - 1,
+                server_name=self._login_last_instance,
+                is_alt=self._login_instance_alt,
+            )
+    
+    def _merge_login_groups(self, ws) -> None:
+        """Merge both Server and Instance cells for current server group."""
+        # First merge the last instance group
+        self._merge_login_instance(ws)
+        
+        # Then merge the server group
+        current_row = self._row_counters[LOGIN_CONFIG.name]
+        if current_row > self._login_server_start_row:
+            color_main, _ = SERVER_GROUP_COLORS[
+                self._login_server_idx % len(SERVER_GROUP_COLORS)
+            ]
+            merge_server_cells(
+                ws,
+                server_col=1,  # Server column
+                start_row=self._login_server_start_row,
+                end_row=current_row - 1,
+                server_name=self._login_last_server,
+                is_alt=True,
+            )
+            # Apply main color to merged server cell
+            merged = ws.cell(row=self._login_server_start_row, column=1)
+            merged.fill = PatternFill(
+                start_color=color_main, end_color=color_main, fill_type="solid"
+            )
+    
+    def _finalize_logins(self) -> None:
+        """Finalize login sheet - merge remaining groups."""
+        if self._login_sheet and self._login_last_server:
+            self._merge_login_groups(self._login_sheet)

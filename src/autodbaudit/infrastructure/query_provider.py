@@ -210,29 +210,168 @@ class Sql2008Provider(QueryProvider):
         """
     
     def get_instance_properties(self) -> str:
+        # SQL 2008 doesn't have dm_os_host_info, use sys.dm_os_sys_info
         return """
         SELECT 
             CAST(SERVERPROPERTY('ServerName') AS NVARCHAR(256)) AS ServerName,
             CAST(SERVERPROPERTY('InstanceName') AS NVARCHAR(256)) AS InstanceName,
+            CAST(SERVERPROPERTY('MachineName') AS NVARCHAR(256)) AS MachineName,
+            CAST(SERVERPROPERTY('ComputerNamePhysicalNetBIOS') AS NVARCHAR(256)) AS PhysicalMachine,
             CAST(SERVERPROPERTY('ProductVersion') AS NVARCHAR(128)) AS Version,
             CAST(PARSENAME(CAST(SERVERPROPERTY('ProductVersion') AS NVARCHAR(128)), 4) AS INT) AS VersionMajor,
+            CAST(PARSENAME(CAST(SERVERPROPERTY('ProductVersion') AS NVARCHAR(128)), 3) AS INT) AS VersionMinor,
+            CAST(PARSENAME(CAST(SERVERPROPERTY('ProductVersion') AS NVARCHAR(128)), 2) AS INT) AS BuildNumber,
             CAST(SERVERPROPERTY('Edition') AS NVARCHAR(256)) AS Edition,
             CAST(SERVERPROPERTY('ProductLevel') AS NVARCHAR(128)) AS ProductLevel,
+            NULL AS CULevel,
+            NULL AS KBArticle,
             CAST(SERVERPROPERTY('EngineEdition') AS INT) AS EngineEdition,
             CAST(SERVERPROPERTY('IsClustered') AS INT) AS IsClustered,
+            CAST(SERVERPROPERTY('IsHadrEnabled') AS INT) AS IsHadrEnabled,
             CAST(SERVERPROPERTY('IsFullTextInstalled') AS INT) AS IsFullTextInstalled,
-            CAST(SERVERPROPERTY('LicenseType') AS NVARCHAR(128)) AS LicenseType
+            CAST(SERVERPROPERTY('LicenseType') AS NVARCHAR(128)) AS LicenseType,
+            'Windows' AS OSPlatform,
+            NULL AS OSDistribution,
+            @@VERSION AS FullVersionString,
+            (SELECT cpu_count FROM sys.dm_os_sys_info) AS CPUCount,
+            (SELECT physical_memory_in_bytes/1024/1024/1024 FROM sys.dm_os_sys_info) AS MemoryGB,
+            (SELECT sqlserver_start_time FROM sys.dm_os_sys_info) AS SQLStartTime,
+            -- Get IP from current connection
+            (SELECT TOP 1 local_net_address 
+             FROM sys.dm_exec_connections 
+             WHERE local_net_address IS NOT NULL 
+               AND local_net_address NOT LIKE '127.%'
+               AND local_net_address NOT LIKE '169.254.%'
+             ORDER BY connect_time DESC) AS IPAddress,
+            (SELECT TOP 1 local_tcp_port 
+             FROM sys.dm_exec_connections 
+             WHERE local_tcp_port IS NOT NULL) AS TCPPort
         """
     
     def get_sql_services(self) -> str:
-        # 2008: Limited ability to query services from T-SQL
-        # This returns a placeholder - actual service info comes from WMI/PowerShell
+        # SQL 2008 doesn't have sys.dm_server_services
+        # Use xp_cmdshell with wmic for cleaner output format
         return """
+        SET NOCOUNT ON;
+        
+        DECLARE @xp_was_on BIT = 0;
+        DECLARE @adv_was_on BIT = 0;
+        
+        SELECT @adv_was_on = CAST(value_in_use AS BIT)
+        FROM sys.configurations WHERE name = 'show advanced options';
+        
+        SELECT @xp_was_on = CAST(value_in_use AS BIT)
+        FROM sys.configurations WHERE name = 'xp_cmdshell';
+        
+        IF @adv_was_on = 0
+            EXEC sp_configure 'show advanced options', 1;
+        IF @xp_was_on = 0 OR @adv_was_on = 0
+            RECONFIGURE WITH OVERRIDE;
+        IF @xp_was_on = 0
+            EXEC sp_configure 'xp_cmdshell', 1;
+        IF @xp_was_on = 0
+            RECONFIGURE WITH OVERRIDE;
+        
+        -- Use wmic list format for easier parsing
+        CREATE TABLE #wmic (line NVARCHAR(2000));
+        INSERT INTO #wmic
+        EXEC xp_cmdshell 'wmic service where "name like ''%SQL%'' or name like ''MSSQL%'' or name like ''Report%''" get name,displayname,state,startmode,startname /format:list';
+        
+        -- Parse wmic output (format: Name=value on separate lines, blank between services)
+        CREATE TABLE #parsed (
+            ServiceName NVARCHAR(200),
+            DisplayName NVARCHAR(300),
+            Status NVARCHAR(50),
+            StartupType NVARCHAR(50),
+            ServiceAccount NVARCHAR(200)
+        );
+        
+        -- Build result by parsing lines
+        DECLARE @name NVARCHAR(200), @display NVARCHAR(300), @state NVARCHAR(50), @start NVARCHAR(50), @acct NVARCHAR(200);
+        DECLARE @line NVARCHAR(2000);
+        
+        DECLARE line_cursor CURSOR FOR SELECT line FROM #wmic WHERE line IS NOT NULL AND LEN(LTRIM(RTRIM(line))) > 0;
+        OPEN line_cursor;
+        FETCH NEXT FROM line_cursor INTO @line;
+        
+        SET @name = NULL; SET @display = NULL; SET @state = NULL; SET @start = NULL; SET @acct = NULL;
+        
+        WHILE @@FETCH_STATUS = 0
+        BEGIN
+            SET @line = LTRIM(RTRIM(@line));
+            
+            IF @line LIKE 'DisplayName=%' SET @display = SUBSTRING(@line, 13, LEN(@line));
+            IF @line LIKE 'Name=%' SET @name = SUBSTRING(@line, 6, LEN(@line));
+            IF @line LIKE 'StartMode=%' SET @start = SUBSTRING(@line, 11, LEN(@line));
+            IF @line LIKE 'StartName=%' SET @acct = SUBSTRING(@line, 11, LEN(@line));
+            IF @line LIKE 'State=%' SET @state = SUBSTRING(@line, 7, LEN(@line));
+            
+            -- When we have name and state, we have a complete record
+            IF @name IS NOT NULL AND @state IS NOT NULL
+            BEGIN
+                INSERT INTO #parsed VALUES (@name, @display, @state, @start, @acct);
+                SET @name = NULL; SET @display = NULL; SET @state = NULL; SET @start = NULL; SET @acct = NULL;
+            END
+            
+            FETCH NEXT FROM line_cursor INTO @line;
+        END
+        CLOSE line_cursor;
+        DEALLOCATE line_cursor;
+        
+        -- Return formatted results with instance extraction
         SELECT 
-            CAST(SERVERPROPERTY('ServerName') AS NVARCHAR(256)) AS ServerName,
-            'SQL Server' AS ServiceType,
-            @@SERVICENAME AS ServiceName,
-            'Information requires WMI query' AS Note
+            ServiceName,
+            CASE 
+                WHEN ServiceName LIKE 'MSSQL$%' OR ServiceName = 'MSSQLSERVER' THEN 'Database Engine'
+                WHEN ServiceName LIKE 'SQLAgent$%' OR ServiceName = 'SQLSERVERAGENT' THEN 'SQL Agent'
+                WHEN ServiceName LIKE 'SQLBrowser%' THEN 'SQL Browser'
+                WHEN ServiceName LIKE '%FullText%' OR ServiceName LIKE '%FDLauncher%' THEN 'Full-Text Search'
+                WHEN ServiceName LIKE 'MSSQLServerOLAP%' THEN 'Analysis Services'
+                WHEN ServiceName LIKE 'ReportServer%' THEN 'Reporting Services'
+                WHEN ServiceName LIKE 'MsDtsServer%' THEN 'Integration Services'
+                WHEN ServiceName LIKE '%Launchpad%' THEN 'Launchpad (ML)'
+                WHEN ServiceName LIKE 'SQLWriter%' OR ServiceName LIKE '%VSS%' THEN 'VSS Writer'
+                WHEN ServiceName LIKE '%CEIP%' OR ServiceName LIKE 'SQLTELEMETRY%' THEN 'CEIP Telemetry'
+                ELSE 'Other SQL Service'
+            END AS ServiceType,
+            -- Extract instance name from service name (e.g., MSSQL$INTHEEND -> INTHEEND)
+            CASE 
+                WHEN ServiceName LIKE '%$%' THEN SUBSTRING(ServiceName, CHARINDEX('$', ServiceName) + 1, LEN(ServiceName))
+                WHEN ServiceName IN ('MSSQLSERVER', 'SQLSERVERAGENT', 'SQLBrowser', 'SQLWriter') THEN '(Default)'
+                ELSE NULL
+            END AS InstanceName,
+            Status,
+            StartupType,
+            ServiceAccount,
+            DisplayName,
+            CAST(NULL AS INT) AS ProcessId,
+            CAST(NULL AS NVARCHAR(50)) AS LastStartup,
+            CAST(0 AS INT) AS IsClustered,
+            CAST(NULL AS NVARCHAR(100)) AS ClusterNode,
+            CAST(NULL AS NVARCHAR(10)) AS FileInitEnabled
+        FROM #parsed
+        WHERE ServiceName IS NOT NULL
+        ORDER BY 
+            CASE 
+                WHEN ServiceName LIKE 'MSSQL$%' OR ServiceName = 'MSSQLSERVER' THEN 1
+                WHEN ServiceName LIKE 'SQLAgent$%' OR ServiceName = 'SQLSERVERAGENT' THEN 2
+                ELSE 99
+            END,
+            ServiceName;
+        
+        DROP TABLE #parsed;
+        DROP TABLE #wmic;
+        
+        IF @xp_was_on = 0
+            EXEC sp_configure 'xp_cmdshell', 0;
+        IF @xp_was_on = 0 OR @adv_was_on = 0
+            RECONFIGURE WITH OVERRIDE;
+        IF @adv_was_on = 0
+            EXEC sp_configure 'show advanced options', 0;
+        IF @adv_was_on = 0
+            RECONFIGURE WITH OVERRIDE;
+        
+        SET NOCOUNT OFF;
         """
     
     def get_sp_configure(self) -> str:
@@ -337,7 +476,9 @@ class Sql2008Provider(QueryProvider):
             d.is_db_chaining_on AS DbChaining,
             d.is_broker_enabled AS BrokerEnabled,
             SUSER_SNAME(d.owner_sid) AS Owner,
-            (SELECT SUM(size * 8.0 / 1024) FROM sys.master_files mf WHERE mf.database_id = d.database_id) AS SizeMB
+            (SELECT SUM(size * 8.0 / 1024) FROM sys.master_files mf WHERE mf.database_id = d.database_id) AS SizeMB,
+            (SELECT SUM(size * 8.0 / 1024) FROM sys.master_files mf WHERE mf.database_id = d.database_id AND mf.type = 0) AS DataSizeMB,
+            (SELECT SUM(size * 8.0 / 1024) FROM sys.master_files mf WHERE mf.database_id = d.database_id AND mf.type = 1) AS LogSizeMB
         FROM sys.databases d
         ORDER BY d.name
         """
@@ -556,32 +697,89 @@ class Sql2019PlusProvider(QueryProvider):
         """
     
     def get_instance_properties(self) -> str:
+        # 2017+ has dm_os_host_info for OS version
         return """
         SELECT 
             CAST(SERVERPROPERTY('ServerName') AS NVARCHAR(256)) AS ServerName,
             CAST(SERVERPROPERTY('InstanceName') AS NVARCHAR(256)) AS InstanceName,
+            CAST(SERVERPROPERTY('MachineName') AS NVARCHAR(256)) AS MachineName,
+            CAST(SERVERPROPERTY('ComputerNamePhysicalNetBIOS') AS NVARCHAR(256)) AS PhysicalMachine,
             CAST(SERVERPROPERTY('ProductVersion') AS NVARCHAR(128)) AS Version,
             CAST(PARSENAME(CAST(SERVERPROPERTY('ProductVersion') AS NVARCHAR(128)), 4) AS INT) AS VersionMajor,
+            CAST(PARSENAME(CAST(SERVERPROPERTY('ProductVersion') AS NVARCHAR(128)), 3) AS INT) AS VersionMinor,
+            CAST(PARSENAME(CAST(SERVERPROPERTY('ProductVersion') AS NVARCHAR(128)), 2) AS INT) AS BuildNumber,
             CAST(SERVERPROPERTY('Edition') AS NVARCHAR(256)) AS Edition,
             CAST(SERVERPROPERTY('ProductLevel') AS NVARCHAR(128)) AS ProductLevel,
-            CAST(SERVERPROPERTY('ProductUpdateLevel') AS NVARCHAR(128)) AS UpdateLevel,
-            CAST(SERVERPROPERTY('ProductUpdateReference') AS NVARCHAR(128)) AS UpdateReference,
+            CAST(SERVERPROPERTY('ProductUpdateLevel') AS NVARCHAR(128)) AS CULevel,
+            CAST(SERVERPROPERTY('ProductUpdateReference') AS NVARCHAR(128)) AS KBArticle,
             CAST(SERVERPROPERTY('EngineEdition') AS INT) AS EngineEdition,
             CAST(SERVERPROPERTY('IsClustered') AS INT) AS IsClustered,
+            CAST(SERVERPROPERTY('IsHadrEnabled') AS INT) AS IsHadrEnabled,
             CAST(SERVERPROPERTY('IsFullTextInstalled') AS INT) AS IsFullTextInstalled,
-            CAST(SERVERPROPERTY('IsPolyBaseInstalled') AS INT) AS IsPolyBaseInstalled,
-            CAST(SERVERPROPERTY('IsXTPSupported') AS INT) AS IsInMemoryOLTPSupported,
-            CAST(SERVERPROPERTY('LicenseType') AS NVARCHAR(128)) AS LicenseType
+            CAST(SERVERPROPERTY('LicenseType') AS NVARCHAR(128)) AS LicenseType,
+            (SELECT host_platform FROM sys.dm_os_host_info) AS OSPlatform,
+            (SELECT host_distribution FROM sys.dm_os_host_info) AS OSDistribution,
+            (SELECT host_release FROM sys.dm_os_host_info) AS OSRelease,
+            (SELECT cpu_count FROM sys.dm_os_sys_info) AS CPUCount,
+            (SELECT physical_memory_kb/1024/1024 FROM sys.dm_os_sys_info) AS MemoryGB,
+            (SELECT sqlserver_start_time FROM sys.dm_os_sys_info) AS SQLStartTime,
+            -- Get IP address from current connection (most reliable non-loopback IP)
+            (SELECT TOP 1 local_net_address 
+             FROM sys.dm_exec_connections 
+             WHERE local_net_address IS NOT NULL 
+               AND local_net_address NOT LIKE '127.%'
+               AND local_net_address NOT LIKE '169.254.%'
+               AND local_net_address != '::1'
+             ORDER BY connect_time DESC) AS IPAddress,
+            -- Get TCP port
+            (SELECT TOP 1 local_tcp_port 
+             FROM sys.dm_exec_connections 
+             WHERE local_tcp_port IS NOT NULL) AS TCPPort
         """
     
     def get_sql_services(self) -> str:
-        # Same limitation as 2008 - service info requires WMI/PowerShell
+        # sys.dm_server_services gives all SQL-related services
         return """
         SELECT 
-            CAST(SERVERPROPERTY('ServerName') AS NVARCHAR(256)) AS ServerName,
-            'SQL Server' AS ServiceType,
-            @@SERVICENAME AS ServiceName,
-            'Service details require WMI/PowerShell query' AS Note
+            servicename AS ServiceName,
+            CASE 
+                WHEN servicename LIKE '%SQL Server (%' THEN 'Database Engine'
+                WHEN servicename LIKE '%Agent%' THEN 'SQL Agent'
+                WHEN servicename LIKE '%Browser%' THEN 'SQL Browser'
+                WHEN servicename LIKE '%Full-text%' OR servicename LIKE '%Fulltext%' THEN 'Full-Text Search'
+                WHEN servicename LIKE '%Analysis%' OR servicename LIKE '%SSAS%' THEN 'Analysis Services'
+                WHEN servicename LIKE '%Reporting%' OR servicename LIKE '%SSRS%' THEN 'Reporting Services'
+                WHEN servicename LIKE '%Integration%' OR servicename LIKE '%SSIS%' THEN 'Integration Services'
+                WHEN servicename LIKE '%Launchpad%' THEN 'Launchpad (ML)'
+                WHEN servicename LIKE '%VSS%' OR servicename LIKE '%Writer%' THEN 'VSS Writer'
+                WHEN servicename LIKE '%CEIP%' OR servicename LIKE '%Telemetry%' THEN 'CEIP Telemetry'
+                WHEN servicename LIKE '%PolyBase%' THEN 'PolyBase'
+                ELSE 'Other'
+            END AS ServiceType,
+            -- Extract instance name from service display name
+            CASE 
+                WHEN servicename LIKE '%(%)%' THEN 
+                    SUBSTRING(servicename, CHARINDEX('(', servicename) + 1, 
+                              CHARINDEX(')', servicename) - CHARINDEX('(', servicename) - 1)
+                ELSE NULL
+            END AS InstanceName,
+            startup_type_desc AS StartupType,
+            status_desc AS Status,
+            service_account AS ServiceAccount,
+            servicename AS DisplayName,
+            process_id AS ProcessId,
+            last_startup_time AS LastStartup,
+            is_clustered AS IsClustered,
+            cluster_nodename AS ClusterNode,
+            instant_file_initialization_enabled AS FileInitEnabled
+        FROM sys.dm_server_services
+        ORDER BY 
+            CASE 
+                WHEN servicename LIKE '%SQL Server (%' THEN 1
+                WHEN servicename LIKE '%Agent%' THEN 2
+                ELSE 99
+            END,
+            servicename
         """
     
     def get_sp_configure(self) -> str:
@@ -706,6 +904,7 @@ class Sql2019PlusProvider(QueryProvider):
             d.is_encrypted AS IsEncrypted,
             d.containment_desc AS Containment,
             SUSER_SNAME(d.owner_sid) AS Owner,
+            (SELECT SUM(size * 8.0 / 1024) FROM sys.master_files mf WHERE mf.database_id = d.database_id) AS SizeMB,
             (SELECT SUM(size * 8.0 / 1024) FROM sys.master_files mf WHERE mf.database_id = d.database_id AND mf.type = 0) AS DataSizeMB,
             (SELECT SUM(size * 8.0 / 1024) FROM sys.master_files mf WHERE mf.database_id = d.database_id AND mf.type = 1) AS LogSizeMB
         FROM sys.databases d

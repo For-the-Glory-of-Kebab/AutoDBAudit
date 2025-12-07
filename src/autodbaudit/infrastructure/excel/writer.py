@@ -277,6 +277,44 @@ class EnhancedReportWriter(
             # _ensure_sheet is inherited from BaseSheetMixin
             self._ensure_sheet(config)
     
+    def _finalize_all_sheets(self) -> None:
+        """
+        Finalize all sheets by merging any remaining cell groups.
+        
+        Each mixin may have a _finalize_* method that handles
+        merging cells for the last server/instance group added.
+        Called by save() before ensuring all sheets exist.
+        """
+        # Call finalize methods if they exist
+        if hasattr(self, '_finalize_instances'):
+            self._finalize_instances()
+        if hasattr(self, '_finalize_logins'):
+            self._finalize_logins()
+        if hasattr(self, '_finalize_sa_accounts'):
+            self._finalize_sa_accounts()
+        if hasattr(self, '_finalize_roles'):
+            self._finalize_roles()
+        if hasattr(self, '_finalize_config'):
+            self._finalize_config()
+        if hasattr(self, '_finalize_services'):
+            self._finalize_services()
+        if hasattr(self, '_finalize_databases'):
+            self._finalize_databases()
+        if hasattr(self, '_finalize_db_users'):
+            self._finalize_db_users()
+        if hasattr(self, '_finalize_db_roles'):
+            self._finalize_db_roles()
+        if hasattr(self, '_finalize_orphaned_users'):
+            self._finalize_orphaned_users()
+        if hasattr(self, '_finalize_linked_servers'):
+            self._finalize_linked_servers()
+        if hasattr(self, '_finalize_triggers'):
+            self._finalize_triggers()
+        if hasattr(self, '_finalize_backups'):
+            self._finalize_backups()
+        if hasattr(self, '_finalize_audit_settings'):
+            self._finalize_audit_settings()
+    
     def _reorder_sheets(self) -> None:
         """
         Reorder sheets to the standard logical order.
@@ -331,6 +369,9 @@ class EnhancedReportWriter(
         
         # Create output directory if needed
         path.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Step 0: Finalize all sheets (merge remaining cell groups)
+        self._finalize_all_sheets()
         
         # Step 1: Ensure all sheets exist (even empty ones)
         self._ensure_all_sheets()

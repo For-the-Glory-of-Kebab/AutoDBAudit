@@ -220,15 +220,29 @@ class SqlConnector:
         """
         conn_str = self.build_connection_string()
         
-        with pyodbc.connect(conn_str) as conn:
+        # Use autocommit=True to allow admin commands like RECONFIGURE
+        with pyodbc.connect(conn_str, autocommit=True) as conn:
             cursor = conn.cursor()
             cursor.execute(query)
             
-            # Get column names
-            columns = [column[0] for column in cursor.description] if cursor.description else []
+            # For multi-statement batches, skip to the last result set
+            # This handles queries that have SET statements before SELECT
+            while cursor.description is None:
+                if not cursor.nextset():
+                    return []
             
-            # Fetch all rows
+            # Keep advancing to find the last result set with data
+            columns = [column[0] for column in cursor.description] if cursor.description else []
             rows = cursor.fetchall()
+            
+            # Check for more result sets and use the last one with data
+            while cursor.nextset():
+                if cursor.description:
+                    new_cols = [column[0] for column in cursor.description]
+                    new_rows = cursor.fetchall()
+                    if new_rows:  # Only update if this result set has data
+                        columns = new_cols
+                        rows = new_rows
             
             # Convert to list of dictionaries
             results = []

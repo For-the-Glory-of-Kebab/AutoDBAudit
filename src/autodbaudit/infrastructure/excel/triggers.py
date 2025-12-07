@@ -2,6 +2,7 @@
 Triggers Sheet Module.
 
 Handles the Triggers worksheet for server and database trigger audit.
+Uses ServerGroupMixin for server/instance grouping.
 """
 
 from __future__ import annotations
@@ -16,6 +17,7 @@ from autodbaudit.infrastructure.excel.base import (
     BaseSheetMixin,
     SheetConfig,
 )
+from autodbaudit.infrastructure.excel.server_group import ServerGroupMixin
 
 
 __all__ = ["TriggerSheetMixin", "TRIGGER_CONFIG"]
@@ -35,8 +37,8 @@ TRIGGER_COLUMNS = (
 TRIGGER_CONFIG = SheetConfig(name="Triggers", columns=TRIGGER_COLUMNS)
 
 
-class TriggerSheetMixin(BaseSheetMixin):
-    """Mixin for Triggers sheet functionality."""
+class TriggerSheetMixin(ServerGroupMixin, BaseSheetMixin):
+    """Mixin for Triggers sheet with server/instance grouping."""
     
     _trigger_sheet = None
     
@@ -50,24 +52,15 @@ class TriggerSheetMixin(BaseSheetMixin):
         event_type: str,
         is_enabled: bool,
     ) -> None:
-        """
-        Add a trigger row.
-        
-        Server-level triggers are highlighted as they require extra review.
-        
-        Args:
-            server_name: Server hostname
-            instance_name: SQL Server instance name
-            level: Trigger level ("SERVER" or "DATABASE")
-            database_name: Database name (None for server triggers)
-            trigger_name: Name of the trigger
-            event_type: Event that fires the trigger
-            is_enabled: Whether the trigger is enabled
-        """
+        """Add a trigger row."""
         if self._trigger_sheet is None:
             self._trigger_sheet = self._ensure_sheet(TRIGGER_CONFIG)
+            self._init_grouping(self._trigger_sheet, TRIGGER_CONFIG)
         
         ws = self._trigger_sheet
+        
+        # Track grouping and get row color
+        row_color = self._track_group(server_name, instance_name, TRIGGER_CONFIG.name)
         
         data = [
             server_name,
@@ -76,15 +69,21 @@ class TriggerSheetMixin(BaseSheetMixin):
             database_name or "",
             trigger_name,
             event_type or "",
-            None,  # Enabled - styled separately
+            None,  # Enabled
             "",    # Purpose
         ]
         
         row = self._write_row(ws, TRIGGER_CONFIG, data)
         
+        self._apply_row_color(row, row_color, data_cols=[1, 2, 3, 4, 5, 6], ws=ws)
         apply_boolean_styling(ws.cell(row=row, column=7), is_enabled)
         
         # Highlight server-level triggers
         if level.upper() == "SERVER":
-            for col in range(1, 6):
+            for col in [3, 4, 5, 6]:
                 ws.cell(row=row, column=col).fill = Fills.INFO
+    
+    def _finalize_triggers(self) -> None:
+        """Finalize triggers sheet - merge remaining groups."""
+        if self._trigger_sheet:
+            self._finalize_grouping(TRIGGER_CONFIG.name)

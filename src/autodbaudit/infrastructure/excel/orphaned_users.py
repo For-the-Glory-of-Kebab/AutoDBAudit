@@ -2,6 +2,10 @@
 Orphaned Users Sheet Module.
 
 Handles the Orphaned Users worksheet for orphaned database user audit.
+Uses ServerGroupMixin for server/instance grouping.
+
+This sheet consolidates all non-system orphaned users for quick review.
+Orphaned users are database users without matching server logins.
 """
 
 from __future__ import annotations
@@ -9,12 +13,14 @@ from __future__ import annotations
 from autodbaudit.infrastructure.excel_styles import (
     ColumnDef,
     Alignments,
-    apply_status_styling,
+    Fills,
+    Fonts,
 )
 from autodbaudit.infrastructure.excel.base import (
     BaseSheetMixin,
     SheetConfig,
 )
+from autodbaudit.infrastructure.excel.server_group import ServerGroupMixin
 
 
 __all__ = ["OrphanedUserSheetMixin", "ORPHANED_USER_CONFIG"]
@@ -25,16 +31,16 @@ ORPHANED_USER_COLUMNS = (
     ColumnDef("Instance", 15, Alignments.LEFT),
     ColumnDef("Database", 20, Alignments.LEFT),
     ColumnDef("User Name", 25, Alignments.LEFT),
-    ColumnDef("Type", 18, Alignments.LEFT),
-    ColumnDef("Status", 12, Alignments.CENTER, is_status=True),
-    ColumnDef("Remediation", 45, Alignments.LEFT, is_manual=True),
+    ColumnDef("Type", 16, Alignments.CENTER),
+    ColumnDef("Status", 14, Alignments.CENTER),
+    ColumnDef("Remediation", 50, Alignments.LEFT, is_manual=True),
 )
 
 ORPHANED_USER_CONFIG = SheetConfig(name="Orphaned Users", columns=ORPHANED_USER_COLUMNS)
 
 
-class OrphanedUserSheetMixin(BaseSheetMixin):
-    """Mixin for Orphaned Users sheet functionality."""
+class OrphanedUserSheetMixin(ServerGroupMixin, BaseSheetMixin):
+    """Mixin for Orphaned Users sheet with server/instance grouping."""
     
     _orphaned_user_sheet = None
     
@@ -46,37 +52,53 @@ class OrphanedUserSheetMixin(BaseSheetMixin):
         user_name: str,
         user_type: str,
     ) -> None:
-        """
-        Add an orphaned user row.
+        """Add an orphaned user row.
         
-        Orphaned users are database users without a corresponding server login.
-        They represent a security risk and should be remediated.
-        
-        Args:
-            server_name: Server hostname
-            instance_name: SQL Server instance name
-            database_name: Database containing the orphaned user
-            user_name: Orphaned user name
-            user_type: Type of user (SQL User, Windows User, etc.)
+        Only non-system orphaned users should be added here.
+        System users (dbo, guest, INFORMATION_SCHEMA, sys) are filtered
+        at the collection layer.
         """
         if self._orphaned_user_sheet is None:
             self._orphaned_user_sheet = self._ensure_sheet(ORPHANED_USER_CONFIG)
+            self._init_grouping(self._orphaned_user_sheet, ORPHANED_USER_CONFIG)
         
         ws = self._orphaned_user_sheet
         
-        # All orphaned users are issues
-        self._increment_issue()
+        # Track grouping and get row color
+        row_color = self._track_group(server_name, instance_name, ORPHANED_USER_CONFIG.name)
+        
+        # Format user type with icon
+        type_lower = (user_type or "").lower()
+        type_display = user_type
+        if "windows" in type_lower:
+            type_display = "🪟 Windows"
+        elif "sql" in type_lower:
+            type_display = "🔑 SQL"
         
         data = [
             server_name,
             instance_name or "(Default)",
             database_name,
             user_name,
-            user_type,
-            None,  # Status - styled separately
+            type_display,
+            None,  # Status - styled separately  
             "",    # Remediation
         ]
         
         row = self._write_row(ws, ORPHANED_USER_CONFIG, data)
         
-        apply_status_styling(ws.cell(row=row, column=6), "fail")
+        # Apply row color to data columns
+        self._apply_row_color(row, row_color, data_cols=[1, 2, 3, 4, 5], ws=ws)
+        
+        # Style Status column (column 6) - orphaned is a warning
+        status_cell = ws.cell(row=row, column=6)
+        status_cell.value = "⚠️ Orphaned"
+        status_cell.fill = Fills.WARN
+        status_cell.font = Fonts.WARN
+        
+        self._increment_warn()
+    
+    def _finalize_orphaned_users(self) -> None:
+        """Finalize orphaned users sheet - merge remaining groups."""
+        if self._orphaned_user_sheet:
+            self._finalize_grouping(ORPHANED_USER_CONFIG.name)

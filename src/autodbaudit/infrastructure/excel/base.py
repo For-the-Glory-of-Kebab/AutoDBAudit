@@ -11,7 +11,6 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from openpyxl.styles import Alignment
 from openpyxl.worksheet.worksheet import Worksheet
 
 from autodbaudit.infrastructure.excel_styles import (
@@ -37,7 +36,22 @@ __all__ = [
     "format_date",
     "format_size_mb",
     "get_sql_year",
+    "LAST_REVISED_COLUMN",
 ]
+
+
+# ============================================================================
+# Standard Column Definitions
+# ============================================================================
+
+# Reusable "Last Revised" column for sheets with manual annotations
+# This tracks when an auditor last reviewed/updated the row
+LAST_REVISED_COLUMN = ColumnDef(
+    name="Last Revised",
+    width=12,
+    alignment=Alignments.CENTER,
+    is_manual=True,
+)
 
 
 # ============================================================================

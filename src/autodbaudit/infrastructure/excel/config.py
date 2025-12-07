@@ -2,6 +2,7 @@
 Configuration Sheet Module.
 
 Handles the Configuration worksheet for sp_configure security settings.
+Uses ServerGroupMixin for server/instance grouping.
 """
 
 from __future__ import annotations
@@ -16,6 +17,7 @@ from autodbaudit.infrastructure.excel.base import (
     BaseSheetMixin,
     SheetConfig,
 )
+from autodbaudit.infrastructure.excel.server_group import ServerGroupMixin
 
 
 __all__ = ["ConfigSheetMixin", "CONFIG_CONFIG"]
@@ -35,8 +37,8 @@ CONFIG_COLUMNS = (
 CONFIG_CONFIG = SheetConfig(name="Configuration", columns=CONFIG_COLUMNS)
 
 
-class ConfigSheetMixin(BaseSheetMixin):
-    """Mixin for Configuration sheet functionality."""
+class ConfigSheetMixin(ServerGroupMixin, BaseSheetMixin):
+    """Mixin for Configuration sheet with server/instance grouping."""
     
     _config_sheet = None
     
@@ -49,21 +51,15 @@ class ConfigSheetMixin(BaseSheetMixin):
         required_value: int,
         risk_level: str = "medium",
     ) -> None:
-        """
-        Add a configuration setting row.
-        
-        Args:
-            server_name: Server hostname
-            instance_name: SQL Server instance name
-            setting_name: Name of the sp_configure setting
-            current_value: Current configured value
-            required_value: Required/recommended value
-            risk_level: Risk level if non-compliant (critical/high/medium/low)
-        """
+        """Add a configuration setting row."""
         if self._config_sheet is None:
             self._config_sheet = self._ensure_sheet(CONFIG_CONFIG)
+            self._init_grouping(self._config_sheet, CONFIG_CONFIG)
         
         ws = self._config_sheet
+        
+        # Track grouping and get row color
+        row_color = self._track_group(server_name, instance_name, CONFIG_CONFIG.name)
         
         # Determine compliance status
         status = "pass" if current_value == required_value else "fail"
@@ -78,17 +74,26 @@ class ConfigSheetMixin(BaseSheetMixin):
             setting_name,
             str(current_value),
             str(required_value),
-            None,  # Status - styled separately
+            None,  # Status
             risk_level.title(),
             "",    # Exception Reason
         ]
         
         row = self._write_row(ws, CONFIG_CONFIG, data)
         
+        # Apply row color to data columns
+        self._apply_row_color(row, row_color, data_cols=[1, 2, 3, 4, 5], ws=ws)
+        
+        # Apply status styling
         apply_status_styling(ws.cell(row=row, column=6), status)
         
-        # Highlight critical settings
+        # Highlight risk column
         if risk_level.lower() == "critical":
             ws.cell(row=row, column=7).fill = Fills.CRITICAL
         elif risk_level.lower() == "high":
             ws.cell(row=row, column=7).fill = Fills.FAIL
+    
+    def _finalize_config(self) -> None:
+        """Finalize config sheet - merge remaining groups."""
+        if self._config_sheet:
+            self._finalize_grouping(CONFIG_CONFIG.name)

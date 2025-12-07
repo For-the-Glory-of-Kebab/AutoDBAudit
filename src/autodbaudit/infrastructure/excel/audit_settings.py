@@ -2,6 +2,7 @@
 Audit Settings Sheet Module.
 
 Handles the Audit Settings worksheet for login audit configuration.
+Uses ServerGroupMixin for server/instance grouping.
 """
 
 from __future__ import annotations
@@ -15,6 +16,7 @@ from autodbaudit.infrastructure.excel.base import (
     BaseSheetMixin,
     SheetConfig,
 )
+from autodbaudit.infrastructure.excel.server_group import ServerGroupMixin
 
 
 __all__ = ["AuditSettingSheetMixin", "AUDIT_SETTING_CONFIG"]
@@ -33,8 +35,8 @@ AUDIT_SETTING_COLUMNS = (
 AUDIT_SETTING_CONFIG = SheetConfig(name="Audit Settings", columns=AUDIT_SETTING_COLUMNS)
 
 
-class AuditSettingSheetMixin(BaseSheetMixin):
-    """Mixin for Audit Settings sheet functionality."""
+class AuditSettingSheetMixin(ServerGroupMixin, BaseSheetMixin):
+    """Mixin for Audit Settings sheet with server/instance grouping."""
     
     _audit_setting_sheet = None
     
@@ -46,22 +48,16 @@ class AuditSettingSheetMixin(BaseSheetMixin):
         current_value: str,
         recommended_value: str,
     ) -> None:
-        """
-        Add an audit setting row.
-        
-        Args:
-            server_name: Server hostname
-            instance_name: SQL Server instance name
-            setting_name: Name of the audit setting
-            current_value: Current setting value
-            recommended_value: Recommended/required value
-        """
+        """Add an audit setting row."""
         if self._audit_setting_sheet is None:
             self._audit_setting_sheet = self._ensure_sheet(AUDIT_SETTING_CONFIG)
+            self._init_grouping(self._audit_setting_sheet, AUDIT_SETTING_CONFIG)
         
         ws = self._audit_setting_sheet
         
-        # Compare values (case-insensitive)
+        # Track grouping and get row color
+        row_color = self._track_group(server_name, instance_name, AUDIT_SETTING_CONFIG.name)
+        
         status = "pass" if str(current_value).lower() == str(recommended_value).lower() else "fail"
         if status == "pass":
             self._increment_pass()
@@ -74,10 +70,16 @@ class AuditSettingSheetMixin(BaseSheetMixin):
             setting_name,
             current_value,
             recommended_value,
-            None,  # Status - styled separately
+            None,  # Status
             "",    # Notes
         ]
         
         row = self._write_row(ws, AUDIT_SETTING_CONFIG, data)
         
+        self._apply_row_color(row, row_color, data_cols=[1, 2, 3, 4, 5], ws=ws)
         apply_status_styling(ws.cell(row=row, column=6), status)
+    
+    def _finalize_audit_settings(self) -> None:
+        """Finalize audit settings sheet - merge remaining groups."""
+        if self._audit_setting_sheet:
+            self._finalize_grouping(AUDIT_SETTING_CONFIG.name)

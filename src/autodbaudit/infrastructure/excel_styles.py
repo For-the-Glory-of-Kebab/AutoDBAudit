@@ -59,6 +59,36 @@ class Colors:
     # Row alternation
     SERVER_ALT_BG = "E9EFF7"  # Pale blue for server grouping
     ROW_ALT_BG = "F9F9F9"     # Very light gray for row alternation
+    
+    # Server group color rotation (4 vibrant, lively colors)
+    # Main = darker shade for merged server cell
+    # Light = lighter shade for data rows
+    # These are hand-picked to look good and be visually distinct
+    
+    # Teal (fresh, professional)
+    SERVER_1_MAIN = "B7E1CD"     # Teal
+    SERVER_1_LIGHT = "E3F5EC"    # Light teal
+    
+    # Coral (warm, inviting)
+    SERVER_2_MAIN = "F4B8B8"     # Coral
+    SERVER_2_LIGHT = "FCEAEA"    # Light coral
+    
+    # Golden (energetic)
+    SERVER_3_MAIN = "FFE08A"     # Gold  
+    SERVER_3_LIGHT = "FFF8E0"    # Light gold
+    
+    # Lavender (calm, distinct)
+    SERVER_4_MAIN = "C5B4E3"     # Lavender
+    SERVER_4_LIGHT = "EDE8F5"    # Light lavender
+
+
+# Server group color tuples (main, light) for easy rotation
+SERVER_GROUP_COLORS = [
+    (Colors.SERVER_1_MAIN, Colors.SERVER_1_LIGHT),
+    (Colors.SERVER_2_MAIN, Colors.SERVER_2_LIGHT),
+    (Colors.SERVER_3_MAIN, Colors.SERVER_3_LIGHT),
+    (Colors.SERVER_4_MAIN, Colors.SERVER_4_LIGHT),
+]
 
 
 # ============================================================================

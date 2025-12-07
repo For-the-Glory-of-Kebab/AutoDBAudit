@@ -2,171 +2,169 @@
 Instances Sheet Module.
 
 Handles the Instances worksheet for SQL Server instance properties.
-This sheet provides a high-level overview of all SQL Server instances
-being audited, including version information, clustering status, and
-server hardware details.
-
-Sheet Purpose:
-    - Document all SQL Server instances in scope
-    - Track version/edition for compliance and EOL planning
-    - Identify clustered and HADR instances
-    - Record server IP addresses for network documentation
-
-Columns:
-    - Server: Server hostname (grouped visually)
-    - IP Address: Server IP for network identification
-    - Instance: SQL Server instance name
-    - Version: Full version string
-    - SQL Year: Mapped year (2019, 2022, etc.)
-    - Edition: Enterprise, Standard, Express, etc.
-    - Patch Level: RTM, SP1, CU5, etc.
-    - Clustered: Whether instance is clustered
-    - HADR: AlwaysOn Availability Group enabled
-    - OS Version: Windows Server version
-    - Notes: Manual notes field
-
-Visual Features:
-    - Alternating row colors per server for multi-server reports
-    - Boolean icons for Clustered/HADR status
+Visual grouping with rotating colors for different servers.
 """
 
 from __future__ import annotations
 
+from openpyxl.styles import PatternFill
+
 from autodbaudit.infrastructure.excel_styles import (
     ColumnDef,
     Alignments,
-    Fills,
     apply_boolean_styling,
+    merge_server_cells,
+    SERVER_GROUP_COLORS,
 )
 from autodbaudit.infrastructure.excel.base import (
     BaseSheetMixin,
     SheetConfig,
     get_sql_year,
+    LAST_REVISED_COLUMN,
 )
 
 
 __all__ = ["InstanceSheetMixin", "INSTANCE_CONFIG"]
 
 
-# Column definitions with enhanced server information
 INSTANCE_COLUMNS = (
-    ColumnDef("Server", 18, Alignments.LEFT),
-    ColumnDef("IP Address", 15, Alignments.CENTER),  # NEW: Server IP
-    ColumnDef("Instance", 16, Alignments.LEFT),
-    ColumnDef("Version", 14, Alignments.LEFT),
-    ColumnDef("SQL Year", 10, Alignments.CENTER),
-    ColumnDef("Edition", 30, Alignments.LEFT),
-    ColumnDef("Patch Level", 12, Alignments.CENTER),
-    ColumnDef("Clustered", 10, Alignments.CENTER),
-    ColumnDef("HADR", 8, Alignments.CENTER),
-    ColumnDef("OS Version", 22, Alignments.LEFT),  # NEW: Windows version
-    ColumnDef("Notes", 35, Alignments.LEFT, is_manual=True),
+    ColumnDef("Config Name", 22, Alignments.LEFT),  # From display_name
+    ColumnDef("Server", 18, Alignments.LEFT),  # Connection target
+    ColumnDef("Instance", 12, Alignments.LEFT),
+    ColumnDef("Machine Name", 16, Alignments.LEFT),  # From SERVERPROPERTY
+    ColumnDef("IP Address", 16, Alignments.LEFT),  # From dm_exec_connections
+    ColumnDef("Version", 12, Alignments.LEFT),
+    ColumnDef("Build", 14, Alignments.LEFT),
+    ColumnDef("SQL Year", 8, Alignments.CENTER),
+    ColumnDef("Edition", 20, Alignments.LEFT),
+    ColumnDef("Clustered", 8, Alignments.CENTER),
+    ColumnDef("HADR", 6, Alignments.CENTER),
+    ColumnDef("OS", 18, Alignments.LEFT),
+    ColumnDef("CPU", 4, Alignments.CENTER),
+    ColumnDef("RAM", 5, Alignments.CENTER),
+    ColumnDef("Notes", 24, Alignments.LEFT, is_manual=True),
+    LAST_REVISED_COLUMN,
 )
 
 INSTANCE_CONFIG = SheetConfig(name="Instances", columns=INSTANCE_COLUMNS)
 
 
 class InstanceSheetMixin(BaseSheetMixin):
-    """
-    Mixin for Instances sheet functionality.
-    
-    Provides the `add_instance` method to record SQL Server instance
-    details including version, edition, and clustering configuration.
-    
-    Attributes:
-        _instance_sheet: Reference to the Instances worksheet
-        _last_server: Tracks the last server name for alternating colors
-        _server_group_alt: Toggles alternating background per server group
-    """
+    """Mixin for Instances sheet functionality."""
     
     _instance_sheet = None
-    _last_server: str = ""
-    _server_group_alt: bool = False
+    _instance_last_server: str = ""
+    _instance_server_start_row: int = 2
+    _instance_server_idx: int = 0
     
     def add_instance(
         self,
-        server_name: str,
+        config_name: str,  # NEW: display_name from config
+        server_name: str,  # Connection target (localhost, localhost,1434)
         instance_name: str,
+        machine_name: str,  # NEW: from SERVERPROPERTY('MachineName')
+        ip_address: str,  # From dm_exec_connections
+        tcp_port: int | None,
         version: str,
         version_major: int,
         edition: str,
         product_level: str,
         is_clustered: bool = False,
         is_hadr: bool = False,
-        ip_address: str = "",
-        os_version: str = "",
+        os_info: str = "",
+        cpu_count: int | None = None,
+        memory_gb: int | None = None,
+        cu_level: str = "",
+        build_number: int | None = None,
     ) -> None:
-        """
-        Add an instance row to the Instances sheet.
-        
-        Records comprehensive information about a SQL Server instance.
-        Rows are visually grouped by server with alternating colors
-        when multiple servers are present.
-        
-        Args:
-            server_name: Server hostname (e.g., "SQLPROD01")
-            instance_name: SQL instance name (e.g., "MSSQLSERVER" or "INST1")
-            version: Full version string (e.g., "16.0.1160.1")
-            version_major: Major version number for SQL year mapping
-            edition: SQL Server edition (e.g., "Enterprise Edition")
-            product_level: Patch level (e.g., "RTM", "SP1", "CU15")
-            is_clustered: True if this is a clustered instance
-            is_hadr: True if AlwaysOn Availability Groups are enabled
-            ip_address: Server IP address (optional, for documentation)
-            os_version: Windows Server version (optional)
-        
-        Example:
-            writer.add_instance(
-                server_name="SQLPROD01",
-                instance_name="",  # Default instance
-                version="16.0.1160.1",
-                version_major=16,
-                edition="Enterprise Edition (64-bit)",
-                product_level="RTM",
-                is_clustered=False,
-                is_hadr=True,
-                ip_address="10.0.1.50",
-                os_version="Windows Server 2022",
-            )
-        """
-        # Lazy-initialize the worksheet
+        """Add an instance row to the Instances sheet."""
         if self._instance_sheet is None:
             self._instance_sheet = self._ensure_sheet(INSTANCE_CONFIG)
-            self._last_server = ""
-            self._server_group_alt = False
+            self._instance_last_server = ""
+            self._instance_server_start_row = 2
+            self._instance_server_idx = 0
         
         ws = self._instance_sheet
+        current_row = self._row_counters[INSTANCE_CONFIG.name]
         
-        # Toggle alternating color when server changes
-        if server_name != self._last_server:
-            self._server_group_alt = not self._server_group_alt
-            self._last_server = server_name
+        # Check if server changed
+        if server_name != self._instance_last_server:
+            if self._instance_last_server:
+                self._merge_instance_server(ws)
+                self._instance_server_idx += 1
+            
+            self._instance_server_start_row = current_row
+            self._instance_last_server = server_name
         
-        # Prepare row data
+        color_main, color_light = SERVER_GROUP_COLORS[
+            self._instance_server_idx % len(SERVER_GROUP_COLORS)
+        ]
+        
+        # Build info string
+        build_parts = [product_level]
+        if cu_level:
+            build_parts.append(cu_level)
+        if build_number:
+            build_parts.append(f"({build_number})")
+        build_info = " ".join(build_parts)
+        
+        # Format IP with port
+        ip_display = ip_address or ""
+        if ip_display and tcp_port:
+            ip_display = f"{ip_address}:{tcp_port}"
+        elif tcp_port and not ip_display:
+            ip_display = f":{tcp_port}"  # Just port if no IP
+        
         data = [
-            server_name,
-            ip_address or "",
+            config_name,  # Config Name
+            server_name,  # Server (connection target)
             instance_name or "(Default)",
+            machine_name or "",  # Machine Name
+            ip_display,  # IP Address
             version,
+            build_info,
             get_sql_year(version_major),
             edition,
-            product_level,
-            None,  # Clustered - styled separately
-            None,  # HADR - styled separately
-            os_version or "",
-            "",    # Notes (manual field)
+            None,  # Clustered
+            None,  # HADR
+            os_info or "",
+            str(cpu_count) if cpu_count else "",
+            str(memory_gb) if memory_gb else "",
+            "",    # Notes
+            "",    # Last Revised
         ]
         
         row = self._write_row(ws, INSTANCE_CONFIG, data)
         
-        # Apply alternating background for server grouping
-        if self._server_group_alt:
-            for col in range(1, len(INSTANCE_COLUMNS) + 1):
-                cell = ws.cell(row=row, column=col)
-                # Don't override manual field styling
-                if not INSTANCE_COLUMNS[col-1].is_manual:
-                    cell.fill = Fills.SERVER_ALT
+        fill = PatternFill(start_color=color_light, end_color=color_light, fill_type="solid")
+        # All data columns except Clustered (10), HADR (11), manual columns
+        for col in [1, 2, 3, 4, 5, 6, 7, 8, 9, 12, 13, 14]:
+            ws.cell(row=row, column=col).fill = fill
         
-        # Apply boolean styling with icons
-        apply_boolean_styling(ws.cell(row=row, column=8), is_clustered)
-        apply_boolean_styling(ws.cell(row=row, column=9), is_hadr)
+        apply_boolean_styling(ws.cell(row=row, column=10), is_clustered)
+        apply_boolean_styling(ws.cell(row=row, column=11), is_hadr)
+    
+    def _merge_instance_server(self, ws) -> None:
+        """Merge Server cells for current server group."""
+        current_row = self._row_counters[INSTANCE_CONFIG.name]
+        if current_row > self._instance_server_start_row:
+            color_main, _ = SERVER_GROUP_COLORS[
+                self._instance_server_idx % len(SERVER_GROUP_COLORS)
+            ]
+            merge_server_cells(
+                ws,
+                server_col=2,  # Server column (was 1)
+                start_row=self._instance_server_start_row,
+                end_row=current_row - 1,
+                server_name=self._instance_last_server,
+                is_alt=True,
+            )
+            merged_cell = ws.cell(row=self._instance_server_start_row, column=2)
+            merged_cell.fill = PatternFill(
+                start_color=color_main, end_color=color_main, fill_type="solid"
+            )
+    
+    def _finalize_instances(self) -> None:
+        """Finalize instances sheet - merge remaining server group."""
+        if self._instance_sheet and self._instance_last_server:
+            self._merge_instance_server(self._instance_sheet)
