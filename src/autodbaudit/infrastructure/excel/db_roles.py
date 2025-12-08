@@ -77,6 +77,7 @@ class DBRoleSheetMixin(ServerGroupMixin, BaseSheetMixin):
         if self._db_role_sheet is None:
             self._db_role_sheet = self._ensure_sheet(DB_ROLE_CONFIG)
             self._init_grouping(self._db_role_sheet, DB_ROLE_CONFIG)
+            self._add_db_role_dropdowns()
         
         ws = self._db_role_sheet
         
@@ -163,3 +164,20 @@ class DBRoleSheetMixin(ServerGroupMixin, BaseSheetMixin):
         """Finalize db roles sheet - merge remaining groups."""
         if self._db_role_sheet:
             self._finalize_grouping(DB_ROLE_CONFIG.name)
+    
+    def _add_db_role_dropdowns(self) -> None:
+        """Add dropdown validations for role/status columns."""
+        from autodbaudit.infrastructure.excel.base import add_dropdown_validation
+        
+        ws = self._db_role_sheet
+        # Role column (D) - column 4: all standard roles + custom option
+        add_dropdown_validation(ws, "D", [
+            "👑 db_owner", "⚙️ db_securityadmin", "⚙️ db_accessadmin",
+            "⚙️ db_backupoperator", "⚙️ db_ddladmin",
+            "📖 db_datareader", "✏️ db_datawriter",
+            "db_denydatareader", "db_denydatawriter", "public", "(Custom)"
+        ])
+        # Member Type column (F) - column 6
+        add_dropdown_validation(ws, "F", ["🪟 Windows", "🔑 SQL", "📦 Role"])
+        # Risk column (G) - column 7
+        add_dropdown_validation(ws, "G", ["🔴 High", "🟡 Medium", "🟢 Low", "—"])

@@ -61,6 +61,7 @@ class OrphanedUserSheetMixin(ServerGroupMixin, BaseSheetMixin):
         if self._orphaned_user_sheet is None:
             self._orphaned_user_sheet = self._ensure_sheet(ORPHANED_USER_CONFIG)
             self._init_grouping(self._orphaned_user_sheet, ORPHANED_USER_CONFIG)
+            self._add_orphan_dropdowns()
         
         ws = self._orphaned_user_sheet
         
@@ -102,3 +103,13 @@ class OrphanedUserSheetMixin(ServerGroupMixin, BaseSheetMixin):
         """Finalize orphaned users sheet - merge remaining groups."""
         if self._orphaned_user_sheet:
             self._finalize_grouping(ORPHANED_USER_CONFIG.name)
+    
+    def _add_orphan_dropdowns(self) -> None:
+        """Add dropdown validations for status columns."""
+        from autodbaudit.infrastructure.excel.base import add_dropdown_validation
+        
+        ws = self._orphaned_user_sheet
+        # Type column (E) - column 5
+        add_dropdown_validation(ws, "E", ["🪟 Windows", "🔑 SQL"])
+        # Status column (F) - column 6
+        add_dropdown_validation(ws, "F", ["⚠️ Orphaned", "✓ Fixed", "❌ Removed"])

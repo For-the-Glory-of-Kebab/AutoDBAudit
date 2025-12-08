@@ -56,6 +56,7 @@ class TriggerSheetMixin(ServerGroupMixin, BaseSheetMixin):
         if self._trigger_sheet is None:
             self._trigger_sheet = self._ensure_sheet(TRIGGER_CONFIG)
             self._init_grouping(self._trigger_sheet, TRIGGER_CONFIG)
+            self._add_trigger_dropdowns()
         
         ws = self._trigger_sheet
         
@@ -87,3 +88,11 @@ class TriggerSheetMixin(ServerGroupMixin, BaseSheetMixin):
         """Finalize triggers sheet - merge remaining groups."""
         if self._trigger_sheet:
             self._finalize_grouping(TRIGGER_CONFIG.name)
+    
+    def _add_trigger_dropdowns(self) -> None:
+        """Add dropdown validations for status columns."""
+        from autodbaudit.infrastructure.excel.base import add_dropdown_validation
+        
+        ws = self._trigger_sheet
+        # Enabled column (G) - column 7
+        add_dropdown_validation(ws, "G", ["✓", "✗"])

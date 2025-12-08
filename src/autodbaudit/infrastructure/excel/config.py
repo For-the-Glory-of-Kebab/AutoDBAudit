@@ -55,6 +55,7 @@ class ConfigSheetMixin(ServerGroupMixin, BaseSheetMixin):
         if self._config_sheet is None:
             self._config_sheet = self._ensure_sheet(CONFIG_CONFIG)
             self._init_grouping(self._config_sheet, CONFIG_CONFIG)
+            self._add_config_dropdowns()
         
         ws = self._config_sheet
         
@@ -97,3 +98,13 @@ class ConfigSheetMixin(ServerGroupMixin, BaseSheetMixin):
         """Finalize config sheet - merge remaining groups."""
         if self._config_sheet:
             self._finalize_grouping(CONFIG_CONFIG.name)
+    
+    def _add_config_dropdowns(self) -> None:
+        """Add dropdown validations for status columns."""
+        from autodbaudit.infrastructure.excel.base import add_dropdown_validation
+        
+        ws = self._config_sheet
+        # Status column (F) - column 6
+        add_dropdown_validation(ws, "F", ["✅ PASS", "❌ FAIL"])
+        # Risk column (G) - column 7
+        add_dropdown_validation(ws, "G", ["Critical", "High", "Medium", "Low"])

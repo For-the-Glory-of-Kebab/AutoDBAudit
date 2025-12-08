@@ -76,6 +76,7 @@ class LoginSheetMixin(BaseSheetMixin):
             self._login_instance_start_row = 2
             self._login_server_idx = 0
             self._login_instance_alt = False
+            self._add_login_dropdowns()
         
         ws = self._login_sheet
         current_row = self._row_counters[LOGIN_CONFIG.name]
@@ -193,6 +194,16 @@ class LoginSheetMixin(BaseSheetMixin):
             merged.fill = PatternFill(
                 start_color=color_main, end_color=color_main, fill_type="solid"
             )
+    
+    def _add_login_dropdowns(self) -> None:
+        """Add dropdown validations for status columns."""
+        from autodbaudit.infrastructure.excel.base import add_dropdown_validation
+        
+        ws = self._login_sheet
+        # Enabled column (E) - column 5
+        add_dropdown_validation(ws, "E", ["✓ Yes", "✗ No"])
+        # Password Policy column (F) - column 6
+        add_dropdown_validation(ws, "F", ["✓ Yes", "✗ No", "N/A"])
     
     def _finalize_logins(self) -> None:
         """Finalize login sheet - merge remaining groups."""

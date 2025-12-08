@@ -71,6 +71,7 @@ class RoleSheetMixin(BaseSheetMixin):
             self._role_instance_start_row = 2
             self._role_server_idx = 0
             self._role_instance_alt = False
+            self._add_role_dropdowns()
         
         ws = self._role_sheet
         current_row = self._row_counters[ROLE_CONFIG.name]
@@ -177,3 +178,11 @@ class RoleSheetMixin(BaseSheetMixin):
         """Finalize roles sheet - merge remaining groups."""
         if self._role_sheet and self._role_last_server:
             self._merge_role_groups(self._role_sheet)
+    
+    def _add_role_dropdowns(self) -> None:
+        """Add dropdown validations for status columns."""
+        from autodbaudit.infrastructure.excel.base import add_dropdown_validation
+        
+        ws = self._role_sheet
+        # Enabled column (F) - column 6
+        add_dropdown_validation(ws, "F", ["✓ Yes", "✗ No"])

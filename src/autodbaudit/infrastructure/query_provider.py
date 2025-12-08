@@ -532,7 +532,7 @@ class Sql2008Provider(QueryProvider):
         SELECT 
             s.server_id AS ServerId,
             s.name AS LinkedServerName,
-            s.product AS Product,
+            COALESCE(NULLIF(s.product, ''), s.provider) AS Product,
             s.provider AS Provider,
             s.data_source AS DataSource,
             s.catalog AS Catalog,
@@ -550,10 +550,22 @@ class Sql2008Provider(QueryProvider):
         return """
         SELECT 
             s.name AS LinkedServerName,
-            COALESCE(p.name, '** All Logins **') AS LocalLogin,
-            ll.remote_name AS RemoteLogin,
-            ll.uses_self_credential AS UsesSelf,
-            ll.modify_date AS ModifyDate
+            CASE 
+                WHEN p.name IS NULL THEN '(All Logins)'
+                ELSE p.name 
+            END AS LocalLogin,
+            CASE 
+                WHEN ll.uses_self_credential = 1 THEN '(Impersonate)'
+                WHEN ll.remote_name IS NOT NULL THEN ll.remote_name
+                ELSE '(No Mapping)'
+            END AS RemoteLogin,
+            ll.uses_self_credential AS Impersonate,
+            ll.modify_date AS ModifyDate,
+            CASE 
+                WHEN ll.remote_name = 'sa' OR ll.remote_name LIKE '%admin%' 
+                THEN 'HIGH_PRIVILEGE' 
+                ELSE 'NORMAL' 
+            END AS RiskLevel
         FROM sys.linked_logins ll
         JOIN sys.servers s ON ll.server_id = s.server_id
         LEFT JOIN sys.server_principals p ON ll.local_principal_id = p.principal_id
@@ -972,7 +984,7 @@ class Sql2019PlusProvider(QueryProvider):
         SELECT 
             s.server_id AS ServerId,
             s.name AS LinkedServerName,
-            s.product AS Product,
+            COALESCE(NULLIF(s.product, ''), s.provider) AS Product,
             s.provider AS Provider,
             s.data_source AS DataSource,
             s.location AS Location,
@@ -997,9 +1009,16 @@ class Sql2019PlusProvider(QueryProvider):
         return """
         SELECT 
             s.name AS LinkedServerName,
-            COALESCE(p.name, '** All Logins **') AS LocalLogin,
-            ll.remote_name AS RemoteLogin,
-            ll.uses_self_credential AS UsesSelf,
+            CASE 
+                WHEN p.name IS NULL THEN '(All Logins)'
+                ELSE p.name 
+            END AS LocalLogin,
+            CASE 
+                WHEN ll.uses_self_credential = 1 THEN '(Impersonate)'
+                WHEN ll.remote_name IS NOT NULL THEN ll.remote_name
+                ELSE '(No Mapping)'
+            END AS RemoteLogin,
+            ll.uses_self_credential AS Impersonate,
             ll.modify_date AS ModifyDate,
             CASE 
                 WHEN ll.remote_name = 'sa' OR ll.remote_name LIKE '%admin%' 

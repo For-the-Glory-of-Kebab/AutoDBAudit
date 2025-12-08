@@ -52,6 +52,7 @@ class AuditSettingSheetMixin(ServerGroupMixin, BaseSheetMixin):
         if self._audit_setting_sheet is None:
             self._audit_setting_sheet = self._ensure_sheet(AUDIT_SETTING_CONFIG)
             self._init_grouping(self._audit_setting_sheet, AUDIT_SETTING_CONFIG)
+            self._add_audit_dropdowns()
         
         ws = self._audit_setting_sheet
         
@@ -83,3 +84,11 @@ class AuditSettingSheetMixin(ServerGroupMixin, BaseSheetMixin):
         """Finalize audit settings sheet - merge remaining groups."""
         if self._audit_setting_sheet:
             self._finalize_grouping(AUDIT_SETTING_CONFIG.name)
+    
+    def _add_audit_dropdowns(self) -> None:
+        """Add dropdown validations for status columns."""
+        from autodbaudit.infrastructure.excel.base import add_dropdown_validation
+        
+        ws = self._audit_setting_sheet
+        # Status column (F) - column 6
+        add_dropdown_validation(ws, "F", ["PASS", "FAIL"])

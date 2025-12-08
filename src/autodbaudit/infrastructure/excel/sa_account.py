@@ -63,6 +63,7 @@ class SAAccountSheetMixin(BaseSheetMixin):
             self._sa_last_server = ""
             self._sa_server_start_row = 2
             self._sa_server_idx = 0
+            self._add_sa_dropdowns()
         
         ws = self._sa_account_sheet
         current_row = self._row_counters[SA_ACCOUNT_CONFIG.name]
@@ -139,3 +140,15 @@ class SAAccountSheetMixin(BaseSheetMixin):
         """Finalize SA Account sheet - merge remaining server group."""
         if self._sa_account_sheet and self._sa_last_server:
             self._merge_sa_server(self._sa_account_sheet)
+    
+    def _add_sa_dropdowns(self) -> None:
+        """Add dropdown validations for status columns."""
+        from autodbaudit.infrastructure.excel.base import add_dropdown_validation
+        
+        ws = self._sa_account_sheet
+        # Status column (C) - column 3
+        add_dropdown_validation(ws, "C", ["PASS", "FAIL", "WARN"])
+        # Is Disabled column (D) - column 4
+        add_dropdown_validation(ws, "D", ["✓", "✗"])
+        # Is Renamed column (E) - column 5
+        add_dropdown_validation(ws, "E", ["✓", "✗"])

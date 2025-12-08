@@ -398,19 +398,38 @@ def test_instance(target: dict, writer: EnhancedReportWriter) -> bool:
         linked_count = 0
         try:
             linked = conn.execute_query(prov.get_linked_servers())
+            login_mappings = conn.execute_query(prov.get_linked_server_logins())
+            
+            # Build mapping dict: linked_server_name -> (local, remote, impersonate, risk)
+            # Pick the highest-risk mapping for display
+            mapping_info: dict[str, tuple[str, str, bool, str]] = {}
+            for m in login_mappings:
+                ls_name = m.get("LinkedServerName", "")
+                remote = m.get("RemoteLogin") or ""
+                local = m.get("LocalLogin", "")
+                impersonate = bool(m.get("Impersonate"))
+                risk = m.get("RiskLevel", "NORMAL")
+                
+                # Store if not yet recorded, or if this is higher risk
+                if ls_name not in mapping_info or risk == "HIGH_PRIVILEGE":
+                    mapping_info[ls_name] = (local, remote, impersonate, risk)
             
             for ls in linked:
+                ls_name = ls.get("LinkedServerName", "")
+                local, remote, impersonate, risk = mapping_info.get(ls_name, ("", "", False, ""))
+                
                 writer.add_linked_server(
                     server_name=sn,
                     instance_name=inst,
-                    linked_server_name=ls.get("LinkedServerName", ""),
-                    product=ls.get("Product", ""),
-                    provider=ls.get("Provider", ""),
-                    data_source=ls.get("DataSource", ""),
+                    linked_server_name=ls_name,
+                    product=ls.get("Product") or "",
+                    provider=ls.get("Provider") or "",
+                    data_source=ls.get("DataSource") or "",
                     rpc_out=bool(ls.get("RpcOutEnabled")),
-                    local_login="",  # Not expanding per mapping anymore
-                    remote_login="",
-                    risk_level="",
+                    local_login=local,
+                    remote_login=remote,
+                    impersonate=impersonate,
+                    risk_level=risk,
                 )
                 linked_count += 1
             print(f"OK ({linked_count})")

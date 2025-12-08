@@ -1,137 +1,229 @@
 # Excel Report Layout
 
-> **Status**: Excel report generation is **not yet implemented**. This document describes the **planned structure** based on architecture decisions.
+> **Status**: ✅ Excel report generation is **fully implemented** as of 2025-12-08.
 
 ---
 
 ## Overview
 
-Excel reports are generated from the SQLite history store (`output/history.db`) via `openpyxl`. They serve as human-readable views of audit data—not source-of-truth.
+Excel reports are generated directly via `openpyxl` using a modular mixin-based architecture. Each sheet is a separate module in `src/autodbaudit/infrastructure/excel/`.
 
 ---
 
-## Current Implementation Status
+## Sheets Summary
 
-| Component | Status |
-|-----------|--------|
-| `infrastructure/excel_writer.py` | ❌ Not implemented |
-| Sheet generation | ❌ Planned only |
-| Conditional formatting | ❌ Planned only |
-| Charts | ❌ Planned only |
-| Incremental mode | ⚠️ CLI flag exists, logic not implemented |
-
----
-
-## Planned Sheets
-
-Once implemented, reports will contain these sheets:
-
-### Core Sheets (Every Report)
-
-| Sheet Name | Purpose | Key Columns |
-|------------|---------|-------------|
-| **Audit Summary** | Multi-year overview (if incremental) | Audit Date, Org, Servers, Violations, Actions, Compliance % |
-| **{Year} Cover** | Title page for current audit | Org name, date, auditor, summary stats |
-| **{Year} Compliance** | Per-requirement compliance status | Req #, Title, Status (✅/❌/⚠️), Count |
-| **{Year} Discrepancies** | All violations found | Server, Instance, Req #, Finding, Severity |
-| **{Year} ActionLog** | Remediation actions taken | Script, Server, Status, Timestamp, User |
-
-### Data Sheets
-
-| Sheet Name | Purpose | Key Columns |
-|------------|---------|-------------|
-| **InstanceInfo** | Server/instance inventory | Hostname, Instance, Version, Edition, Build |
-| **ServerLogins** | Login audit | Login, Type, IsDisabled, DefaultDB, Roles |
-| **DatabaseUsers** | Per-database users | Database, User, Login, Roles |
-| **DisabledFeatures** | Req 10/16/18-21 status | Feature, Expected, Actual, Compliant |
-| **TestDatabases** | Req 15 findings | Database, Type, Recommendation |
-
-### Hotfix Sheet (Optional)
-
-| Sheet Name | Purpose | Key Columns |
-|------------|---------|-------------|
-| **{Year} Hotfix Deployment** | Patch deployment results | Server, Pre-Build, Post-Build, Status, Installers |
-
-### Trend Sheets (Incremental Mode)
-
-| Sheet Name | Purpose | Key Columns |
-|------------|---------|-------------|
-| **ServerHistory** | Server add/remove timeline | Date, Server, Event, Notes |
-| **RequirementTrends** | Compliance over time | Req #, 2023, 2024, 2025, Trend |
+| # | Sheet Name | Module | Purpose |
+|---|------------|--------|---------|
+| 1 | Cover | `cover.py` | Title page with summary stats |
+| 2 | Actions | `actions.py` | Remediation action log |
+| 3 | Instances | `instances.py` | SQL Server instance inventory |
+| 4 | SA Account | `sa_account.py` | SA account security status |
+| 5 | Server Logins | `logins.py` | Server login audit |
+| 6 | Sensitive Roles | `roles.py` | sysadmin/securityadmin memberships |
+| 7 | Configuration | `config.py` | sp_configure security settings |
+| 8 | Services | `services.py` | SQL Server services |
+| 9 | Databases | `databases.py` | Database inventory |
+| 10 | Database Users | `db_users.py` | Database user audit |
+| 11 | Database Roles | `db_roles.py` | Database role memberships |
+| 12 | Orphaned Users | `orphaned_users.py` | Orphaned database users |
+| 13 | Linked Servers | `linked_servers.py` | Linked server configuration |
+| 14 | Triggers | `triggers.py` | Server/database triggers |
+| 15 | Backups | `backups.py` | Backup status audit |
+| 16 | Audit Settings | `audit_settings.py` | Login audit configuration |
 
 ---
 
-## Planned Formatting
+## Sheet Details
 
-### Header Row
-- Bold, dark blue background (#1F497D), white text
-- Frozen pane (first row)
-- Auto-filter enabled
+### 1. Instances
+**Columns**: Config Name, Server, Instance, Machine Name, IP Address, Version, Build, SQL Year, Edition, Clustered, HADR, OS, CPU, RAM, Notes, Last Revised
 
-### Data Rows
-- Alternating row colors (white / light gray)
-- Auto-fit column widths
-- Date columns formatted as YYYY-MM-DD
+| Column | Type | Dropdown Options |
+|--------|------|-----------------|
+| Clustered | Boolean | `✓`, `✗` |
+| HADR | Boolean | `✓`, `✗` |
+
+---
+
+### 2. SA Account
+**Columns**: Server, Instance, Status, Is Disabled, Is Renamed, Current Name, Default DB, Remediation Notes
+
+| Column | Type | Dropdown Options |
+|--------|------|-----------------|
+| Status | Status | `PASS`, `FAIL`, `WARN` |
+| Is Disabled | Boolean | `✓`, `✗` |
+| Is Renamed | Boolean | `✓`, `✗` |
+
+---
+
+### 3. Server Logins
+**Columns**: Server, Instance, Login Name, Login Type, Enabled, Password Policy, Default Database, Notes, Last Revised
+
+| Column | Type | Dropdown Options |
+|--------|------|-----------------|
+| Enabled | Boolean | `✓ Yes`, `✗ No` |
+| Password Policy | Boolean | `✓ Yes`, `✗ No`, `N/A` |
+
+---
+
+### 4. Sensitive Roles
+**Columns**: Server, Instance, Role, Member, Member Type, Enabled, Justification, Last Revised
+
+| Column | Type | Dropdown Options |
+|--------|------|-----------------|
+| Enabled | Boolean | `✓ Yes`, `✗ No` |
+
+---
+
+### 5. Configuration
+**Columns**: Server, Instance, Setting, Current, Required, Status, Risk, Exception Reason
+
+| Column | Type | Dropdown Options |
+|--------|------|-----------------|
+| Status | Status | `✅ PASS`, `❌ FAIL` |
+| Risk | Risk | `Critical`, `High`, `Medium`, `Low` |
+
+---
+
+### 6. Services
+**Columns**: Server, Instance, Service Name, Type, Status, Startup, Service Account, Compliant, Notes
+
+| Column | Type | Dropdown Options |
+|--------|------|-----------------|
+| Status | Status | `✓ Running`, `✗ Stopped`, `Unknown` |
+| Startup | Enum | `⚡ Auto`, `🔧 Manual`, `⛔ Disabled` |
+| Compliant | Boolean | `✓`, `✗` |
+
+---
+
+### 7. Databases
+**Columns**: Server, Instance, Database, Owner, Recovery, State, Data (MB), Log (MB), Trustworthy, Notes
+
+| Column | Type | Dropdown Options |
+|--------|------|-----------------|
+| Recovery | Enum | `🛡️ Full`, `📦 Bulk-Logged`, `⚡ Simple` |
+| State | Enum | `✓ Online`, `⛔ Offline`, `🔄 Restoring`, `⏳ Recovering`, `⚠️ Suspect`, `🚨 Emergency` |
+| Trustworthy | Boolean | `✓ ON`, `✗ OFF`, `✓`, `✗` |
+
+---
+
+### 8. Database Users
+**Columns**: Server, Instance, Database, User Name, Type, Mapped Login, Login Status, Compliant, Notes
+
+| Column | Type | Dropdown Options |
+|--------|------|-----------------|
+| Login Status | Status | `✓ Mapped`, `🔧 System`, `⚠️ Orphaned` |
+| Compliant | Status | `✓`, `⚠️ Review`, `❌ GUEST` |
+
+---
+
+### 9. Database Roles
+**Columns**: Server, Instance, Database, Role, Member, Member Type, Risk, Justification
+
+| Column | Type | Dropdown Options |
+|--------|------|-----------------|
+| Role | Enum | `👑 db_owner`, `⚙️ db_securityadmin`, `⚙️ db_accessadmin`, `⚙️ db_backupoperator`, `⚙️ db_ddladmin`, `📖 db_datareader`, `✏️ db_datawriter`, `db_denydatareader`, `db_denydatawriter`, `public`, `(Custom)` |
+| Member Type | Enum | `🪟 Windows`, `🔑 SQL`, `📦 Role` |
+| Risk | Risk | `🔴 High`, `🟡 Medium`, `🟢 Low`, `—` |
+
+---
+
+### 10. Orphaned Users
+**Columns**: Server, Instance, Database, User Name, Type, Status, Remediation
+
+| Column | Type | Dropdown Options |
+|--------|------|-----------------|
+| Type | Enum | `🪟 Windows`, `🔑 SQL` |
+| Status | Status | `⚠️ Orphaned`, `✓ Fixed`, `❌ Removed` |
+
+---
+
+### 11. Linked Servers
+**Columns**: Server, Instance, Linked Server, Provider, Data Source, RPC Out, Local Login, Remote Login, Impersonate, Risk, Purpose, Last Revised
+
+| Column | Type | Dropdown Options |
+|--------|------|-----------------|
+| RPC Out | Boolean | `✓ Yes`, `✗ No` |
+| Impersonate | Boolean | `✓ Yes`, `✗ No` |
+| Risk | Risk | `🟢 Normal`, `🔴 HIGH` |
+
+---
+
+### 12. Triggers
+**Columns**: Server, Instance, Level, Database, Trigger Name, Event, Enabled, Purpose
+
+| Column | Type | Dropdown Options |
+|--------|------|-----------------|
+| Enabled | Boolean | `✓`, `✗` |
+
+---
+
+### 13. Backups
+**Columns**: Server, Instance, Database, Recovery Model, Last Full Backup, Days Since, Backup Path, Size (MB), Status, Notes
+
+| Column | Type | Dropdown Options |
+|--------|------|-----------------|
+| Status | Status | `PASS`, `WARN`, `FAIL` |
+
+---
+
+### 14. Audit Settings
+**Columns**: Server, Instance, Setting, Current Value, Recommended, Status, Notes
+
+| Column | Type | Dropdown Options |
+|--------|------|-----------------|
+| Status | Status | `PASS`, `FAIL` |
+
+---
+
+## Visual Features
+
+### Server/Instance Grouping
+- Server column merged for multiple instances
+- Color rotation for visual distinction between servers
+- Alternating shades within same server for instances
 
 ### Conditional Formatting
-
 | Element | Rule | Visual |
 |---------|------|--------|
-| Compliance status | `pass` → green, `fail` → red, `exception` → yellow | Background color |
-| Severity | `critical` → red, `warning` → orange, `info` → blue | Font color |
-| Icons (planned) | Status columns | ✅ ❌ ⚠️ via `IconSetRule` |
+| PASS | Boolean true or status pass | Green fill (#C8E6C9), green text |
+| FAIL | Boolean false or status fail | Red fill (#FFCDD2), red text |
+| WARN | Warning state | Yellow fill (#FFF9C4), dark text |
+| INFO | System/expected state | Purple/blue fill |
 
-### Charts (Planned)
-
-- **Compliance Pie Chart**: % pass / fail / exception
-- **Violations by Category**: Bar chart
-- **Trend Line**: Compliance % over time (incremental mode)
+### Dropdowns (Data Validation)
+- All boolean and enum columns have dropdown lists
+- Enables consistent manual editing
+- Options include emojis for visual clarity
 
 ---
 
-## Report Modes
+## Architecture
 
-### Single-Shot Mode
-```bash
-AutoDBAudit.exe --audit --config config/audit_config.json
 ```
-- Generates a new workbook with current audit only
-- Filename: `{Org}_SQL_Audit_{Date}.xlsx`
-
-### Incremental Mode
-```bash
-AutoDBAudit.exe --audit --config config/audit_config.json \
-  --append-to output/Acme_SQL_Audit_History.xlsx
+src/autodbaudit/infrastructure/excel/
+├── __init__.py        # Module exports
+├── base.py            # BaseSheetMixin, helper functions
+├── server_group.py    # ServerGroupMixin for color/merging
+├── writer.py          # ExcelReportWriter (combines all mixins)
+├── instances.py       # Instances sheet
+├── sa_account.py      # SA Account sheet
+├── logins.py          # Server Logins sheet
+├── roles.py           # Sensitive Roles sheet
+├── config.py          # Configuration sheet
+├── services.py        # Services sheet
+├── databases.py       # Databases sheet
+├── db_users.py        # Database Users sheet
+├── db_roles.py        # Database Roles sheet
+├── orphaned_users.py  # Orphaned Users sheet
+├── linked_servers.py  # Linked Servers sheet
+├── triggers.py        # Triggers sheet
+├── backups.py         # Backups sheet
+├── audit_settings.py  # Audit Settings sheet
+├── cover.py           # Cover sheet
+└── actions.py         # Actions sheet
 ```
-- Opens existing workbook
-- Adds new `{Year}` sheets at the front
-- Updates **Audit Summary** and trend sheets
-- Preserves all historical data
 
 ---
 
-## Future Ideas (Not Implemented)
-
-- [ ] Grouped rows by server (collapsible)
-- [ ] Sparklines in trend columns
-- [ ] Rich text comments linking to remediation scripts
-- [ ] PDF export option
-- [ ] Executive summary sheet with dashboard-style layout
-- [ ] Data validation dropdowns for exception reasons
-- [ ] Hyperlinks to SQLite row IDs for drill-down
-
----
-
-## Implementation Notes
-
-When implementing `infrastructure/excel_writer.py`:
-
-1. Use `openpyxl.Workbook()` for new reports
-2. Use `openpyxl.load_workbook()` for incremental mode
-3. Query SQLite for data; never read from previous Excel
-4. Apply styles consistently via reusable style objects
-5. Use `write_only=True` mode for large datasets if needed
-
----
-
-*Last updated: 2025-12-06*
+*Last updated: 2025-12-08*

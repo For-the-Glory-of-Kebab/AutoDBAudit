@@ -87,6 +87,7 @@ class DBUserSheetMixin(ServerGroupMixin, BaseSheetMixin):
         if self._db_user_sheet is None:
             self._db_user_sheet = self._ensure_sheet(DB_USER_CONFIG)
             self._init_grouping(self._db_user_sheet, DB_USER_CONFIG)
+            self._add_db_user_dropdowns()
         
         ws = self._db_user_sheet
         
@@ -164,3 +165,13 @@ class DBUserSheetMixin(ServerGroupMixin, BaseSheetMixin):
         """Finalize db users sheet - merge remaining groups."""
         if self._db_user_sheet:
             self._finalize_grouping(DB_USER_CONFIG.name)
+    
+    def _add_db_user_dropdowns(self) -> None:
+        """Add dropdown validations for status columns."""
+        from autodbaudit.infrastructure.excel.base import add_dropdown_validation
+        
+        ws = self._db_user_sheet
+        # Login Status column (G) - column 7
+        add_dropdown_validation(ws, "G", ["✓ Mapped", "🔧 System", "⚠️ Orphaned"])
+        # Compliant column (H) - column 8
+        add_dropdown_validation(ws, "H", ["✓", "⚠️ Review", "❌ GUEST"])

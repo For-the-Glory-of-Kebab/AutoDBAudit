@@ -83,6 +83,7 @@ class InstanceSheetMixin(BaseSheetMixin):
             self._instance_last_server = ""
             self._instance_server_start_row = 2
             self._instance_server_idx = 0
+            self._add_instance_dropdowns()
         
         ws = self._instance_sheet
         current_row = self._row_counters[INSTANCE_CONFIG.name]
@@ -168,3 +169,13 @@ class InstanceSheetMixin(BaseSheetMixin):
         """Finalize instances sheet - merge remaining server group."""
         if self._instance_sheet and self._instance_last_server:
             self._merge_instance_server(self._instance_sheet)
+    
+    def _add_instance_dropdowns(self) -> None:
+        """Add dropdown validations for boolean columns."""
+        from autodbaudit.infrastructure.excel.base import add_dropdown_validation
+        
+        ws = self._instance_sheet
+        # Clustered column (J) - column 10
+        add_dropdown_validation(ws, "J", ["✓", "✗"])
+        # HADR column (K) - column 11
+        add_dropdown_validation(ws, "K", ["✓", "✗"])

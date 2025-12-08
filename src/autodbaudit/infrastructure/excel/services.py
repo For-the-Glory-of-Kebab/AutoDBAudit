@@ -87,6 +87,7 @@ class ServiceSheetMixin(BaseSheetMixin):
             self._svc_instance_start_row = 2
             self._svc_server_idx = 0
             self._svc_instance_alt = False
+            self._add_service_dropdowns()
         
         ws = self._service_sheet
         current_row = self._row_counters[SERVICE_CONFIG.name]
@@ -214,3 +215,15 @@ class ServiceSheetMixin(BaseSheetMixin):
         """Finalize services sheet."""
         if self._service_sheet and self._svc_last_server:
             self._merge_svc_groups(self._service_sheet)
+    
+    def _add_service_dropdowns(self) -> None:
+        """Add dropdown validations for status columns."""
+        from autodbaudit.infrastructure.excel.base import add_dropdown_validation
+        
+        ws = self._service_sheet
+        # Status column (E) - column 5
+        add_dropdown_validation(ws, "E", ["✓ Running", "✗ Stopped", "Unknown"])
+        # Startup column (F) - column 6
+        add_dropdown_validation(ws, "F", ["⚡ Auto", "🔧 Manual", "⛔ Disabled"])
+        # Compliant column (H) - column 8
+        add_dropdown_validation(ws, "H", ["✓", "✗"])

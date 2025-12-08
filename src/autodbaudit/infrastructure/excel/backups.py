@@ -67,6 +67,7 @@ class BackupSheetMixin(ServerGroupMixin, BaseSheetMixin):
         if self._backup_sheet is None:
             self._backup_sheet = self._ensure_sheet(BACKUP_CONFIG)
             self._init_grouping(self._backup_sheet, BACKUP_CONFIG)
+            self._add_backup_dropdowns()
         
         ws = self._backup_sheet
         
@@ -114,3 +115,11 @@ class BackupSheetMixin(ServerGroupMixin, BaseSheetMixin):
         """Finalize backups sheet - merge remaining groups."""
         if self._backup_sheet:
             self._finalize_grouping(BACKUP_CONFIG.name)
+    
+    def _add_backup_dropdowns(self) -> None:
+        """Add dropdown validations for status columns."""
+        from autodbaudit.infrastructure.excel.base import add_dropdown_validation
+        
+        ws = self._backup_sheet
+        # Status column (I) - column 9
+        add_dropdown_validation(ws, "I", ["PASS", "WARN", "FAIL"])

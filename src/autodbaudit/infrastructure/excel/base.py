@@ -36,6 +36,7 @@ __all__ = [
     "format_date",
     "format_size_mb",
     "get_sql_year",
+    "add_dropdown_validation",
     "LAST_REVISED_COLUMN",
 ]
 
@@ -91,6 +92,39 @@ def get_sql_year(version_major: int) -> str:
         17: "2025",
     }
     return mapping.get(version_major, f"v{version_major}")
+
+
+def add_dropdown_validation(
+    ws: Worksheet,
+    column_letter: str,
+    options: list[str],
+    start_row: int = 2,
+    end_row: int = 1000,
+) -> None:
+    """Add dropdown data validation to a column.
+    
+    Args:
+        ws: The worksheet to add validation to
+        column_letter: Column letter (e.g., "E", "F")
+        options: List of valid options for the dropdown
+        start_row: Starting row (default 2 to skip header)
+        end_row: Ending row (default 1000)
+    """
+    from openpyxl.worksheet.datavalidation import DataValidation
+    
+    # Create comma-separated list for formula
+    formula = '"' + ','.join(options) + '"'
+    
+    dv = DataValidation(
+        type="list",
+        formula1=formula,
+        showDropDown=False,  # False = show dropdown arrow (counterintuitive)
+        allow_blank=True,
+    )
+    dv.error = f"Please select from: {', '.join(options)}"
+    dv.errorTitle = "Invalid Value"
+    ws.add_data_validation(dv)
+    dv.add(f"{column_letter}{start_row}:{column_letter}{end_row}")
 
 
 # ============================================================================
