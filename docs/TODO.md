@@ -5,19 +5,20 @@
 
 ---
 
-## Active – CLI Integration
+## Completed – CLI Integration (2025-12-08)
 
-- [ ] Integrate `ExcelReportWriter` into `AuditService.run_audit()`
-- [ ] Connect SQLite history store to audit flow
-- [ ] Generate `.db` file alongside Excel output
-- [ ] Implement `--finalize` command for annotation persistence
+- [x] Integrate `ExcelReportWriter` into `AuditService.run_audit()`
+- [x] Create `AuditDataCollector` for modular data collection
+- [x] CLI `--audit` command generates 17-sheet Excel report
+- [ ] Connect SQLite history store to audit flow (deferred)
+- [ ] Implement `--finalize` command for annotation persistence (deferred)
 
 ---
 
 ## Active – Code Quality
 
 - [ ] Fix remaining lint warnings for `open()` encoding in `config_loader.py`
-- [ ] Refine broad exception catches to specific types
+- [ ] Refine broad exception catches to specific types (data_collector.py)
 - [ ] Remove unused imports across codebase
 
 ---
@@ -34,7 +35,17 @@
 
 ---
 
-## Completed ✅
+### Infrastructure Restructure (2025-12-08)
+- [x] Create `sql/` subfolder (connector.py, query_provider.py)
+- [x] Create `sqlite/` subfolder (store.py, schema.py)
+- [x] Update all imports across codebase
+- [x] Delete obsolete files (excel_report.py, sql_queries.py)
+
+### Encryption Sheet (2025-12-08)
+- [x] Add SMK/DMK/TDE queries to query_provider.py
+- [x] Create `encryption.py` Excel sheet mixin
+- [x] Add encryption data collection to data_collector.py
+- [x] Report now has 17 sheets
 
 ### Excel Reporting (2025-12-08)
 - [x] Implement `infrastructure/excel/` modular architecture

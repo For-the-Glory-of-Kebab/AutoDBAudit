@@ -125,6 +125,9 @@ from autodbaudit.infrastructure.excel.backups import (
 from autodbaudit.infrastructure.excel.audit_settings import (
     AuditSettingSheetMixin, AUDIT_SETTING_CONFIG
 )
+from autodbaudit.infrastructure.excel.encryption import (
+    EncryptionSheetMixin, ENCRYPTION_CONFIG
+)
 from autodbaudit.infrastructure.excel.actions import (
     ActionSheetMixin, ACTION_CONFIG
 )
@@ -155,7 +158,8 @@ SHEET_ORDER: tuple[SheetConfig, ...] = (
     TRIGGER_CONFIG,         # 13. Triggers
     BACKUP_CONFIG,          # 14. Backups
     AUDIT_SETTING_CONFIG,   # 15. Audit Settings
-    ACTION_CONFIG,          # 16. Actions
+    ENCRYPTION_CONFIG,      # 16. Encryption (NEW - Req #11)
+    ACTION_CONFIG,          # 17. Actions
 )
 
 
@@ -190,6 +194,7 @@ class EnhancedReportWriter(
     TriggerSheetMixin,      # add_trigger
     BackupSheetMixin,       # add_backup_info
     AuditSettingSheetMixin, # add_audit_setting
+    EncryptionSheetMixin,   # add_encryption_row (Req #11)
     
     # Action tracking
     ActionSheetMixin,       # add_action

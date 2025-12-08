@@ -7,18 +7,19 @@ Future phases add requirement evaluation, remediation, etc.
 
 from __future__ import annotations
 
-import hashlib
 import logging
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from autodbaudit.infrastructure.config_loader import ConfigLoader, SqlTarget
-from autodbaudit.infrastructure.sql_server import SqlConnector
-from autodbaudit.infrastructure.history_store import HistoryStore
-from autodbaudit.infrastructure.excel_report import write_instance_inventory
+from autodbaudit.infrastructure.sql.connector import SqlConnector
+from autodbaudit.infrastructure.sql.query_provider import get_query_provider
+from autodbaudit.infrastructure.excel import EnhancedReportWriter
+from autodbaudit.application.data_collector import AuditDataCollector
 
 if TYPE_CHECKING:
-    from autodbaudit.domain.models import AuditRun
+    pass
 
 logger = logging.getLogger(__name__)
 
@@ -31,28 +32,22 @@ class AuditService:
     1. Load configuration
     2. Connect to SQL targets
     3. Detect versions
-    4. Record to SQLite history
+    4. Collect all audit data
     5. Generate Excel report
     
     Usage:
-        store = HistoryStore(Path("output/history.db"))
-        store.initialize_schema()
-        
         service = AuditService(
-            history_store=store,
             config_dir=Path("config"),
             output_dir=Path("output")
         )
         
         report_path = service.run_audit(
-            config_file="audit_config.json",
             targets_file="sql_targets.json"
         )
     """
     
     def __init__(
         self,
-        history_store: HistoryStore,
         config_dir: Path | str = "config",
         output_dir: Path | str = "output"
     ) -> None:
@@ -60,20 +55,18 @@ class AuditService:
         Initialize audit service.
         
         Args:
-            history_store: SQLite history store instance
             config_dir: Directory containing configuration files
             output_dir: Directory for output files (Excel, scripts, etc.)
         """
-        self.history_store = history_store
         self.config_dir = Path(config_dir)
         self.output_dir = Path(output_dir)
+        self.output_dir.mkdir(parents=True, exist_ok=True)
         self.config_loader = ConfigLoader(str(self.config_dir))
         
         logger.info("AuditService initialized")
     
     def run_audit(
         self,
-        config_file: str = "audit_config.json",
         targets_file: str = "sql_targets.json",
         organization: str | None = None
     ) -> Path:
@@ -81,9 +74,8 @@ class AuditService:
         Run the audit workflow.
         
         Args:
-            config_file: Audit configuration filename
             targets_file: SQL targets configuration filename
-            organization: Optional organization name (overrides config)
+            organization: Optional organization name for report
             
         Returns:
             Path to generated Excel report
@@ -95,14 +87,12 @@ class AuditService:
         logger.info("Starting SQL Server Audit")
         logger.info("=" * 60)
         
-        # Compute config hash for reproducibility
-        config_path = self.config_dir / targets_file
-        config_hash = self._compute_file_hash(config_path) if config_path.exists() else None
-        
-        # Begin audit run
-        audit_run = self.history_store.begin_audit_run(
-            organization=organization,
-            config_hash=config_hash
+        # Create Excel writer
+        writer = EnhancedReportWriter()
+        writer.set_audit_info(
+            run_id=1,
+            organization=organization or "Security Audit",
+            started_at=datetime.now(),
         )
         
         success_count = 0
@@ -115,8 +105,12 @@ class AuditService:
             
             # Process each target
             for target in targets:
+                if not target.enabled:
+                    logger.info("Skipping disabled target: %s", target.display_name)
+                    continue
+                    
                 try:
-                    self._process_target(target, audit_run)
+                    self._process_target(target, writer)
                     success_count += 1
                 except Exception as e:
                     error_count += 1
@@ -126,19 +120,8 @@ class AuditService:
                     )
                     # Continue with other targets
             
-            # Determine final status
-            if error_count == 0:
-                status = "completed"
-            elif success_count > 0:
-                status = "partial"  # Some succeeded, some failed
-            else:
-                status = "failed"
-            
-            # Complete audit run
-            self.history_store.complete_audit_run(audit_run.id, status)
-            
-            # Generate Excel report
-            report_path = self._generate_report(audit_run)
+            # Generate report
+            report_path = self._save_report(writer)
             
             logger.info("=" * 60)
             logger.info("Audit completed: %d succeeded, %d failed", success_count, error_count)
@@ -148,20 +131,18 @@ class AuditService:
             return report_path
             
         except Exception as e:
-            # Fatal error - mark run as failed
             logger.exception("Audit failed with fatal error: %s", e)
-            self.history_store.complete_audit_run(audit_run.id, "failed")
             raise RuntimeError(f"Audit failed: {e}") from e
     
-    def _process_target(self, target: SqlTarget, audit_run: AuditRun) -> None:
+    def _process_target(self, target: SqlTarget, writer: EnhancedReportWriter) -> None:
         """
         Process a single SQL target.
         
-        Connects, detects version, records to history.
+        Connects, detects version, collects all audit data.
         
         Args:
             target: SQL target configuration
-            audit_run: Current audit run
+            writer: Excel report writer
         """
         logger.info("Processing target: %s", target.display_name)
         
@@ -178,59 +159,48 @@ class AuditService:
         if not connector.test_connection():
             raise ConnectionError(f"Cannot connect to {target.display_name}")
         
-        # Detect version
-        info = connector.detect_version()
+        # Detect version and get query provider
+        version_info = connector.detect_version()
         logger.info(
             "Detected: %s version %s (%s)",
-            target.display_name, info.version, info.edition
+            target.display_name, version_info.version, version_info.edition
         )
         
-        # Upsert server
-        server = self.history_store.upsert_server(
-            hostname=target.server,
-            ip_address=None  # TODO: DNS lookup or config
+        query_provider = get_query_provider(version_info.version_major)
+        
+        # Create collector and collect all data
+        collector = AuditDataCollector(connector, query_provider, writer)
+        counts = collector.collect_all(
+            server_name=target.server,
+            instance_name=target.instance,
+            config_name=target.display_name,
+            ip_address=target.ip_address or "",
         )
         
-        # Upsert instance
-        instance = self.history_store.upsert_instance_from_info(server, info)
-        
-        # Link to audit run
-        self.history_store.link_instance_to_run(audit_run.id, instance.id)
-        
-        logger.info("Recorded instance: %s\\%s", server.hostname, instance.instance_name or "(default)")
+        logger.info(
+            "Collected: %d logins, %d roles, %d dbs, %d services",
+            counts.get("logins", 0),
+            counts.get("roles", 0),
+            counts.get("databases", 0),
+            counts.get("services", 0),
+        )
     
-    def _generate_report(self, audit_run: AuditRun) -> Path:
+    def _save_report(self, writer: EnhancedReportWriter) -> Path:
         """
-        Generate Excel report for the audit run.
+        Save Excel report.
         
         Args:
-            audit_run: Completed audit run
+            writer: Populated Excel report writer
             
         Returns:
             Path to generated Excel file
         """
-        # Get instances for this run
-        instances = self.history_store.get_instances_for_run(audit_run.id)
-        
-        # Refresh audit run to get ended_at
-        audit_run = self.history_store.get_audit_run(audit_run.id) or audit_run
-        
-        # Generate filename
-        timestamp = audit_run.started_at.strftime("%Y%m%d_%H%M%S") if audit_run.started_at else "unknown"
-        filename = f"audit_{audit_run.id}_{timestamp}_inventory.xlsx"
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"sql_audit_{timestamp}.xlsx"
         output_path = self.output_dir / filename
         
-        # Write report
-        return write_instance_inventory(instances, audit_run, output_path)
-    
-    @staticmethod
-    def _compute_file_hash(filepath: Path) -> str:
-        """Compute SHA256 hash of a file."""
-        sha256 = hashlib.sha256()
-        with open(filepath, "rb") as f:
-            for chunk in iter(lambda: f.read(8192), b""):
-                sha256.update(chunk)
-        return sha256.hexdigest()[:16]  # First 16 chars for brevity
+        writer.save(output_path)
+        return output_path
 
 
 # Alias for backwards compatibility

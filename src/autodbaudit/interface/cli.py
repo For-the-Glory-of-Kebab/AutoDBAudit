@@ -13,14 +13,12 @@ from autodbaudit.application.audit_service import AuditService
 from autodbaudit.infrastructure.config_loader import ConfigLoader
 from autodbaudit.infrastructure.logging_config import setup_logging
 from autodbaudit.infrastructure.odbc_check import check_odbc_drivers
-from autodbaudit.infrastructure.history_store import HistoryStore
 
 logger = logging.getLogger(__name__)
 
 # Default paths
 DEFAULT_CONFIG_DIR = Path("config")
 DEFAULT_OUTPUT_DIR = Path("output")
-DEFAULT_HISTORY_DB = DEFAULT_OUTPUT_DIR / "history.db"
 
 
 def main() -> int:
@@ -135,33 +133,23 @@ def run_audit(args: argparse.Namespace) -> int:
     # Ensure output directory exists
     DEFAULT_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     
-    # Initialize history store
-    history_store = HistoryStore(DEFAULT_HISTORY_DB)
-    history_store.initialize_schema()
+    # Create audit service (no HistoryStore for now - direct Excel generation)
+    service = AuditService(
+        config_dir=DEFAULT_CONFIG_DIR,
+        output_dir=DEFAULT_OUTPUT_DIR
+    )
     
-    try:
-        # Create audit service
-        service = AuditService(
-            history_store=history_store,
-            config_dir=DEFAULT_CONFIG_DIR,
-            output_dir=DEFAULT_OUTPUT_DIR
-        )
-        
-        # Run audit
-        report_path = service.run_audit(
-            config_file=args.config,
-            targets_file=args.targets,
-            organization=args.organization
-        )
-        
-        print(f"\n✅ Audit completed successfully!")
-        print(f"📊 Instance inventory report: {report_path}")
-        print(f"💾 History database: {DEFAULT_HISTORY_DB}")
-        
-        return 0
-        
-    finally:
-        history_store.close()
+    # Run audit
+    report_path = service.run_audit(
+        targets_file=args.targets,
+        organization=args.organization
+    )
+    
+    print(f"\n✅ Audit completed successfully!")
+    print(f"📊 Security audit report: {report_path}")
+    
+    return 0
+
 
 
 def validate_config(args: argparse.Namespace) -> int:

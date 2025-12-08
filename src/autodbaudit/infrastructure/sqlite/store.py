@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from autodbaudit.infrastructure.sql_server import SqlServerInfo
+    from autodbaudit.infrastructure.sql.connector import SqlServerInfo
 
 from autodbaudit.domain.models import AuditRun, Server, Instance
 

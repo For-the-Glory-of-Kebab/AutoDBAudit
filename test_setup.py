@@ -45,7 +45,7 @@ def test_imports():
         
         print("\n✓ Testing project modules (NEW LAYOUT)...")
         from autodbaudit.infrastructure.config_loader import ConfigLoader, SqlTarget, AuditConfig
-        from autodbaudit.infrastructure.sql_server import SqlConnector, SqlServerInfo
+        from autodbaudit.infrastructure.sql.connector import SqlConnector, SqlServerInfo
         from autodbaudit.application.audit_service import AuditService
         from autodbaudit.infrastructure.logging_config import setup_logging
         from autodbaudit.infrastructure.odbc_check import check_odbc_drivers

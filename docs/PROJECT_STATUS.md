@@ -6,21 +6,21 @@
 
 | Component | Status | Description |
 |-----------|--------|-------------|
-| **Project Structure** | ✅ Done | Domain-driven layout (`domain/`, `application/`, `infrastructure/`, `interface/`) |
-| **SQL Connector** | ✅ Done | `SqlConnector` with version detection, Windows/SQL auth |
+| **Project Structure** | ✅ Done | Domain-driven layout with `sql/` and `sqlite/` subfolders |
+| **SQL Connector** | ✅ Done | `SqlConnector` with version detection (2008-2025+) |
 | **Query Provider** | ✅ Done | Strategy pattern for SQL 2008-2025+ compatibility |
+| **Data Collector** | ✅ Done | `AuditDataCollector` for modular data collection |
 | **History Store** | ✅ Done | SQLite persistence with schema v2 |
 | **Excel Styles** | ✅ Done | Comprehensive styling module with icons, colors, fonts |
-| **Excel Package** | ✅ Done | Modular 20-file architecture (one per sheet) |
-| **Dropdown Validation** | ✅ Done | All boolean/enum columns have DataValidation dropdowns |
-| **Server/Instance Grouping** | ✅ Done | Color rotation, merged cells for visual grouping |
-| **Test Scripts** | ✅ Done | `test_multi_instance.py` validates Excel generation against multiple instances |
+| **Excel Package** | ✅ Done | Modular 21-file architecture (17 sheet mixins) |
+| **CLI Integration** | ✅ Done | `--audit` command generates full report |
+| **Encryption Sheet** | ✅ Done | SMK/DMK/TDE status auditing (Req #11) |
 
-### Excel Report Sheets (16 total)
+### Excel Report Sheets (17 total + Cover)
 All sheets generate with headers, conditional formatting, and dropdown validation:
 
 | # | Sheet | Purpose | Dropdowns |
-|---|-------|---------|-----------|
+|---|-------|---------|-----------| 
 | 1 | Cover | Audit summary with pass/fail/warn counts | - |
 | 2 | Instances | SQL Server inventory (IP, OS, version) | Clustered, HADR |
 | 3 | SA Account | SA account security status | Status, Is Disabled, Is Renamed |
@@ -36,30 +36,24 @@ All sheets generate with headers, conditional formatting, and dropdown validatio
 | 13 | Triggers | Server/DB triggers | Enabled |
 | 14 | Backups | Backup compliance | Status |
 | 15 | Audit Settings | Audit configuration | Status |
-| 16 | Actions | Remediation tracking | - |
+| 16 | Encryption | SMK/DMK/TDE status | Key Type, Backup Status |
+| 17 | Actions | Remediation tracking | Category, Risk, Status |
 
 ---
 
 ## What's Next 🔜
 
-### Phase 1: CLI Integration (Priority: HIGH)
-Connect the Excel writer to the main `audit_service.py`:
-- [ ] Update `AuditService.run_audit()` to use `ExcelReportWriter`
-- [ ] Pass collected data to writer methods
-- [ ] Generate report at end of audit
+### Phase 3: Finalize Command (Priority: HIGH)
+- [ ] Implement `--finalize` to persist manual annotations
+- [ ] Read Excel file annotations and store in SQLite
+- [ ] Preserve annotations across audit runs
 
-### Phase 2: Finalize Command (Priority: HIGH)
-Implement `--finalize` to persist manual annotations:
-- [ ] Read Excel file annotations (notes, justifications)
-- [ ] Store in SQLite `*_annotations` tables
-- [ ] Preserve across audit runs
-
-### Phase 3: Additional Sheets (Priority: MEDIUM)
+### Phase 4: Additional Sheets (Priority: MEDIUM)
 - [ ] Permission Grants sheet (Requirement 28)
-- [ ] Role Membership Matrix
-- [ ] Security Change Tracking
+- [ ] Role Membership Matrix visualization
+- [ ] Security Change Tracking (diff between audits)
 
-### Phase 4: SQLite Integration (Priority: MEDIUM)
+### Phase 5: SQLite Integration (Priority: MEDIUM)
 - [ ] Connect SQLite history store to audit flow
 - [ ] Store audit data for historical comparison
 - [ ] Enable diff tracking between audits
@@ -70,48 +64,29 @@ Implement `--finalize` to persist manual annotations:
 
 | Gap | Priority | Notes |
 |-----|----------|-------|
-| CLI doesn't use new writer | High | Still using old reporter |
 | No `--finalize` command | High | Required for annotation persistence |
-| SQLite not integrated | Medium | db file not created in test |
+| SQLite not integrated | Medium | db file not created during audit |
 | No diff tracking | Low | Future: compare to previous audit |
 
 ---
 
-## File Structure
+## Folder Structure
 
 ```
-src/autodbaudit/
-├── domain/                  # Domain models
-├── application/
-│   └── audit_service.py     # Main audit orchestration
-├── infrastructure/
-│   ├── sql_server.py        # SQL connector
-│   ├── query_provider.py    # Version-specific queries
-│   ├── history_store.py     # SQLite persistence
-│   ├── excel_styles.py      # Styling definitions
-│   └── excel/               # Modular Excel package
-│       ├── __init__.py
-│       ├── base.py          # add_dropdown_validation helper
-│       ├── server_group.py  # ServerGroupMixin for color/merging
-│       ├── writer.py        # ExcelReportWriter (composes all mixins)
-│       ├── cover.py
-│       ├── actions.py
-│       ├── instances.py
-│       ├── sa_account.py
-│       ├── logins.py
-│       ├── roles.py
-│       ├── config.py
-│       ├── services.py
-│       ├── databases.py
-│       ├── db_users.py
-│       ├── db_roles.py
-│       ├── orphaned_users.py
-│       ├── linked_servers.py
-│       ├── triggers.py
-│       ├── backups.py
-│       └── audit_settings.py
-└── interface/
-    └── cli.py               # Command-line interface
+infrastructure/
+├── sql/               # SQL Server connectivity
+│   ├── connector.py   # SqlConnector
+│   └── query_provider.py  # Version-specific queries
+├── sqlite/            # SQLite persistence
+│   ├── store.py       # HistoryStore
+│   └── schema.py      # Schema definitions
+├── excel/             # Modular Excel package (21 files)
+│   ├── writer.py      # Main writer (17 sheets)
+│   └── *.py           # One file per sheet
+├── config_loader.py   # Configuration
+├── logging_config.py  # Logging setup
+├── odbc_check.py      # ODBC driver detection
+└── excel_styles.py    # Styling definitions
 ```
 
 ---

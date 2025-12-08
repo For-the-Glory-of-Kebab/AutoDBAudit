@@ -177,6 +177,26 @@ class QueryProvider(ABC):
     @abstractmethod
     def get_audit_settings(self) -> str:
         """Get login audit and security settings."""
+    
+    # ========================================================================
+    # Encryption
+    # ========================================================================
+    
+    @abstractmethod
+    def get_service_master_key(self) -> str:
+        """Get Service Master Key status (instance-level)."""
+    
+    @abstractmethod
+    def get_database_master_keys(self) -> str:
+        """Get Database Master Keys across all databases."""
+    
+    @abstractmethod
+    def get_tde_status(self) -> str:
+        """Get Transparent Data Encryption status."""
+    
+    @abstractmethod
+    def get_encryption_certificates(self) -> str:
+        """Get certificates used for encryption."""
 
 
 class Sql2008Provider(QueryProvider):
@@ -672,6 +692,114 @@ class Sql2008Provider(QueryProvider):
             (SELECT CAST(value_in_use AS INT) FROM sys.configurations WHERE name = 'c2 audit mode') AS C2AuditMode,
             (SELECT CAST(value_in_use AS INT) FROM sys.configurations WHERE name = 'common criteria compliance enabled') AS CommonCriteria
         """
+    
+    def get_service_master_key(self) -> str:
+        return """
+        SELECT 
+            'SMK' AS KeyType,
+            name AS KeyName,
+            algorithm_desc AS Algorithm,
+            create_date AS CreatedDate,
+            modify_date AS ModifyDate,
+            key_length AS KeyLength
+        FROM master.sys.symmetric_keys 
+        WHERE name = '##MS_ServiceMasterKey##'
+        """
+    
+    def get_database_master_keys(self) -> str:
+        # SQL 2008: Need to iterate databases, return consolidated view
+        return """
+        SET NOCOUNT ON;
+        
+        CREATE TABLE #dmk_results (
+            DatabaseName NVARCHAR(256),
+            KeyName NVARCHAR(256),
+            Algorithm NVARCHAR(128),
+            CreatedDate DATETIME,
+            ModifyDate DATETIME,
+            KeyLength INT
+        );
+        
+        DECLARE @sql NVARCHAR(MAX);
+        DECLARE @db NVARCHAR(256);
+        
+        DECLARE db_cursor CURSOR FOR 
+        SELECT name FROM sys.databases 
+        WHERE state_desc = 'ONLINE' AND database_id > 4;
+        
+        OPEN db_cursor;
+        FETCH NEXT FROM db_cursor INTO @db;
+        
+        WHILE @@FETCH_STATUS = 0
+        BEGIN
+            SET @sql = 'INSERT INTO #dmk_results 
+                SELECT ''' + @db + ''' AS DatabaseName,
+                    name, algorithm_desc, create_date, modify_date, key_length
+                FROM [' + @db + '].sys.symmetric_keys 
+                WHERE name = ''##MS_DatabaseMasterKey##''';
+            BEGIN TRY
+                EXEC sp_executesql @sql;
+            END TRY
+            BEGIN CATCH
+                -- Skip inaccessible databases
+            END CATCH
+            FETCH NEXT FROM db_cursor INTO @db;
+        END
+        
+        CLOSE db_cursor;
+        DEALLOCATE db_cursor;
+        
+        SELECT * FROM #dmk_results;
+        DROP TABLE #dmk_results;
+        
+        SET NOCOUNT OFF;
+        """
+    
+    def get_tde_status(self) -> str:
+        # SQL 2008 R2 has sys.dm_database_encryption_keys
+        return """
+        SELECT 
+            d.name AS DatabaseName,
+            dek.encryption_state AS EncryptionState,
+            CASE dek.encryption_state
+                WHEN 0 THEN 'No encryption key'
+                WHEN 1 THEN 'Unencrypted'
+                WHEN 2 THEN 'Encryption in progress'
+                WHEN 3 THEN 'Encrypted'
+                WHEN 4 THEN 'Key change in progress'
+                WHEN 5 THEN 'Decryption in progress'
+                WHEN 6 THEN 'Protection change in progress'
+                ELSE 'Unknown'
+            END AS EncryptionStateDesc,
+            dek.key_algorithm AS Algorithm,
+            dek.key_length AS KeyLength,
+            dek.encryptor_type AS EncryptorType,
+            c.name AS CertificateName,
+            dek.create_date AS CreatedDate,
+            dek.set_date AS ModifyDate,
+            dek.percent_complete AS PercentComplete
+        FROM sys.databases d
+        LEFT JOIN sys.dm_database_encryption_keys dek ON d.database_id = dek.database_id
+        LEFT JOIN master.sys.certificates c ON dek.encryptor_thumbprint = c.thumbprint
+        WHERE d.database_id > 4
+        ORDER BY d.name
+        """
+    
+    def get_encryption_certificates(self) -> str:
+        return """
+        SELECT 
+            name AS CertificateName,
+            certificate_id AS CertificateId,
+            subject AS Subject,
+            start_date AS StartDate,
+            expiry_date AS ExpiryDate,
+            pvt_key_encryption_type_desc AS PrivateKeyEncryption,
+            is_active_for_begin_dialog AS IsActiveForDialog,
+            DATEDIFF(DAY, GETDATE(), expiry_date) AS DaysUntilExpiry
+        FROM master.sys.certificates
+        WHERE name NOT LIKE '##MS_%'
+        ORDER BY name
+        """
 
 
 class Sql2019PlusProvider(QueryProvider):
@@ -1141,6 +1269,118 @@ class Sql2019PlusProvider(QueryProvider):
             (SELECT CAST(value_in_use AS INT) FROM sys.configurations WHERE name = 'c2 audit mode') AS C2AuditMode,
             (SELECT CAST(value_in_use AS INT) FROM sys.configurations WHERE name = 'common criteria compliance enabled') AS CommonCriteria,
             (SELECT CAST(value_in_use AS INT) FROM sys.configurations WHERE name = 'contained database authentication') AS ContainedDbAuth
+        """
+    
+    def get_service_master_key(self) -> str:
+        return """
+        SELECT 
+            'SMK' AS KeyType,
+            name AS KeyName,
+            algorithm_desc AS Algorithm,
+            create_date AS CreatedDate,
+            modify_date AS ModifyDate,
+            key_length AS KeyLength
+        FROM master.sys.symmetric_keys 
+        WHERE name = '##MS_ServiceMasterKey##'
+        """
+    
+    def get_database_master_keys(self) -> str:
+        # 2012+: Use sp_MSforeachdb for convenience
+        return """
+        SET NOCOUNT ON;
+        
+        CREATE TABLE #dmk_results (
+            DatabaseName NVARCHAR(256),
+            KeyName NVARCHAR(256),
+            Algorithm NVARCHAR(128),
+            CreatedDate DATETIME,
+            ModifyDate DATETIME,
+            KeyLength INT
+        );
+        
+        DECLARE @sql NVARCHAR(MAX);
+        DECLARE @db NVARCHAR(256);
+        
+        DECLARE db_cursor CURSOR FOR 
+        SELECT name FROM sys.databases 
+        WHERE state_desc = 'ONLINE' AND database_id > 4;
+        
+        OPEN db_cursor;
+        FETCH NEXT FROM db_cursor INTO @db;
+        
+        WHILE @@FETCH_STATUS = 0
+        BEGIN
+            SET @sql = N'INSERT INTO #dmk_results 
+                SELECT ''' + @db + N''' AS DatabaseName,
+                    name, algorithm_desc, create_date, modify_date, key_length
+                FROM [' + @db + N'].sys.symmetric_keys 
+                WHERE name = ''##MS_DatabaseMasterKey##''';
+            BEGIN TRY
+                EXEC sp_executesql @sql;
+            END TRY
+            BEGIN CATCH
+                -- Skip inaccessible databases
+            END CATCH
+            FETCH NEXT FROM db_cursor INTO @db;
+        END
+        
+        CLOSE db_cursor;
+        DEALLOCATE db_cursor;
+        
+        SELECT * FROM #dmk_results;
+        DROP TABLE #dmk_results;
+        
+        SET NOCOUNT OFF;
+        """
+    
+    def get_tde_status(self) -> str:
+        return """
+        SELECT 
+            d.name AS DatabaseName,
+            d.is_encrypted AS IsEncrypted,
+            dek.encryption_state AS EncryptionState,
+            CASE dek.encryption_state
+                WHEN 0 THEN 'No encryption key'
+                WHEN 1 THEN 'Unencrypted'
+                WHEN 2 THEN 'Encryption in progress'
+                WHEN 3 THEN 'Encrypted'
+                WHEN 4 THEN 'Key change in progress'
+                WHEN 5 THEN 'Decryption in progress'
+                WHEN 6 THEN 'Protection change in progress'
+                ELSE 'Unknown'
+            END AS EncryptionStateDesc,
+            dek.key_algorithm AS Algorithm,
+            dek.key_length AS KeyLength,
+            dek.encryptor_type AS EncryptorType,
+            c.name AS CertificateName,
+            c.expiry_date AS CertExpiryDate,
+            dek.create_date AS CreatedDate,
+            dek.set_date AS ModifyDate,
+            dek.percent_complete AS PercentComplete
+        FROM sys.databases d
+        LEFT JOIN sys.dm_database_encryption_keys dek ON d.database_id = dek.database_id
+        LEFT JOIN master.sys.certificates c ON dek.encryptor_thumbprint = c.thumbprint
+        WHERE d.database_id > 4
+        ORDER BY d.name
+        """
+    
+    def get_encryption_certificates(self) -> str:
+        return """
+        SELECT 
+            name AS CertificateName,
+            certificate_id AS CertificateId,
+            subject AS Subject,
+            issuer_name AS Issuer,
+            start_date AS StartDate,
+            expiry_date AS ExpiryDate,
+            pvt_key_encryption_type_desc AS PrivateKeyEncryption,
+            pvt_key_last_backup_date AS PrivateKeyLastBackup,
+            is_active_for_begin_dialog AS IsActiveForDialog,
+            DATEDIFF(DAY, GETDATE(), expiry_date) AS DaysUntilExpiry,
+            CASE WHEN pvt_key_last_backup_date IS NULL THEN 0 ELSE 1 END AS IsBackedUp
+        FROM master.sys.certificates
+        WHERE name NOT LIKE '##MS_%'
+        ORDER BY name
         """
 
 

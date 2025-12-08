@@ -8,8 +8,8 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-from autodbaudit.infrastructure.sql_server import SqlConnector
-from autodbaudit.infrastructure.query_provider import get_query_provider
+from autodbaudit.infrastructure.sql.connector import SqlConnector
+from autodbaudit.infrastructure.sql.query_provider import get_query_provider
 from autodbaudit.infrastructure.excel import EnhancedReportWriter
 
 

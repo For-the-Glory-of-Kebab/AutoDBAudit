@@ -30,6 +30,8 @@ class SqlTarget:
     credential_file: str | None = None
     connect_timeout: int = 30
     tags: List[str] = field(default_factory=list)
+    enabled: bool = True  # Whether to include in audit
+    ip_address: str | None = None  # Optional IP address override
     
     @property
     def display_name(self) -> str:

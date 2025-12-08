@@ -10,7 +10,7 @@ Self-contained, offline-capable tool for SQL Server security compliance auditing
 
 ✅ **Phase 0 Complete** - Foundation & Setup  
 ✅ **Phase 1 Complete** - Excel Report Generation  
-🚧 **Phase 2 In Progress** - CLI Integration & SQLite  
+✅ **Phase 2 Complete** - CLI Integration & Data Collection  
 ⏳ **Phase 3 Planned** - Remediation & Analysis  
 ⏳ **Phase 4 Planned** - Hotfix Deployment & Polish  
 
@@ -19,7 +19,7 @@ Self-contained, offline-capable tool for SQL Server security compliance auditing
 ## Features
 
 ### Excel Report Generation ✅
-- **16 Sheets** with comprehensive security audit data
+- **17 Sheets** with comprehensive security audit data
 - **Server/Instance Grouping** with color rotation
 - **Conditional Formatting** (PASS/FAIL/WARN colors)
 - **Dropdown Validation** for all boolean/enum columns
@@ -72,6 +72,16 @@ notepad config\sql_targets.json
 notepad config\audit_config.json
 ```
 
+### Run Audit (CLI)
+
+```bash
+# Set Python path and run audit
+$env:PYTHONPATH="d:\Raja-Initiative\src"
+python main.py --audit
+
+# Output: output/sql_audit_YYYYMMDD_HHMMSS.xlsx (17 sheets)
+```
+
 ### Generate Report (Test Mode)
 
 ```bash
@@ -91,17 +101,19 @@ d:\Raja-Initiative\
 ├── src/autodbaudit/           # Main Python package
 │   ├── domain/               # Domain models
 │   ├── application/          # Business logic
-│   │   └── audit_service.py  # Main orchestration
+│   │   ├── audit_service.py  # Main orchestration
+│   │   └── data_collector.py # Data collection logic
 │   ├── infrastructure/       # External systems
-│   │   ├── sql_server.py     # SQL connector
-│   │   ├── query_provider.py # Version-specific queries
-│   │   ├── history_store.py  # SQLite persistence
-│   │   ├── excel_styles.py   # Styling definitions
-│   │   └── excel/            # Modular Excel package (20 files)
-│   │       ├── base.py       # Helpers, add_dropdown_validation
-│   │       ├── server_group.py # Color/merge mixin
-│   │       ├── writer.py     # Main writer class
-│   │       └── *.py          # One file per sheet
+│   │   ├── sql/              # SQL Server connectivity
+│   │   │   ├── connector.py  # SqlConnector
+│   │   │   └── query_provider.py  # Version-specific queries
+│   │   ├── sqlite/           # SQLite persistence
+│   │   │   ├── store.py      # HistoryStore
+│   │   │   └── schema.py     # Schema definitions
+│   │   ├── excel/            # Modular Excel package (21 files)
+│   │   │   ├── writer.py     # Main writer (17 sheets)
+│   │   │   └── *.py          # One file per sheet
+│   │   └── excel_styles.py   # Styling definitions
 │   └── interface/
 │       └── cli.py            # Command-line interface
 ├── config/                   # Configuration files

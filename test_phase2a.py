@@ -13,8 +13,8 @@ from pathlib import Path
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
-from autodbaudit.infrastructure.query_provider import get_query_provider
-from autodbaudit.infrastructure.sql_server import SqlConnector
+from autodbaudit.infrastructure.sql.query_provider import get_query_provider
+from autodbaudit.infrastructure.sql.connector import SqlConnector
 
 
 def test_query_provider():

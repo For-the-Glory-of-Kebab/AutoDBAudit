@@ -30,6 +30,8 @@ Excel reports are generated directly via `openpyxl` using a modular mixin-based 
 | 14 | Triggers | `triggers.py` | Server/database triggers |
 | 15 | Backups | `backups.py` | Backup status audit |
 | 16 | Audit Settings | `audit_settings.py` | Login audit configuration |
+| 17 | Encryption | `encryption.py` | SMK/DMK/TDE encryption status |
+| 18 | Actions | `actions.py` | Remediation action log |
 
 ---
 
