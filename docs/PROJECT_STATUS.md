@@ -1,6 +1,6 @@
 # AutoDBAudit Project Status
 
-## Current State (2024-12-07)
+## Current State (2025-12-08)
 
 ### Completed Features ✅
 
@@ -11,64 +11,32 @@
 | **Query Provider** | ✅ Done | Strategy pattern for SQL 2008-2025+ compatibility |
 | **History Store** | ✅ Done | SQLite persistence with schema v2 |
 | **Excel Styles** | ✅ Done | Comprehensive styling module with icons, colors, fonts |
-| **Excel Package** | ✅ Done | Modular 18-file architecture (one per sheet) |
-| **Test Scripts** | ✅ Done | `test_enhanced_report.py` validates Excel generation |
+| **Excel Package** | ✅ Done | Modular 20-file architecture (one per sheet) |
+| **Dropdown Validation** | ✅ Done | All boolean/enum columns have DataValidation dropdowns |
+| **Server/Instance Grouping** | ✅ Done | Color rotation, merged cells for visual grouping |
+| **Test Scripts** | ✅ Done | `test_multi_instance.py` validates Excel generation against multiple instances |
 
 ### Excel Report Sheets (16 total)
-All sheets generate with headers even when empty:
+All sheets generate with headers, conditional formatting, and dropdown validation:
 
-1. Cover - Audit summary with pass/fail/warn counts
-2. Instances - SQL Server inventory (IP, OS, version)
-3. SA Account - SA account security status
-4. Server Logins - Login audit with policy checks
-5. Sensitive Roles - sysadmin membership
-6. Configuration - sp_configure security settings
-7. Services - SQL services audit
-8. Databases - Database properties
-9. Database Users - Per-DB user matrix
-10. Database Roles - DB role membership
-11. Orphaned Users - Users without logins
-12. Linked Servers - Linked server config
-13. Triggers - Server/DB triggers
-14. Backups - Backup compliance
-15. Audit Settings - Audit configuration
-16. Actions - Remediation tracking
-
----
-
-## Suggested Commits
-
-### Commit 1: Query Provider Strategy Pattern
-```
-feat(query): Add SQL version-aware query provider
-
-- Add QueryProvider abstract base and implementations
-- Support SQL 2008, 2019+, and future 2025+
-- Factory function auto-selects based on version
-- All audit queries version-compatible
-```
-
-### Commit 2: Excel Styles Foundation
-```
-feat(excel): Add comprehensive Excel styling module
-
-- Color palette with pass/fail/warn/info colors
-- Icon definitions (Unicode with fallbacks)
-- Font and fill presets
-- Helper functions for status and boolean styling
-```
-
-### Commit 3: Modular Excel Report Architecture
-```
-feat(excel): Refactor Excel report to modular architecture
-
-- Split monolithic file into 18 modules
-- One file per sheet using mixin pattern
-- Base module with shared utilities
-- Writer composes all sheet functionality
-- Alternating row colors for server grouping
-- IP address and OS version columns added
-```
+| # | Sheet | Purpose | Dropdowns |
+|---|-------|---------|-----------|
+| 1 | Cover | Audit summary with pass/fail/warn counts | - |
+| 2 | Instances | SQL Server inventory (IP, OS, version) | Clustered, HADR |
+| 3 | SA Account | SA account security status | Status, Is Disabled, Is Renamed |
+| 4 | Server Logins | Login audit with policy checks | Enabled, Password Policy |
+| 5 | Sensitive Roles | sysadmin/securityadmin membership | Enabled |
+| 6 | Configuration | sp_configure security settings | Status, Risk |
+| 7 | Services | SQL Server services audit | Status, Startup, Compliant |
+| 8 | Databases | Database properties | Recovery, State, Trustworthy |
+| 9 | Database Users | Per-DB user matrix | Login Status, Compliant |
+| 10 | Database Roles | DB role membership | Role, Member Type, Risk |
+| 11 | Orphaned Users | Users without logins | Type, Status |
+| 12 | Linked Servers | Linked server config | RPC Out, Impersonate, Risk |
+| 13 | Triggers | Server/DB triggers | Enabled |
+| 14 | Backups | Backup compliance | Status |
+| 15 | Audit Settings | Audit configuration | Status |
+| 16 | Actions | Remediation tracking | - |
 
 ---
 
@@ -76,7 +44,7 @@ feat(excel): Refactor Excel report to modular architecture
 
 ### Phase 1: CLI Integration (Priority: HIGH)
 Connect the Excel writer to the main `audit_service.py`:
-- [ ] Update `AuditService.run_audit()` to use `EnhancedReportWriter`
+- [ ] Update `AuditService.run_audit()` to use `ExcelReportWriter`
 - [ ] Pass collected data to writer methods
 - [ ] Generate report at end of audit
 
@@ -91,10 +59,10 @@ Implement `--finalize` to persist manual annotations:
 - [ ] Role Membership Matrix
 - [ ] Security Change Tracking
 
-### Phase 4: Multi-Instance Support (Priority: MEDIUM)
-- [ ] Loop through `sql_targets.json` entries
-- [ ] Aggregate into single report
-- [ ] Instance grouping with visual separators
+### Phase 4: SQLite Integration (Priority: MEDIUM)
+- [ ] Connect SQLite history store to audit flow
+- [ ] Store audit data for historical comparison
+- [ ] Enable diff tracking between audits
 
 ---
 
@@ -102,9 +70,9 @@ Implement `--finalize` to persist manual annotations:
 
 | Gap | Priority | Notes |
 |-----|----------|-------|
-| Services data is mocked | Medium | Need WMI/DMV queries |
-| No `--finalize` command | High | Required for annotation persistence |
 | CLI doesn't use new writer | High | Still using old reporter |
+| No `--finalize` command | High | Required for annotation persistence |
+| SQLite not integrated | Medium | db file not created in test |
 | No diff tracking | Low | Future: compare to previous audit |
 
 ---
@@ -123,9 +91,11 @@ src/autodbaudit/
 │   ├── excel_styles.py      # Styling definitions
 │   └── excel/               # Modular Excel package
 │       ├── __init__.py
-│       ├── base.py
-│       ├── writer.py
+│       ├── base.py          # add_dropdown_validation helper
+│       ├── server_group.py  # ServerGroupMixin for color/merging
+│       ├── writer.py        # ExcelReportWriter (composes all mixins)
 │       ├── cover.py
+│       ├── actions.py
 │       ├── instances.py
 │       ├── sa_account.py
 │       ├── logins.py
@@ -139,8 +109,11 @@ src/autodbaudit/
 │       ├── linked_servers.py
 │       ├── triggers.py
 │       ├── backups.py
-│       ├── audit_settings.py
-│       └── actions.py
+│       └── audit_settings.py
 └── interface/
     └── cli.py               # Command-line interface
 ```
+
+---
+
+*Last updated: 2025-12-08*

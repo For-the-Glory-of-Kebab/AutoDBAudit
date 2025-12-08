@@ -6,7 +6,7 @@
 
 ## Project Summary
 
-**AutoDBAudit** is a self-contained, offline-capable SQL Server audit and remediation tool. It audits instances against 22+ security requirements, generates Excel reports, suggests T-SQL fixes, tracks actions/exceptions in SQLite, and orchestrates hotfix deployments across remote servers.
+**AutoDBAudit** is a self-contained, offline-capable SQL Server audit and remediation tool. It audits instances against 28+ security requirements, generates Excel reports with dropdown validation, suggests T-SQL fixes, tracks actions/exceptions in SQLite, and orchestrates hotfix deployments across remote servers.
 
 ---
 
@@ -19,7 +19,7 @@
 | **No ORM** | Use `sqlite3` with explicit SQL |
 | **Excel via openpyxl** | No other Excel libraries |
 | **Offline-first** | Must work on air-gapped Windows machines |
-| **SQL 2008 R2 → 2022+** | Versioned queries in `queries/{sql2008,sql2019plus}/` |
+| **SQL 2008 R2 → 2022+** | Versioned queries via `query_provider.py` |
 
 ---
 
@@ -38,10 +38,10 @@
 | Phase | Goal | Status |
 |-------|------|--------|
 | 0 | Docs & prompts aligned | ✅ Done |
-| 1 | Code refactor into layers | 🔄 In progress |
-| 2 | Domain models + SQLite store | ⏳ Pending |
-| 3 | Excel reporting | ⏳ Pending |
-| 4 | Real audit logic | ⏳ Pending |
+| 1 | Code refactor into layers | ✅ Done |
+| 2 | Domain models + SQLite store | ✅ Done (schema) |
+| 3 | Excel reporting | ✅ Done (16 sheets, dropdowns, grouping) |
+| 4 | CLI integration | 🔄 In progress |
 | 5 | Hotfix orchestrator | ⏳ Pending |
 | 6 | Remediation scripts | ⏳ Pending |
 | 7 | CLI polish | ⏳ Pending |
@@ -52,12 +52,11 @@
 
 | File | Purpose |
 |------|---------|
-| [`prompts/RjInit-PromptChain/init/architecture_snapshot.md`](RjInit-PromptChain/init/architecture_snapshot.md) | Concise architecture reference |
-| [`prompts/RjInit-PromptChain/init/Project_Overview.md`](RjInit-PromptChain/init/Project_Overview.md) | Full project spec |
-| [`prompts/RjInit-PromptChain/init/implementation_plan.md`](RjInit-PromptChain/init/implementation_plan.md) | Detailed phases & design |
+| [`docs/excel_report_layout.md`](../docs/excel_report_layout.md) | **Complete** Excel sheet documentation |
+| [`docs/PROJECT_STATUS.md`](../docs/PROJECT_STATUS.md) | Current implementation status |
 | [`docs/sqlite_schema.md`](../docs/sqlite_schema.md) | Database schema |
-| [`docs/excel_report_layout.md`](../docs/excel_report_layout.md) | Report structure |
-| [`db-requirements.md`](../db-requirements.md) | 22 audit requirements |
+| [`db-requirements.md`](../db-requirements.md) | 28 audit requirements |
+| [`docs/TODO.md`](../docs/TODO.md) | Task tracker |
 
 ---
 
@@ -70,8 +69,9 @@
 # Install deps
 pip install -r requirements.txt
 
-# Run CLI (stub)
-python main.py --audit --config config/audit_config.json --targets config/sql_targets.json
+# Test multi-instance Excel generation
+$env:PYTHONPATH="d:\Raja-Initiative\src"
+python test_multi_instance.py
 
 # Test imports
 python test_setup.py
@@ -79,14 +79,23 @@ python test_setup.py
 
 ---
 
-## Don't Waste Time On
+## What's Working Now
 
-- Excel/SQLite are stubs (Phase 2-3)
-- Hotfix remote execution not built (Phase 5)
-- Remediation scripts not built (Phase 6)
+- ✅ **Excel Package** - 20 modular files in `infrastructure/excel/`
+- ✅ **16 Sheets** - All with headers, conditional formatting, dropdowns
+- ✅ **Query Provider** - SQL 2008-2022+ compatible
+- ✅ **SqlConnector** - Version detection, auth handling
+- ✅ **Server/Instance Grouping** - Color rotation, merged cells
 
-Focus on the current phase and extend incrementally.
+## What's Still Stub/Pending
+
+- ⏳ SQLite history store not integrated in audit flow
+- ⏳ CLI doesn't use new ExcelReportWriter yet
+- ⏳ Hotfix remote execution not built
+- ⏳ Remediation scripts not built
+
+Focus on CLI integration next.
 
 ---
 
-*Last updated: 2025-12-06*
+*Last updated: 2025-12-08*
