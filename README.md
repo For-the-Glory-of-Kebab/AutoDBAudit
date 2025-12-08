@@ -1,95 +1,40 @@
 # AutoDBAudit
 
-**SQL Server Security Audit & Remediation Tool**
-
-Self-contained, offline-capable tool for SQL Server security compliance auditing, discrepancy analysis, remediation script generation, and centralized hotfix deployment.
+**SQL Server Security Audit Tool** - Generates comprehensive 17-sheet Excel reports for security compliance auditing across multiple SQL Server instances (2008 R2 - 2025+).
 
 ---
 
-## Project Status
+## What Works Today ✅
 
-✅ **Phase 0 Complete** - Foundation & Setup  
-✅ **Phase 1 Complete** - Excel Report Generation  
-✅ **Phase 2 Complete** - CLI Integration & Data Collection  
-⏳ **Phase 3 Planned** - Remediation & Analysis  
-⏳ **Phase 4 Planned** - Hotfix Deployment & Polish  
+| Command | What It Does |
+|---------|--------------|
+| `python main.py --audit` | Connects to configured SQL Servers, collects security data, generates Excel report |
 
----
-
-## Features
-
-### Excel Report Generation ✅
-- **17 Sheets** with comprehensive security audit data
-- **Server/Instance Grouping** with color rotation
-- **Conditional Formatting** (PASS/FAIL/WARN colors)
-- **Dropdown Validation** for all boolean/enum columns
-- **Visual Icons** throughout for quick scanning
-
-See [docs/excel_report_layout.md](docs/excel_report_layout.md) for complete sheet documentation.
-
-### SQL Server Compatibility
-- SQL Server 2008 R2 through 2022+
-- Automatic version detection
-- Version-specific query providers
+**Output**: `output/sql_audit_YYYYMMDD_HHMMSS.xlsx` (17 sheets)
 
 ---
 
-## Quick Start
+## Quick Start (5 minutes)
 
-### Prerequisites
-- Python 3.11+ (3.14.0 recommended)
-- Windows 10/11 or Windows Server 2016+
-- ODBC Driver 17/18 for SQL Server (or fallback drivers)
-
-### Installation
-
-```bash
-# 1. Clone/navigate to project
+### 1. Setup Environment
+```powershell
 cd d:\Raja-Initiative
-
-# 2. Create virtual environment
 python -m venv venv
-
-# 3. Activate virtual environment
 .\venv\Scripts\activate
-
-# 4. Install dependencies
 pip install -r requirements.txt
-
-# 5. Verify setup
-python test_setup.py
 ```
 
-### Configuration
-
-```bash
-# Copy example configs
+### 2. Configure SQL Targets
+```powershell
 copy config\sql_targets.example.json config\sql_targets.json
-copy config\audit_config.example.json config\audit_config.json
-
-# Edit with your SQL Server details
 notepad config\sql_targets.json
-notepad config\audit_config.json
 ```
+Edit `sql_targets.json` with your SQL Server connection details.
 
-### Run Audit (CLI)
-
-```bash
-# Set Python path and run audit
+### 3. Run Audit
+```powershell
 $env:PYTHONPATH="d:\Raja-Initiative\src"
 python main.py --audit
-
-# Output: output/sql_audit_YYYYMMDD_HHMMSS.xlsx (17 sheets)
-```
-
-### Generate Report (Test Mode)
-
-```bash
-# Set Python path and run test
-$env:PYTHONPATH="d:\Raja-Initiative\src"
-python test_multi_instance.py
-
-# Output: output/full_audit_HHMMSS.xlsx
 ```
 
 ---
@@ -97,116 +42,105 @@ python test_multi_instance.py
 ## Project Structure
 
 ```
-d:\Raja-Initiative\
-├── src/autodbaudit/           # Main Python package
-│   ├── domain/               # Domain models
-│   ├── application/          # Business logic
-│   │   ├── audit_service.py  # Main orchestration
-│   │   └── data_collector.py # Data collection logic
-│   ├── infrastructure/       # External systems
-│   │   ├── sql/              # SQL Server connectivity
-│   │   │   ├── connector.py  # SqlConnector
-│   │   │   └── query_provider.py  # Version-specific queries
-│   │   ├── sqlite/           # SQLite persistence
-│   │   │   ├── store.py      # HistoryStore
-│   │   │   └── schema.py     # Schema definitions
-│   │   ├── excel/            # Modular Excel package (21 files)
-│   │   │   ├── writer.py     # Main writer (17 sheets)
-│   │   │   └── *.py          # One file per sheet
-│   │   └── excel_styles.py   # Styling definitions
-│   └── interface/
-│       └── cli.py            # Command-line interface
-├── config/                   # Configuration files
-├── docs/                     # Documentation
-│   ├── PROJECT_STATUS.md     # Current state
-│   ├── TODO.md               # Task tracker
-│   ├── excel_report_layout.md # Sheet documentation
-│   └── sqlite_schema.md      # Database schema
-├── output/                   # Generated reports
-└── db-requirements.md        # 28 security requirements
+src/autodbaudit/
+├── application/              # Business logic
+│   ├── audit_service.py      # Main orchestrator (run_audit)
+│   └── data_collector.py     # Collects data from SQL Server
+├── infrastructure/           # External integrations
+│   ├── sql/                  # SQL Server connectivity
+│   │   ├── connector.py      # SqlConnector class
+│   │   └── query_provider.py # Version-specific SQL queries
+│   ├── sqlite/               # (Exists but not wired up yet)
+│   └── excel/                # Excel generation (21 files)
+│       └── writer.py         # EnhancedReportWriter (17 sheets)
+└── interface/
+    └── cli.py                # Command-line interface
 ```
 
 ---
 
-## Documentation
+## Excel Report Sheets (17)
 
-| Document | Description |
-|----------|-------------|
-| [db-requirements.md](db-requirements.md) | 28 security requirements |
-| [docs/excel_report_layout.md](docs/excel_report_layout.md) | Complete Excel sheet documentation |
-| [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md) | Current implementation status |
-| [docs/TODO.md](docs/TODO.md) | Task tracker |
-| [docs/sqlite_schema.md](docs/sqlite_schema.md) | SQLite database schema |
+| # | Sheet | Purpose |
+|---|-------|---------|
+| 1 | Cover | Summary with pass/fail/warn counts |
+| 2 | Instances | SQL Server inventory |
+| 3 | SA Account | SA account security status |
+| 4 | Server Logins | Login audit |
+| 5 | Sensitive Roles | sysadmin/securityadmin members |
+| 6 | Configuration | sp_configure settings |
+| 7 | Services | SQL Server services |
+| 8 | Databases | Database properties |
+| 9 | Database Users | Per-database users |
+| 10 | Database Roles | Role memberships |
+| 11 | Orphaned Users | Users without logins |
+| 12 | Linked Servers | Linked server config |
+| 13 | Triggers | Server/database triggers |
+| 14 | Backups | Backup status |
+| 15 | Audit Settings | Audit configuration |
+| 16 | Encryption | SMK/DMK/TDE status |
+| 17 | Actions | Remediation tracking |
+
+See [docs/excel_report_layout.md](docs/excel_report_layout.md) for column details.
+
+---
+
+## What's NOT Working Yet
+
+| Feature | Status |
+|---------|--------|
+| SQLite historical tracking | Code exists, not wired |
+| `--finalize` command | Not implemented |
+| Permission Grants sheet | Planned |
+| Remediation scripts | Planned |
+
+---
+
+## Architecture
+
+### Key Design Patterns
+- **Strategy Pattern** - `QueryProvider` for SQL 2008 vs 2012+ queries
+- **Mixin Pattern** - Each Excel sheet is a separate mixin class
+- **Dataclasses** - Typed configuration objects
+
+### Entry Points
+1. `main.py` → `cli.py` → `audit_service.py` → `data_collector.py` → `writer.py`
 
 ---
 
 ## Dependencies
 
-| Package | Version | Purpose |
-|---------|---------|---------|
-| pyodbc | ≥5.0.0 | SQL Server connectivity (2008 R2 through 2022+) |
-| openpyxl | ≥3.1.0 | Excel generation (icons, charts, formatting) |
-| pywin32 | ≥306 | Windows DPAPI credential encryption |
-| pyinstaller | ≥6.0.0 | Build standalone executable |
+| Package | Purpose |
+|---------|---------|
+| pyodbc | SQL Server connectivity |
+| openpyxl | Excel generation |
+| pywin32 | Windows credential encryption |
 
-**No pandas/numpy** - Intentionally minimal for PyInstaller optimization
-
----
-
-## Development
-
-### Python Design Patterns Used
-
-1. **Mixin Pattern** - Composable sheet functionality
-2. **Strategy Pattern** - Version-specific query providers
-3. **Dataclasses** - Typed configuration objects
-4. **Context Managers** - Automatic resource cleanup
-5. **Type Hints** - Static type checking support
-
-### Code Style
-
-- **PEP 8** compliant
-- **4-space indentation**
-- **snake_case** for functions/variables
-- **PascalCase** for classes
-- **Type hints** for function signatures
-- **Docstrings** for all modules/classes/functions
+**No pandas/numpy** - Intentionally minimal.
 
 ---
 
 ## Testing
 
-```bash
-# Run setup tests
+```powershell
+# Verify setup
 python test_setup.py
 
-# Test SQL version detection
-python test_sql_version.py
-
-# Generate full multi-instance report
+# Generate full report (test mode)
 $env:PYTHONPATH="d:\Raja-Initiative\src"
 python test_multi_instance.py
 ```
 
 ---
 
-## Building Standalone Executable
+## Documentation
 
-```bash
-# Activate venv
-.\venv\Scripts\activate
-
-# Build
-pyinstaller --onefile --console main.py
-
-# Output: dist/main.exe (~40-60 MB)
-```
-
----
-
-## License
-
-Internal tool for SQL Server security auditing.
+| File | Purpose |
+|------|---------|
+| [db-requirements.md](db-requirements.md) | 28 security requirements being audited |
+| [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md) | What's done, what's next |
+| [docs/TODO.md](docs/TODO.md) | Task tracker |
+| [docs/excel_report_layout.md](docs/excel_report_layout.md) | Sheet column documentation |
 
 ---
 
