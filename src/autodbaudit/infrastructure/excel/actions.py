@@ -146,9 +146,9 @@ class ActionSheetMixin(BaseSheetMixin):
                 recommendation="Disable SA and rename to '$@'",
             )
         """
-        # Lazy-initialize the worksheet
         if self._action_sheet is None:
             self._action_sheet = self._ensure_sheet(ACTION_CONFIG)
+            self._add_action_dropdowns()
         
         ws = self._action_sheet
         
@@ -204,3 +204,15 @@ class ActionSheetMixin(BaseSheetMixin):
         elif risk_lower == "medium":
             risk_cell.fill = Fills.WARN
             risk_cell.font = Fonts.WARN
+    
+    def _add_action_dropdowns(self) -> None:
+        """Add dropdown validations for action columns."""
+        from autodbaudit.infrastructure.excel.base import add_dropdown_validation
+        
+        ws = self._action_sheet
+        # Category column (D) - column 4
+        add_dropdown_validation(ws, "D", ["SA Account", "Configuration", "Backup", "Login", "Permissions", "Service", "Database", "Other"])
+        # Risk Level column (F) - column 6
+        add_dropdown_validation(ws, "F", ["Critical", "High", "Medium", "Low"])
+        # Status column (H) - column 8
+        add_dropdown_validation(ws, "H", ["⏳ Open", "✓ Closed", "⚠️ Exception"])

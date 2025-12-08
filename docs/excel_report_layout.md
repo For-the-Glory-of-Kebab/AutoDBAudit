@@ -35,7 +35,31 @@ Excel reports are generated directly via `openpyxl` using a modular mixin-based 
 
 ## Sheet Details
 
-### 1. Instances
+### 1. Cover
+**Purpose**: Title page with summary statistics
+
+Contains:
+- Organization name
+- Audit date
+- Total pass/fail/warn counts
+- Summary by category
+
+---
+
+### 2. Actions
+**Columns**: ID, Server, Instance, Category, Finding, Risk Level, Recommendation, Status, Found Date, Assigned To, Due Date, Resolution Date, Resolution Notes
+
+| Column | Type | Dropdown Options |
+|--------|------|-----------------|
+| Category | Enum | `SA Account`, `Configuration`, `Backup`, `Login`, `Permissions`, `Service`, `Database`, `Other` |
+| Risk Level | Risk | `Critical`, `High`, `Medium`, `Low` |
+| Status | Status | `⏳ Open`, `✓ Closed`, `⚠️ Exception` |
+
+**Notes**: Manual columns (gray background): Assigned To, Due Date, Resolution Date, Resolution Notes
+
+---
+
+### 3. Instances
 **Columns**: Config Name, Server, Instance, Machine Name, IP Address, Version, Build, SQL Year, Edition, Clustered, HADR, OS, CPU, RAM, Notes, Last Revised
 
 | Column | Type | Dropdown Options |
@@ -45,7 +69,7 @@ Excel reports are generated directly via `openpyxl` using a modular mixin-based 
 
 ---
 
-### 2. SA Account
+### 4. SA Account
 **Columns**: Server, Instance, Status, Is Disabled, Is Renamed, Current Name, Default DB, Remediation Notes
 
 | Column | Type | Dropdown Options |
@@ -56,7 +80,7 @@ Excel reports are generated directly via `openpyxl` using a modular mixin-based 
 
 ---
 
-### 3. Server Logins
+### 5. Server Logins
 **Columns**: Server, Instance, Login Name, Login Type, Enabled, Password Policy, Default Database, Notes, Last Revised
 
 | Column | Type | Dropdown Options |
@@ -66,7 +90,7 @@ Excel reports are generated directly via `openpyxl` using a modular mixin-based 
 
 ---
 
-### 4. Sensitive Roles
+### 6. Sensitive Roles
 **Columns**: Server, Instance, Role, Member, Member Type, Enabled, Justification, Last Revised
 
 | Column | Type | Dropdown Options |
@@ -75,7 +99,7 @@ Excel reports are generated directly via `openpyxl` using a modular mixin-based 
 
 ---
 
-### 5. Configuration
+### 7. Configuration
 **Columns**: Server, Instance, Setting, Current, Required, Status, Risk, Exception Reason
 
 | Column | Type | Dropdown Options |
@@ -85,7 +109,7 @@ Excel reports are generated directly via `openpyxl` using a modular mixin-based 
 
 ---
 
-### 6. Services
+### 8. Services
 **Columns**: Server, Instance, Service Name, Type, Status, Startup, Service Account, Compliant, Notes
 
 | Column | Type | Dropdown Options |
@@ -96,7 +120,7 @@ Excel reports are generated directly via `openpyxl` using a modular mixin-based 
 
 ---
 
-### 7. Databases
+### 9. Databases
 **Columns**: Server, Instance, Database, Owner, Recovery, State, Data (MB), Log (MB), Trustworthy, Notes
 
 | Column | Type | Dropdown Options |
@@ -107,7 +131,7 @@ Excel reports are generated directly via `openpyxl` using a modular mixin-based 
 
 ---
 
-### 8. Database Users
+### 10. Database Users
 **Columns**: Server, Instance, Database, User Name, Type, Mapped Login, Login Status, Compliant, Notes
 
 | Column | Type | Dropdown Options |
@@ -117,7 +141,7 @@ Excel reports are generated directly via `openpyxl` using a modular mixin-based 
 
 ---
 
-### 9. Database Roles
+### 11. Database Roles
 **Columns**: Server, Instance, Database, Role, Member, Member Type, Risk, Justification
 
 | Column | Type | Dropdown Options |
@@ -128,7 +152,7 @@ Excel reports are generated directly via `openpyxl` using a modular mixin-based 
 
 ---
 
-### 10. Orphaned Users
+### 12. Orphaned Users
 **Columns**: Server, Instance, Database, User Name, Type, Status, Remediation
 
 | Column | Type | Dropdown Options |
@@ -138,7 +162,7 @@ Excel reports are generated directly via `openpyxl` using a modular mixin-based 
 
 ---
 
-### 11. Linked Servers
+### 13. Linked Servers
 **Columns**: Server, Instance, Linked Server, Provider, Data Source, RPC Out, Local Login, Remote Login, Impersonate, Risk, Purpose, Last Revised
 
 | Column | Type | Dropdown Options |
@@ -149,7 +173,7 @@ Excel reports are generated directly via `openpyxl` using a modular mixin-based 
 
 ---
 
-### 12. Triggers
+### 14. Triggers
 **Columns**: Server, Instance, Level, Database, Trigger Name, Event, Enabled, Purpose
 
 | Column | Type | Dropdown Options |
@@ -158,7 +182,7 @@ Excel reports are generated directly via `openpyxl` using a modular mixin-based 
 
 ---
 
-### 13. Backups
+### 15. Backups
 **Columns**: Server, Instance, Database, Recovery Model, Last Full Backup, Days Since, Backup Path, Size (MB), Status, Notes
 
 | Column | Type | Dropdown Options |
@@ -167,7 +191,7 @@ Excel reports are generated directly via `openpyxl` using a modular mixin-based 
 
 ---
 
-### 14. Audit Settings
+### 16. Audit Settings
 **Columns**: Server, Instance, Setting, Current Value, Recommended, Status, Notes
 
 | Column | Type | Dropdown Options |
