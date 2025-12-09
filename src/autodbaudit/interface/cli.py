@@ -50,18 +50,26 @@ Examples:
     # Remediation commands
     parser.add_argument("--generate-remediation", action="store_true",
                        help="Generate individual remediation scripts")
+    parser.add_argument("--sync", action="store_true",
+                       help="Sync progress: re-audit and log actions with timestamps")
     parser.add_argument("--finalize", action="store_true",
-                       help="Re-audit and compare to baseline (verify remediation)")
+                       help="Finalize audit: persist everything to SQLite")
     parser.add_argument("--baseline-run", type=int,
-                       help="Baseline run ID for --finalize (latest if not specified)")
+                       help="Baseline run ID for --finalize (first if not specified)")
     parser.add_argument("--apply-remediation", action="store_true",
-                       help="Apply remediation scripts (comment-aware)")
+                       help="Execute remediation scripts against SQL Server")
     parser.add_argument("--scripts", type=str,
-                       help="Path to remediation scripts directory")
+                       help="Path to scripts folder or single .sql file")
+    parser.add_argument("--dry-run", action="store_true",
+                       help="Show what would execute without running")
+    parser.add_argument("--rollback", action="store_true",
+                       help="Execute rollback scripts instead of remediation")
     parser.add_argument("--apply-exceptions", action="store_true",
                        help="Read Notes/Reason from Excel and persist to SQLite")
     parser.add_argument("--excel", type=str,
                        help="Excel file for --apply-exceptions (latest if not specified)")
+    parser.add_argument("--status", action="store_true",
+                       help="Show audit status dashboard")
     
     # Hotfix deployment commands
     parser.add_argument("--deploy-hotfixes", action="store_true",
@@ -110,27 +118,47 @@ Examples:
                 print(f"   📄 {s}")
             return 0
         
+        elif args.sync:
+            logger.info("Syncing remediation progress")
+            from autodbaudit.application.sync_service import SyncService
+            service = SyncService(db_path=DEFAULT_OUTPUT_DIR / "audit_history.db")
+            result = service.sync(targets_file=args.targets)
+            
+            if "error" in result:
+                print(f"\n❌ {result['error']}")
+                return 1
+            
+            print(f"\n✅ Sync complete!")
+            print(f"   Baseline: Run #{result['initial_run_id']}")
+            print(f"   Current:  Run #{result['current_run_id']}")
+            print("")
+            print(f"   ✅ Fixed:         {result['fixed']}")
+            print(f"   ⚠️  Still Failing: {result['still_failing']}")
+            print(f"   🔴 Regression:    {result['regression']}")
+            print(f"   🆕 New:           {result['new']}")
+            return 0
+        
         elif args.finalize:
-            logger.info("Finalizing remediation")
+            logger.info("Finalizing audit")
             from autodbaudit.application.finalize_service import FinalizeService
             service = FinalizeService(db_path=DEFAULT_OUTPUT_DIR / "audit_history.db")
             result = service.finalize(
-                baseline_run_id=args.baseline_run,
-                targets_file=args.targets
+                excel_path=args.excel,
+                baseline_run_id=args.baseline_run
             )
             
             if "error" in result:
                 print(f"\n❌ {result['error']}")
                 return 1
             
-            print(f"\n✅ Finalize complete!")
-            print(f"   Baseline: Run #{result['baseline_run_id']}")
-            print(f"   New:      Run #{result['new_run_id']}")
-            print(f"")
-            print(f"   ✅ Fixed:      {result['fixed']}")
-            print(f"   ⚠️  Excepted:   {result['excepted']}")
-            print(f"   🔴 Regression: {result['regression']}")
-            print(f"   🆕 New:        {result['new']}")
+            print("\n✅ Audit Finalized!")
+            print(f"   Run ID: #{result['baseline_run_id']}")
+            print(f"   Annotations: {result['annotations_applied']}")
+            if result.get("actions"):
+                print("")
+                print("   Actions:")
+                for action_type, count in result["actions"].items():
+                    print(f"      {action_type}: {count}")
             return 0
         
         elif args.apply_exceptions:
@@ -150,6 +178,42 @@ Examples:
             if result.get("errors"):
                 print(f"   ⚠️  {result['errors']} error(s)")
             return 0
+        
+        elif args.status:
+            from autodbaudit.application.status_service import StatusService
+            try:
+                service = StatusService(db_path=DEFAULT_OUTPUT_DIR / "audit_history.db")
+                service.print_status()
+                return 0
+            except FileNotFoundError as e:
+                print(f"\n❌ {e}")
+                return 1
+        
+        elif args.apply_remediation:
+            from autodbaudit.application.script_executor import ScriptExecutor
+            
+            scripts_path = args.scripts or str(DEFAULT_OUTPUT_DIR / "remediation_scripts")
+            executor = ScriptExecutor(
+                targets_file=args.targets,
+                db_path=DEFAULT_OUTPUT_DIR / "audit_history.db"
+            )
+            
+            path = Path(scripts_path)
+            if path.is_dir():
+                results = executor.execute_folder(
+                    path, 
+                    dry_run=args.dry_run,
+                    rollback=args.rollback
+                )
+                failed = sum(1 for r in results if not r.success)
+                return 1 if failed > 0 else 0
+            elif path.is_file() and path.suffix == ".sql":
+                result = executor.execute_script(path, dry_run=args.dry_run)
+                return 0 if result.success else 1
+            else:
+                print(f"❌ Invalid path: {scripts_path}")
+                print("   Specify --scripts as folder or .sql file")
+                return 1
         
         elif args.deploy_hotfixes:
             logger.info("Deploying hotfixes")

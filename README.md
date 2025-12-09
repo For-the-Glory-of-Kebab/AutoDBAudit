@@ -2,6 +2,16 @@
 
 **SQL Server Security Audit Tool** - Complete security compliance workflow with audit, remediation, and exception tracking.
 
+## 🎯 Project Goal
+
+> **A person with ZERO SQL experience should be able to fully conduct the audit, fix discrepancies, and deliver the final result ready for scoring.**
+
+The tool generates **smart remediation scripts** that:
+- ✅ **Auto-execute** safe fixes (orphaned users, dangerous settings)
+- ⚠️ **Log passwords** when disabling SA account
+- 📋 **Comment out** dangerous operations for human review
+- 📖 **Provide instructions** for manual tasks (backups, upgrades)
+
 ---
 
 ## Workflow Overview
@@ -10,21 +20,28 @@
 # 1. Initial audit → Excel + SQLite
 python main.py --audit
 
-# 2. Generate remediation scripts
+# 2. Generate smart remediation scripts
 python main.py --generate-remediation
 
-# 3. Execute fixes (in SSMS or via app)
+# 3. Preview changes (dry run)
+python main.py --apply-remediation --dry-run
 
-# 4. Sync progress (repeat as needed)
-python main.py --sync
+# 4. Execute remediation
+python main.py --apply-remediation
 
-# 5. Add Notes/Reasons in Excel for exceptions
+# 5. Check status dashboard
+python main.py --status
 
-# 6. Finalize → Persist to SQLite
+# 6. If rollback needed
+python main.py --apply-remediation --rollback
+
+# 7. Add Notes in Excel for exceptions
+
+# 8. Finalize → Persist to SQLite
 python main.py --finalize --excel output/sql_audit_edited.xlsx
 ```
 
-See [docs/AUDIT_WORKFLOW.md](docs/AUDIT_WORKFLOW.md) for complete lifecycle.
+See [docs/CLI_REFERENCE.md](docs/CLI_REFERENCE.md) for full command reference.
 
 ---
 
@@ -33,12 +50,15 @@ See [docs/AUDIT_WORKFLOW.md](docs/AUDIT_WORKFLOW.md) for complete lifecycle.
 | Command | Status |
 |---------|--------|
 | `--audit` | ✅ Complete |
-| `--generate-remediation` | ✅ Complete |
-| `--sync` | ⚠️ In Progress |
-| `--finalize` | ⚠️ In Progress |
-| `--apply-exceptions` | ⚠️ In Progress |
+| `--generate-remediation` | ✅ Smart 4-category scripts |
+| `--apply-remediation` | ✅ With --dry-run, --rollback |
+| `--status` | ✅ Dashboard |
+| `--sync` | ✅ Progress tracking |
+| `--finalize` | ✅ Complete |
+| `--deploy-hotfixes` | ⏳ Pending |
 
 ---
+
 
 ## Quick Start (5 minutes)
 

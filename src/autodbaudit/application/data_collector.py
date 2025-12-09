@@ -318,6 +318,25 @@ class AuditDataCollector:
                 default_db=lg.get("DefaultDatabase", ""),
             )
             
+            # Persist to SQLite
+            if self._db_conn and self._instance_id:
+                from autodbaudit.infrastructure.sqlite.schema import save_login
+                save_login(
+                    connection=self._db_conn,
+                    instance_id=self._instance_id,
+                    audit_run_id=self._audit_run_id,
+                    login_name=login_name,
+                    login_type=login_type,
+                    is_disabled=is_disabled,
+                    password_policy=pwd_policy,
+                    default_database=lg.get("DefaultDatabase", ""),
+                    is_sysadmin=bool(lg.get("IsSysadmin")),
+                    is_securityadmin=bool(lg.get("IsSecurityAdmin")),
+                    is_serveradmin=bool(lg.get("IsServerAdmin")),
+                    is_sa=bool(lg.get("IsSA")),
+                    create_date=str(lg.get("CreateDate", "")) if lg.get("CreateDate") else None,
+                )
+            
             # SQL logins (not Windows auth) are findings
             if login_type == "SQL_LOGIN" and not is_disabled:
                 self._save_finding(
@@ -371,6 +390,7 @@ class AuditDataCollector:
                 for key, (required, risk) in SECURITY_SETTINGS.items():
                     if key.lower() == setting_key:
                         current = cfg.get("RunningValue", 0) or 0
+                        configured = cfg.get("ConfiguredValue", 0) or 0
                         is_compliant = int(current) == required
                         
                         self.writer.add_config_setting(
@@ -381,6 +401,21 @@ class AuditDataCollector:
                             required_value=required,
                             risk_level=risk,
                         )
+                        
+                        # Persist to SQLite
+                        if self._db_conn and self._instance_id:
+                            from autodbaudit.infrastructure.sqlite.schema import save_config_setting
+                            save_config_setting(
+                                connection=self._db_conn,
+                                instance_id=self._instance_id,
+                                audit_run_id=self._audit_run_id,
+                                setting_name=setting_name,
+                                configured_value=int(configured),
+                                running_value=int(current),
+                                required_value=required,
+                                status="PASS" if is_compliant else "FAIL",
+                                risk_level=risk if not is_compliant else None,
+                            )
                         
                         # Save finding to SQLite
                         self._save_finding(
@@ -444,6 +479,23 @@ class AuditDataCollector:
                     is_trustworthy=is_trustworthy,
                 )
                 
+                # Persist to SQLite
+                if self._db_conn and self._instance_id:
+                    from autodbaudit.infrastructure.sqlite.schema import save_database
+                    save_database(
+                        connection=self._db_conn,
+                        instance_id=self._instance_id,
+                        audit_run_id=self._audit_run_id,
+                        database_name=db_name,
+                        database_id=db.get("DatabaseID"),
+                        owner=db.get("Owner", ""),
+                        state=db.get("State", ""),
+                        recovery_model=db.get("RecoveryModel", ""),
+                        is_trustworthy=is_trustworthy,
+                        is_encrypted=bool(db.get("IsEncrypted")),
+                        size_mb=db.get("DataSizeMB") or db.get("SizeMB"),
+                    )
+                
                 # Trustworthy flag is a finding
                 if is_trustworthy and db_name not in SYSTEM_DBS:
                     self._save_finding(
@@ -490,6 +542,23 @@ class AuditDataCollector:
                         is_orphaned=is_orphaned,
                         has_connect=guest_enabled if user_name.lower() == "guest" else True,
                     )
+                    
+                    # Persist to SQLite
+                    if self._db_conn and self._instance_id:
+                        from autodbaudit.infrastructure.sqlite.schema import save_db_user
+                        save_db_user(
+                            connection=self._db_conn,
+                            instance_id=self._instance_id,
+                            audit_run_id=self._audit_run_id,
+                            database_name=db_name,
+                            user_name=user_name,
+                            login_name=mapped_login,
+                            user_type=user_type,
+                            is_orphaned=is_orphaned,
+                            is_guest=user_name.lower() == "guest",
+                            is_guest_enabled=guest_enabled if user_name.lower() == "guest" else False,
+                        )
+                    
                     count += 1
                     
                     # Orphaned user finding
@@ -583,6 +652,23 @@ class AuditDataCollector:
                     risk_level=risk,
                 )
                 
+                # Persist to SQLite
+                if self._db_conn and self._instance_id:
+                    from autodbaudit.infrastructure.sqlite.schema import save_linked_server
+                    save_linked_server(
+                        connection=self._db_conn,
+                        instance_id=self._instance_id,
+                        audit_run_id=self._audit_run_id,
+                        linked_server_name=ls_name,
+                        product=ls.get("Product") or "",
+                        provider=ls.get("Provider") or "",
+                        data_source=ls.get("DataSource") or "",
+                        is_rpc_out_enabled=rpc_out,
+                        local_login=local,
+                        remote_login=remote,
+                        is_impersonate=impersonate,
+                    )
+                
                 # High privilege linked server finding
                 if risk == "HIGH_PRIVILEGE":
                     self._save_finding(
@@ -668,6 +754,20 @@ class AuditDataCollector:
                     backup_path=b.get("BackupPath", ""),
                     backup_size_mb=b.get("BackupSizeMB"),
                 )
+                
+                # Persist to SQLite
+                if self._db_conn and self._instance_id:
+                    from autodbaudit.infrastructure.sqlite.schema import save_backup_record
+                    save_backup_record(
+                        connection=self._db_conn,
+                        instance_id=self._instance_id,
+                        audit_run_id=self._audit_run_id,
+                        database_name=db_name,
+                        backup_type=b.get("BackupType", "FULL"),
+                        backup_start=str(b.get("BackupDate")) if b.get("BackupDate") else None,
+                        size_bytes=int((b.get("BackupSizeMB") or 0) * 1024 * 1024),
+                        physical_device_name=b.get("BackupPath", ""),
+                    )
                 
                 # Backup findings
                 if days_since is None:

@@ -55,16 +55,21 @@ class ExcelAnnotationReader:
     - Status Override (optional: Accept/Reject/Pending)
     """
     
-    # Map sheet name to (entity_column, entity_type)
+    # Map sheet name to (entity_column, entity_type, annotation_column)
+    # annotation_column is the manual column for notes/reason/justification
     SHEET_CONFIG = {
-        "SA Account": ("Current Name", "sa_account"),
-        "Logins": ("Login Name", "login"),
-        "Config Settings": ("Setting Name", "config"),
-        "Databases": ("Database", "database"),
-        "Database Users": ("User Name", "db_user"),
-        "Orphaned Users": ("User Name", "orphaned_user"),
-        "Linked Servers": ("Linked Server Name", "linked_server"),
-        "Backups": ("Database", "backup"),
+        "SA Account": ("Current Name", "sa_account", "Remediation Notes"),
+        "Server Logins": ("Login Name", "login", "Notes"),
+        "Configuration": ("Setting", "config", "Exception Reason"),
+        "Databases": ("Database", "database", "Notes"),
+        "Database Users": ("User Name", "db_user", "Notes"),
+        "Database Roles": ("User Name", "db_role", "Justification"),
+        "Orphaned Users": ("User Name", "orphaned_user", "Remediation"),
+        "Linked Servers": ("Linked Server", "linked_server", "Purpose"),
+        "Triggers": ("Trigger", "trigger", "Purpose"),
+        "Backups": ("Database", "backup", "Notes"),
+        "Services": ("Service Name", "service", "Notes"),
+        "Server Roles": ("Role Name", "server_role", "Justification"),
     }
     
     def __init__(self, excel_path: str | Path):
@@ -83,7 +88,9 @@ class ExcelAnnotationReader:
         
         wb = load_workbook(self.excel_path, read_only=True, data_only=True)
         
-        for sheet_name, (entity_col, entity_type) in self.SHEET_CONFIG.items():
+        for sheet_name, config in self.SHEET_CONFIG.items():
+            entity_col, entity_type, annotation_col = config
+            
             if sheet_name not in wb.sheetnames:
                 continue
             
@@ -95,8 +102,8 @@ class ExcelAnnotationReader:
             server_idx = headers.get("Server")
             instance_idx = headers.get("Instance")
             entity_idx = headers.get(entity_col)
-            notes_idx = headers.get("Notes")
-            reason_idx = headers.get("Reason")
+            # Use the sheet-specific annotation column
+            annotation_idx = headers.get(annotation_col)
             status_idx = headers.get("Status Override")
             
             if entity_idx is None:
@@ -107,16 +114,21 @@ class ExcelAnnotationReader:
             for row_num, row in enumerate(ws.iter_rows(min_row=2), start=2):
                 cells = list(row)
                 
+                # Handle short rows
+                def get_cell(idx):
+                    if idx is not None and idx < len(cells):
+                        return cells[idx].value
+                    return None
+                
                 # Extract values
-                server = cells[server_idx].value if server_idx is not None else ""
-                instance = cells[instance_idx].value if instance_idx is not None else ""
-                entity = cells[entity_idx].value if entity_idx is not None else ""
-                notes = cells[notes_idx].value if notes_idx is not None else None
-                reason = cells[reason_idx].value if reason_idx is not None else None
-                status = cells[status_idx].value if status_idx is not None else None
+                server = get_cell(server_idx) or ""
+                instance = get_cell(instance_idx) or ""
+                entity = get_cell(entity_idx) or ""
+                annotation = get_cell(annotation_idx)
+                status = get_cell(status_idx)
                 
                 # Skip if no annotations
-                if not any([notes, reason, status]):
+                if not annotation and not status:
                     continue
                 
                 # Skip empty rows
@@ -126,11 +138,11 @@ class ExcelAnnotationReader:
                 yield ExcelAnnotation(
                     sheet_name=sheet_name,
                     row=row_num,
-                    server=str(server or ""),
-                    instance=str(instance or ""),
+                    server=str(server),
+                    instance=str(instance),
                     entity_name=str(entity),
-                    notes=str(notes) if notes else None,
-                    reason=str(reason) if reason else None,
+                    notes=str(annotation) if annotation else None,
+                    reason=None,  # Merged into notes
                     status_override=str(status) if status else None,
                 )
         

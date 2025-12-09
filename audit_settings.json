@@ -1,0 +1,69 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "_comment": "Audit Settings - Security thresholds and requirements",
+    "organization": "Your Organization Name",
+    "audit_frequency_days": 180,
+    "security_settings": {
+        "_comment": "sp_configure settings: [required_value, risk_level]",
+        "xp_cmdshell": {
+            "required": 0,
+            "risk": "critical"
+        },
+        "clr enabled": {
+            "required": 0,
+            "risk": "high"
+        },
+        "cross db ownership chaining": {
+            "required": 0,
+            "risk": "high"
+        },
+        "remote admin connections": {
+            "required": 0,
+            "risk": "medium"
+        },
+        "remote access": {
+            "required": 0,
+            "risk": "medium"
+        },
+        "Ad Hoc Distributed Queries": {
+            "required": 0,
+            "risk": "medium"
+        },
+        "Ole Automation Procedures": {
+            "required": 0,
+            "risk": "medium"
+        },
+        "Database Mail XPs": {
+            "required": 0,
+            "risk": "low"
+        },
+        "scan for startup procs": {
+            "required": 0,
+            "risk": "medium"
+        }
+    },
+    "backup_requirements": {
+        "max_days_without_full_backup": 7,
+        "max_days_without_log_backup": 1,
+        "require_encryption": false
+    },
+    "password_policy": {
+        "require_policy_enforcement": true,
+        "require_expiration": false,
+        "min_length": 12
+    },
+    "version_requirements": {
+        "minimum_major_version": 15,
+        "_comment": "15 = SQL Server 2019, 14 = 2017, 13 = 2016"
+    },
+    "excluded_databases": [
+        "master",
+        "model",
+        "msdb",
+        "tempdb"
+    ],
+    "excluded_logins": [
+        "NT AUTHORITY\\SYSTEM",
+        "NT SERVICE\\*"
+    ]
+}

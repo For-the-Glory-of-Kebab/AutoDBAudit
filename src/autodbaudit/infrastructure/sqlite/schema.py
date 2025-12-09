@@ -401,6 +401,31 @@ CREATE TABLE IF NOT EXISTS finding_changes (
 );
 
 -- ============================================================================
+-- Action Log (Tracks remediations with REAL timestamps)
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS action_log (
+    id INTEGER PRIMARY KEY,
+    initial_run_id INTEGER NOT NULL REFERENCES audit_runs(id) ON DELETE CASCADE,
+    entity_key TEXT NOT NULL,
+    finding_type TEXT NOT NULL,
+    
+    action_type TEXT NOT NULL,           -- 'fixed', 'excepted', 'regression', 'new'
+    action_date TEXT NOT NULL,           -- When fix was FIRST detected (real timestamp)
+    action_description TEXT,             -- Auto-generated or user-provided
+    
+    -- For exceptions
+    exception_reason TEXT,               -- User justification
+    exception_approved_by TEXT,
+    exception_approved_at TEXT,
+    
+    captured_at TEXT NOT NULL,           -- When --sync detected the change
+    last_sync_run_id INTEGER,            -- Most recent sync that saw this
+    
+    UNIQUE(initial_run_id, entity_key)
+);
+
+-- ============================================================================
 -- Indexes for Performance
 -- ============================================================================
 
@@ -412,6 +437,8 @@ CREATE INDEX IF NOT EXISTS idx_backup_history_db ON backup_history(instance_id, 
 CREATE INDEX IF NOT EXISTS idx_findings_key ON findings(entity_key);
 CREATE INDEX IF NOT EXISTS idx_findings_status ON findings(audit_run_id, status);
 CREATE INDEX IF NOT EXISTS idx_finding_changes_runs ON finding_changes(from_run_id, to_run_id);
+CREATE INDEX IF NOT EXISTS idx_action_log_initial ON action_log(initial_run_id);
+CREATE INDEX IF NOT EXISTS idx_action_log_entity ON action_log(entity_key);
 """
 
 
@@ -777,3 +804,246 @@ def get_annotations_for_entity(connection, entity_key: str) -> dict:
     
     return result
 
+
+# ============================================================================
+# Data Persistence Helpers
+# ============================================================================
+
+def save_login(
+    connection,
+    instance_id: int,
+    audit_run_id: int,
+    login_name: str,
+    login_type: str = None,
+    is_disabled: bool = False,
+    password_policy: bool = None,
+    password_expiration: bool = None,
+    default_database: str = None,
+    has_access: bool = True,
+    is_sysadmin: bool = False,
+    is_securityadmin: bool = False,
+    is_serveradmin: bool = False,
+    is_sa: bool = False,
+    create_date: str = None,
+    modify_date: str = None,
+) -> int:
+    """Save a login to the database."""
+    now = datetime.now(timezone.utc).isoformat()
+    
+    cursor = connection.execute("""
+        INSERT OR REPLACE INTO logins
+        (instance_id, audit_run_id, login_name, login_type, is_disabled,
+         password_policy, password_expiration, default_database, has_access,
+         is_sysadmin, is_securityadmin, is_serveradmin, is_sa,
+         create_date, modify_date, collected_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        instance_id, audit_run_id, login_name, login_type, is_disabled,
+        password_policy, password_expiration, default_database, has_access,
+        is_sysadmin, is_securityadmin, is_serveradmin, is_sa,
+        create_date, modify_date, now
+    ))
+    connection.commit()
+    return cursor.lastrowid
+
+
+def save_database(
+    connection,
+    instance_id: int,
+    audit_run_id: int,
+    database_name: str,
+    database_id: int = None,
+    owner: str = None,
+    create_date: str = None,
+    state: str = None,
+    recovery_model: str = None,
+    compatibility_level: int = None,
+    is_trustworthy: bool = False,
+    is_encrypted: bool = False,
+    is_auto_close: bool = False,
+    is_auto_shrink: bool = False,
+    page_verify: str = None,
+    size_mb: float = None,
+) -> int:
+    """Save a database to the database."""
+    now = datetime.now(timezone.utc).isoformat()
+    
+    cursor = connection.execute("""
+        INSERT OR REPLACE INTO databases
+        (instance_id, audit_run_id, database_id, database_name, owner,
+         create_date, state, recovery_model, compatibility_level,
+         is_trustworthy, is_encrypted, is_auto_close, is_auto_shrink,
+         page_verify, size_mb, collected_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        instance_id, audit_run_id, database_id, database_name, owner,
+        create_date, state, recovery_model, compatibility_level,
+        is_trustworthy, is_encrypted, is_auto_close, is_auto_shrink,
+        page_verify, size_mb, now
+    ))
+    connection.commit()
+    return cursor.lastrowid
+
+
+def save_config_setting(
+    connection,
+    instance_id: int,
+    audit_run_id: int,
+    setting_name: str,
+    configured_value: int = None,
+    running_value: int = None,
+    required_value: int = None,
+    status: str = None,
+    risk_level: str = None,
+    min_value: int = None,
+    max_value: int = None,
+    is_dynamic: bool = None,
+    is_advanced: bool = None,
+    description: str = None,
+) -> int:
+    """Save a config setting to the database."""
+    now = datetime.now(timezone.utc).isoformat()
+    
+    cursor = connection.execute("""
+        INSERT OR REPLACE INTO config_settings
+        (instance_id, audit_run_id, setting_name, configured_value, running_value,
+         required_value, status, risk_level, min_value, max_value,
+         is_dynamic, is_advanced, description, collected_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        instance_id, audit_run_id, setting_name, configured_value, running_value,
+        required_value, status, risk_level, min_value, max_value,
+        is_dynamic, is_advanced, description, now
+    ))
+    connection.commit()
+    return cursor.lastrowid
+
+
+def save_db_user(
+    connection,
+    instance_id: int,
+    audit_run_id: int,
+    database_name: str,
+    user_name: str,
+    login_name: str = None,
+    user_type: str = None,
+    default_schema: str = None,
+    is_orphaned: bool = False,
+    is_dbo: bool = False,
+    is_guest: bool = False,
+    is_guest_enabled: bool = False,
+    create_date: str = None,
+) -> int:
+    """Save a database user to the database."""
+    now = datetime.now(timezone.utc).isoformat()
+    
+    cursor = connection.execute("""
+        INSERT OR REPLACE INTO database_users
+        (instance_id, audit_run_id, database_name, user_name, login_name,
+         user_type, default_schema, is_orphaned, is_dbo, is_guest,
+         is_guest_enabled, create_date, collected_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        instance_id, audit_run_id, database_name, user_name, login_name,
+        user_type, default_schema, is_orphaned, is_dbo, is_guest,
+        is_guest_enabled, create_date, now
+    ))
+    connection.commit()
+    return cursor.lastrowid
+
+
+def save_linked_server(
+    connection,
+    instance_id: int,
+    audit_run_id: int,
+    linked_server_name: str,
+    product: str = None,
+    provider: str = None,
+    data_source: str = None,
+    is_rpc_out_enabled: bool = False,
+    is_data_access_enabled: bool = False,
+    is_remote_login_enabled: bool = False,
+    uses_self_mapping: bool = False,
+    local_login: str = None,
+    remote_login: str = None,
+    is_impersonate: bool = False,
+) -> int:
+    """Save a linked server to the database."""
+    now = datetime.now(timezone.utc).isoformat()
+    
+    cursor = connection.execute("""
+        INSERT OR REPLACE INTO linked_servers
+        (instance_id, audit_run_id, linked_server_name, product, provider,
+         data_source, is_rpc_out_enabled, is_data_access_enabled,
+         is_remote_login_enabled, uses_self_mapping,
+         local_login, remote_login, is_impersonate, collected_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        instance_id, audit_run_id, linked_server_name, product, provider,
+        data_source, is_rpc_out_enabled, is_data_access_enabled,
+        is_remote_login_enabled, uses_self_mapping,
+        local_login, remote_login, is_impersonate, now
+    ))
+    connection.commit()
+    return cursor.lastrowid
+
+
+def save_backup_record(
+    connection,
+    instance_id: int,
+    audit_run_id: int,
+    database_name: str,
+    backup_type: str = None,
+    backup_start: str = None,
+    backup_finish: str = None,
+    size_bytes: int = None,
+    compressed_size: int = None,
+    is_copy_only: bool = False,
+    is_encrypted: bool = False,
+    physical_device_name: str = None,
+) -> int:
+    """Save a backup record to the database."""
+    now = datetime.now(timezone.utc).isoformat()
+    
+    cursor = connection.execute("""
+        INSERT INTO backup_history
+        (instance_id, audit_run_id, database_name, backup_type, backup_start,
+         backup_finish, size_bytes, compressed_size, is_copy_only,
+         is_encrypted, physical_device_name, collected_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        instance_id, audit_run_id, database_name, backup_type, backup_start,
+        backup_finish, size_bytes, compressed_size, is_copy_only,
+        is_encrypted, physical_device_name, now
+    ))
+    connection.commit()
+    return cursor.lastrowid
+
+
+def save_trigger(
+    connection,
+    instance_id: int,
+    audit_run_id: int,
+    trigger_name: str,
+    trigger_type: str = None,
+    database_name: str = None,
+    table_name: str = None,
+    is_enabled: bool = True,
+    is_instead_of: bool = False,
+    trigger_events: str = None,
+    definition: str = None,
+) -> int:
+    """Save a trigger to the database."""
+    now = datetime.now(timezone.utc).isoformat()
+    
+    cursor = connection.execute("""
+        INSERT OR REPLACE INTO triggers
+        (instance_id, audit_run_id, trigger_name, trigger_type, database_name,
+         table_name, is_enabled, is_instead_of, trigger_events, definition, collected_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        instance_id, audit_run_id, trigger_name, trigger_type, database_name,
+        table_name or "", is_enabled, is_instead_of, trigger_events, definition, now
+    ))
+    connection.commit()
+    return cursor.lastrowid

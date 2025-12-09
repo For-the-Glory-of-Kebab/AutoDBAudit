@@ -1,0 +1,39 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "_comment": "SQL Server Audit Targets Configuration",
+    "_instructions": [
+        "Add your SQL Server targets below.",
+        "Each target needs: name, host, and authentication details.",
+        "Use 'windows_auth': true for Windows authentication,",
+        "or provide 'username' and 'password' for SQL authentication."
+    ],
+    
+    "targets": [
+        {
+            "name": "Production SQL Server",
+            "host": "your-server-name",
+            "instance": "",
+            "port": 1433,
+            "windows_auth": true,
+            "enabled": false,
+            "_comment": "Set enabled=true and update host to audit this server"
+        },
+        {
+            "name": "Development SQL Server",
+            "host": "dev-sql-server",
+            "instance": "DEV2019",
+            "port": 1433,
+            "windows_auth": false,
+            "username": "audit_user",
+            "password": "",
+            "enabled": false,
+            "_comment": "For SQL auth, set password or use --setup-credentials"
+        }
+    ],
+    
+    "global_settings": {
+        "timeout_seconds": 30,
+        "encrypt_connection": true,
+        "trust_server_certificate": true
+    }
+}

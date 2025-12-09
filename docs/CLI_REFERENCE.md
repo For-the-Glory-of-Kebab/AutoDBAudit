@@ -9,7 +9,10 @@
 ```bash
 # Audit lifecycle
 python main.py --audit                    # Initial audit
-python main.py --generate-remediation     # Create TSQL scripts
+python main.py --generate-remediation     # Create smart TSQL scripts
+python main.py --apply-remediation --dry-run  # Preview execution
+python main.py --apply-remediation        # Execute scripts
+python main.py --status                   # Dashboard
 python main.py --sync                     # Track progress
 python main.py --finalize                 # Persist to DB
 
@@ -34,8 +37,8 @@ python main.py --audit [options]
 | Option | Description |
 |--------|-------------|
 | `--targets FILE` | Target instances (default: sql_targets.json) |
-| `--incremental` | Append to existing report |
-| `--output DIR` | Output directory (default: output/) |
+| `--config FILE` | Audit config (default: audit_config.json) |
+| `--organization` | Organization name for report |
 | `--verbose` | Enable debug logging |
 
 **Output**:
@@ -46,19 +49,77 @@ python main.py --audit [options]
 
 ### `--generate-remediation`
 
-Generate TSQL remediation scripts.
+Generate smart TSQL remediation scripts with 4 categories.
 
 ```bash
 python main.py --generate-remediation
 ```
 
-**Reads from**: SQLite findings table
-**Output**: `output/remediation_scripts/remediate_<server>_<instance>.sql`
+**Output**: `output/remediation_scripts/<server>_<instance>.sql`
+**Also generates**: `<server>_<instance>_ROLLBACK.sql`
 
-Scripts contain:
-- Commented-out TSQL fixes
-- Manual intervention notes
-- Entity keys for tracking
+**Script Categories**:
+| Category | Action | Examples |
+|----------|--------|----------|
+| AUTO-FIX | Executes | xp_cmdshell disable, orphan drop |
+| CAUTION | Executes + logs | SA disable with password |
+| REVIEW | Commented | High-privilege logins |
+| INFO | Instructions | Backups, version upgrade |
+
+---
+
+### `--apply-remediation`
+
+Execute remediation scripts against SQL Server.
+
+```bash
+python main.py --apply-remediation [options]
+```
+
+| Option | Description |
+|--------|-------------|
+| `--scripts PATH` | Folder or .sql file (default: output/remediation_scripts) |
+| `--dry-run` | Preview what would execute |
+| `--rollback` | Execute _ROLLBACK.sql scripts instead |
+
+**Examples**:
+```bash
+# Dry run (preview only)
+python main.py --apply-remediation --dry-run
+
+# Execute all scripts
+python main.py --apply-remediation
+
+# Execute single script
+python main.py --apply-remediation --scripts output/remediation_scripts/localhost_INTHEEND.sql
+
+# Rollback
+python main.py --apply-remediation --rollback
+```
+
+**Safety Features**:
+- GO batch isolation (failures don't abort script)
+- Credential protection (skips batches modifying connection login)
+- Extensive logging for each batch
+
+> ⚠️ **SA Protection**: If connecting as SA, SA remediation batches are SKIPPED.
+> Use a different sysadmin account to apply SA changes.
+
+---
+
+### `--status`
+
+Show audit dashboard with summary.
+
+```bash
+python main.py --status
+```
+
+**Output**:
+- Latest run info
+- Data counts (logins, databases, findings)
+- Findings by status/type
+- Action log summary
 
 ---
 
@@ -73,14 +134,12 @@ python main.py --sync [options]
 | Option | Description |
 |--------|-------------|
 | `--targets FILE` | Target instances |
-| `--excel FILE` | Excel to update with action log |
 
 **What it does**:
 1. Re-audits current state
 2. Diffs against initial baseline
 3. Logs fixed items with real timestamps
 4. Marks potential exceptions
-5. Updates Excel action sheet
 
 ---
 
@@ -94,14 +153,13 @@ python main.py --finalize [options]
 
 | Option | Description |
 |--------|-------------|
-| `--excel FILE` | Excel with annotations (required) |
+| `--excel FILE` | Excel with annotations |
 | `--baseline-run N` | Baseline run ID (default: first) |
 
 **What it does**:
 1. Reads Notes/Reasons from Excel
-2. Runs final audit snapshot
-3. Persists all data to SQLite
-4. Marks run as finalized
+2. Persists annotations to SQLite
+3. Marks run as finalized
 
 ---
 
@@ -110,12 +168,8 @@ python main.py --finalize [options]
 Read annotations from Excel (standalone).
 
 ```bash
-python main.py --apply-exceptions [options]
+python main.py --apply-exceptions --excel FILE
 ```
-
-| Option | Description |
-|--------|-------------|
-| `--excel FILE` | Excel file (default: latest) |
 
 **Persists**: Notes, Reasons, Status Overrides → SQLite annotations table
 
@@ -129,8 +183,6 @@ List available ODBC drivers.
 python main.py --check-drivers
 ```
 
-**Output**: List of installed SQL Server ODBC drivers.
-
 ---
 
 ### `--validate-config`
@@ -140,11 +192,6 @@ Validate configuration files.
 ```bash
 python main.py --validate-config
 ```
-
-**Checks**:
-- sql_targets.json syntax
-- config/security_settings.json
-- Credential encryption
 
 ---
 
@@ -156,51 +203,39 @@ python main.py --validate-config
 {
   "targets": [
     {
-      "server": "localhost",
-      "instance": "SQLEXPRESS",
-      "auth": "windows"
+      "name": "Production",
+      "host": "prod-sql01",
+      "instance": "MSSQLSERVER",
+      "port": 1433,
+      "windows_auth": true,
+      "enabled": true
     },
     {
-      "server": "prod-sql01",
-      "instance": "MSSQLSERVER",
-      "auth": "sql",
+      "name": "Dev",
+      "host": "dev-sql",
+      "instance": "",
+      "windows_auth": false,
       "username": "audit_user",
-      "password_encrypted": "..."
+      "password": "secret",
+      "enabled": true
     }
   ]
 }
 ```
 
-### config/security_settings.json
+### audit_settings.json
 
 ```json
 {
-  "settings": {
+  "security_settings": {
     "xp_cmdshell": {"required": 0, "risk": "critical"},
-    "clr enabled": {"required": 0, "risk": "high"},
-    "cross db ownership chaining": {"required": 0, "risk": "medium"}
+    "clr enabled": {"required": 0, "risk": "high"}
+  },
+  "backup_requirements": {
+    "max_days_without_full_backup": 7
   }
 }
 ```
-
----
-
-## Exit Codes
-
-| Code | Meaning |
-|------|---------|
-| 0 | Success |
-| 1 | Error |
-| 130 | Interrupted (Ctrl+C) |
-
----
-
-## Environment Variables
-
-| Variable | Purpose |
-|----------|---------|
-| `PYTHONPATH` | Must include `src/` directory |
-| `AUDIT_LOG_LEVEL` | Logging level (DEBUG, INFO, WARNING) |
 
 ---
 
@@ -208,25 +243,30 @@ python main.py --validate-config
 
 ```bash
 # Set up environment
-export PYTHONPATH="./src"
+$env:PYTHONPATH="d:\Raja-Initiative\src"
 
 # 1. Run initial audit
-python main.py --audit --targets sql_targets.json
+python main.py --audit
 
 # 2. Generate remediation scripts
 python main.py --generate-remediation
 
-# 3. Fix issues (execute scripts in SSMS)
+# 3. Preview changes
+python main.py --apply-remediation --dry-run
 
-# 4. Sync progress (repeat as needed)
-python main.py --sync
+# 4. Execute remediation
+python main.py --apply-remediation
 
-# 5. Edit Excel: add Notes/Reasons for exceptions
+# 5. Check status
+python main.py --status
 
-# 6. Finalize
+# 6. If needed, rollback
+python main.py --apply-remediation --rollback
+
+# 7. Finalize
 python main.py --finalize --excel output/sql_audit_edited.xlsx
 ```
 
 ---
 
-*Document Version: 1.0 | Last Updated: 2025-12-09*
+*Document Version: 2.0 | Last Updated: 2025-12-09*

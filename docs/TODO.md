@@ -1,62 +1,56 @@
 # TODO Tracker
 
-> Track work items. Checked items are complete.
-
 ---
 
-## 🔴 High Priority (Next Steps)
+## 🔴 High Priority
 
-### Schema Updates
-- [ ] Add `action_log` table to schema.py
-- [ ] Update `create_tables()` to include action_log
-
-### Excel Columns
-- [ ] Add Notes/Reason/Status Override to report_writer.py
-- [ ] Add columns to: Logins, Config, Databases, etc.
-
-### Command Refactor
-- [ ] Implement `--sync` (separate from --finalize)
-- [ ] Add real timestamp tracking in sync
-- [ ] Refactor `--finalize` to read Excel + persist all
+- [ ] Live test --apply-remediation with real SQL Server
+- [ ] Fix SA protection: If connecting as SA, must use different approach
 
 ---
 
 ## 🟡 Medium Priority
 
-- [ ] `--run-remediation` command (execute TSQL)
-- [ ] `--status` command (show audit state)
+- [ ] Carry-forward annotations on next audit
+- [ ] Triggers SQLite persistence
 - [ ] Permission Grants sheet
+- [ ] Hotfix deployment module
 
 ---
 
 ## ✅ Completed
 
-### 2025-12-09: Documentation
-- [x] AUDIT_WORKFLOW.md - Complete lifecycle
-- [x] SCHEMA_DESIGN.md - All tables
-- [x] CLI_REFERENCE.md - Command reference
-- [x] PROJECT_STATUS.md - Current state
+### 2025-12-09: Apply Remediation CLI
+- [x] script_executor.py with GO batch isolation
+- [x] --apply-remediation command
+- [x] --dry-run mode
+- [x] --rollback mode
+- [x] Credential protection (skips batches modifying connection login)
 
-### 2025-12-09: Exception Service
-- [x] exception_service.py
-- [x] ExcelAnnotationReader
-- [x] upsert_annotation helper
-- [x] --apply-exceptions CLI
+### 2025-12-09: Smart Remediation Scripts
+- [x] 4-category scripts (AUTO-FIX, CAUTION, REVIEW, INFO)
+- [x] Orphaned user DROP with full state logging
+- [x] Rollback script generation (_ROLLBACK.sql)
+- [x] SA rename + disable + password logged
 
-### 2025-12-09: Finalize Service
-- [x] finalize_service.py
-- [x] compare_findings diff logic
-- [x] --finalize CLI
+### 2025-12-09: Status Command
+- [x] status_service.py with dashboard
+- [x] --status CLI command
 
-### 2025-12-09: Remediation Service
-- [x] remediation_service.py
-- [x] TSQL templates (SA, config, logins, db, db_users)
-- [x] --generate-remediation CLI
+### 2025-12-09: SQLite Data Persistence
+- [x] logins, databases, users, config
+- [x] linked_servers, backups
 
-### 2025-12-09: Findings Storage
-- [x] findings table in schema.py
-- [x] finding_changes table
-- [x] 9 finding types wired in data_collector
+### 2025-12-09: Earlier
+- [x] finalize, exception, sync services
+
+---
+
+## ⚠️ Known Issues
+
+**SA Connection Protection**: If you connect to SQL Server using the SA login,
+the --apply-remediation command will SKIP all SA modification batches to prevent
+locking yourself out. To apply SA remediation, use a different admin account.
 
 ---
 
