@@ -222,8 +222,15 @@ class AuditService:
         
         query_provider = get_query_provider(version_info.version_major)
         
-        # Create collector and collect all data
-        collector = AuditDataCollector(connector, query_provider, writer)
+        # Create collector with SQLite connection for findings storage
+        collector = AuditDataCollector(
+            connector, 
+            query_provider, 
+            writer,
+            db_conn=store._get_connection(),
+            audit_run_id=self._audit_run_id,
+            instance_id=instance.id,
+        )
         counts = collector.collect_all(
             server_name=target.server,
             instance_name=target.instance,

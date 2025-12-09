@@ -50,10 +50,18 @@ Examples:
     # Remediation commands
     parser.add_argument("--generate-remediation", action="store_true",
                        help="Generate individual remediation scripts")
+    parser.add_argument("--finalize", action="store_true",
+                       help="Re-audit and compare to baseline (verify remediation)")
+    parser.add_argument("--baseline-run", type=int,
+                       help="Baseline run ID for --finalize (latest if not specified)")
     parser.add_argument("--apply-remediation", action="store_true",
                        help="Apply remediation scripts (comment-aware)")
     parser.add_argument("--scripts", type=str,
                        help="Path to remediation scripts directory")
+    parser.add_argument("--apply-exceptions", action="store_true",
+                       help="Read Notes/Reason from Excel and persist to SQLite")
+    parser.add_argument("--excel", type=str,
+                       help="Excel file for --apply-exceptions (latest if not specified)")
     
     # Hotfix deployment commands
     parser.add_argument("--deploy-hotfixes", action="store_true",
@@ -91,7 +99,56 @@ Examples:
         
         elif args.generate_remediation:
             logger.info("Generating remediation scripts")
-            print("Remediation generation - implementation pending (Phase 4)")
+            from autodbaudit.application.remediation_service import RemediationService
+            service = RemediationService(
+                db_path=DEFAULT_OUTPUT_DIR / "audit_history.db",
+                output_dir=DEFAULT_OUTPUT_DIR / "remediation_scripts"
+            )
+            scripts = service.generate_scripts()
+            print(f"\n✅ Generated {len(scripts)} remediation script(s):")
+            for s in scripts:
+                print(f"   📄 {s}")
+            return 0
+        
+        elif args.finalize:
+            logger.info("Finalizing remediation")
+            from autodbaudit.application.finalize_service import FinalizeService
+            service = FinalizeService(db_path=DEFAULT_OUTPUT_DIR / "audit_history.db")
+            result = service.finalize(
+                baseline_run_id=args.baseline_run,
+                targets_file=args.targets
+            )
+            
+            if "error" in result:
+                print(f"\n❌ {result['error']}")
+                return 1
+            
+            print(f"\n✅ Finalize complete!")
+            print(f"   Baseline: Run #{result['baseline_run_id']}")
+            print(f"   New:      Run #{result['new_run_id']}")
+            print(f"")
+            print(f"   ✅ Fixed:      {result['fixed']}")
+            print(f"   ⚠️  Excepted:   {result['excepted']}")
+            print(f"   🔴 Regression: {result['regression']}")
+            print(f"   🆕 New:        {result['new']}")
+            return 0
+        
+        elif args.apply_exceptions:
+            logger.info("Applying exceptions from Excel")
+            from autodbaudit.application.exception_service import ExceptionService
+            service = ExceptionService(
+                db_path=DEFAULT_OUTPUT_DIR / "audit_history.db",
+                excel_path=args.excel
+            )
+            result = service.apply_exceptions()
+            
+            if "error" in result:
+                print(f"\n❌ {result['error']}")
+                return 1
+            
+            print(f"\n✅ Applied {result['applied']} annotation(s)")
+            if result.get("errors"):
+                print(f"   ⚠️  {result['errors']} error(s)")
             return 0
         
         elif args.deploy_hotfixes:

@@ -361,6 +361,46 @@ CREATE TABLE IF NOT EXISTS sql_services (
 );
 
 -- ============================================================================
+-- Findings (Core table for diff-based finalize)
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS findings (
+    id INTEGER PRIMARY KEY,
+    audit_run_id INTEGER NOT NULL REFERENCES audit_runs(id) ON DELETE CASCADE,
+    instance_id INTEGER NOT NULL REFERENCES instances(id) ON DELETE CASCADE,
+    entity_key TEXT NOT NULL,           -- 'SERVER|INSTANCE|entity_name' for tracking
+    finding_type TEXT NOT NULL,         -- 'login', 'config', 'db_user', 'linked_server', etc.
+    entity_name TEXT NOT NULL,          -- The specific name (login name, config name, etc.)
+    status TEXT NOT NULL,               -- 'PASS', 'FAIL', 'WARN'
+    risk_level TEXT,                    -- 'critical', 'high', 'medium', 'low'
+    finding_description TEXT,           -- What was found
+    recommendation TEXT,                -- What to do about it
+    details TEXT,                       -- JSON with entity-specific details
+    collected_at TEXT NOT NULL,
+    UNIQUE(audit_run_id, entity_key)
+);
+
+-- ============================================================================
+-- Finding Changes (Diff tracking between audit runs)
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS finding_changes (
+    id INTEGER PRIMARY KEY,
+    from_run_id INTEGER NOT NULL REFERENCES audit_runs(id) ON DELETE CASCADE,
+    to_run_id INTEGER NOT NULL REFERENCES audit_runs(id) ON DELETE CASCADE,
+    entity_key TEXT NOT NULL,
+    change_type TEXT NOT NULL,          -- 'fixed', 'excepted', 'regression', 'new', 'unchanged'
+    old_status TEXT,                    -- Status in from_run
+    new_status TEXT,                    -- Status in to_run
+    action_description TEXT,            -- Auto-generated: "Disabled login 'sa' on PROD01\SQL2019"
+    exception_reason TEXT,              -- User fills this for exceptions
+    exception_approved_by TEXT,
+    exception_approved_at TEXT,
+    changed_at TEXT NOT NULL,
+    UNIQUE(from_run_id, to_run_id, entity_key)
+);
+
+-- ============================================================================
 -- Indexes for Performance
 -- ============================================================================
 
@@ -369,6 +409,9 @@ CREATE INDEX IF NOT EXISTS idx_logins_name ON logins(login_name);
 CREATE INDEX IF NOT EXISTS idx_database_users_instance ON database_users(instance_id, audit_run_id);
 CREATE INDEX IF NOT EXISTS idx_annotations_key ON annotations(entity_type, entity_key);
 CREATE INDEX IF NOT EXISTS idx_backup_history_db ON backup_history(instance_id, database_name);
+CREATE INDEX IF NOT EXISTS idx_findings_key ON findings(entity_key);
+CREATE INDEX IF NOT EXISTS idx_findings_status ON findings(audit_run_id, status);
+CREATE INDEX IF NOT EXISTS idx_finding_changes_runs ON finding_changes(from_run_id, to_run_id);
 """
 
 
@@ -504,3 +547,233 @@ def build_entity_key(*parts: str) -> str:
         # Returns: "PROD-SQL01|INSTANCE1|sa"
     """
     return "|".join(str(p) for p in parts)
+
+
+def save_finding(
+    connection,
+    audit_run_id: int,
+    instance_id: int,
+    entity_key: str,
+    finding_type: str,
+    entity_name: str,
+    status: str,
+    risk_level: str | None = None,
+    finding_description: str | None = None,
+    recommendation: str | None = None,
+    details: str | None = None,
+) -> int:
+    """
+    Save a finding to the database.
+    
+    Args:
+        connection: SQLite connection
+        audit_run_id: Current audit run ID
+        instance_id: Instance ID this finding belongs to
+        entity_key: Composite key for tracking (e.g., "SERVER|INSTANCE|sa")
+        finding_type: Type of finding (login, config, db_user, etc.)
+        entity_name: Specific entity name
+        status: PASS, FAIL, or WARN
+        risk_level: critical, high, medium, low
+        finding_description: What was found
+        recommendation: What to do about it
+        details: JSON string with entity-specific details
+        
+    Returns:
+        Finding ID
+    """
+    now = datetime.now(timezone.utc).isoformat()
+    
+    cursor = connection.execute("""
+        INSERT OR REPLACE INTO findings 
+        (audit_run_id, instance_id, entity_key, finding_type, entity_name, 
+         status, risk_level, finding_description, recommendation, details, collected_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        audit_run_id, instance_id, entity_key, finding_type, entity_name,
+        status, risk_level, finding_description, recommendation, details, now
+    ))
+    
+    connection.commit()
+    return cursor.lastrowid
+
+
+def get_findings_for_run(
+    connection,
+    audit_run_id: int,
+    status_filter: str | None = None
+) -> list[dict]:
+    """
+    Get all findings for an audit run.
+    
+    Args:
+        connection: SQLite connection
+        audit_run_id: Audit run ID
+        status_filter: Optional filter by status (PASS, FAIL, WARN)
+        
+    Returns:
+        List of finding dicts
+    """
+    if status_filter:
+        rows = connection.execute("""
+            SELECT * FROM findings 
+            WHERE audit_run_id = ? AND status = ?
+            ORDER BY finding_type, entity_name
+        """, (audit_run_id, status_filter)).fetchall()
+    else:
+        rows = connection.execute("""
+            SELECT * FROM findings 
+            WHERE audit_run_id = ?
+            ORDER BY finding_type, entity_name
+        """, (audit_run_id,)).fetchall()
+    
+    return [dict(row) for row in rows]
+
+
+def compare_findings(
+    connection,
+    from_run_id: int,
+    to_run_id: int
+) -> dict:
+    """
+    Compare findings between two audit runs.
+    
+    Args:
+        connection: SQLite connection
+        from_run_id: Baseline audit run ID
+        to_run_id: New audit run ID
+        
+    Returns:
+        Dict with 'fixed', 'excepted', 'regression', 'new' lists
+    """
+    # Get findings from both runs
+    old_findings = {f["entity_key"]: f for f in get_findings_for_run(connection, from_run_id)}
+    new_findings = {f["entity_key"]: f for f in get_findings_for_run(connection, to_run_id)}
+    
+    result = {
+        "fixed": [],      # Was FAIL/WARN, now PASS
+        "excepted": [],   # Was FAIL/WARN, still FAIL/WARN
+        "regression": [], # Was PASS, now FAIL/WARN
+        "new": [],        # Didn't exist before
+    }
+    
+    for key, old in old_findings.items():
+        if key in new_findings:
+            new = new_findings[key]
+            if old["status"] in ("FAIL", "WARN") and new["status"] == "PASS":
+                result["fixed"].append({"old": old, "new": new})
+            elif old["status"] in ("FAIL", "WARN") and new["status"] in ("FAIL", "WARN"):
+                result["excepted"].append({"old": old, "new": new})
+            elif old["status"] == "PASS" and new["status"] in ("FAIL", "WARN"):
+                result["regression"].append({"old": old, "new": new})
+        # Items that disappeared are ignored (entity removed from server)
+    
+    for key, new in new_findings.items():
+        if key not in old_findings and new["status"] in ("FAIL", "WARN"):
+            result["new"].append({"new": new})
+    
+    return result
+
+
+def upsert_annotation(
+    connection,
+    entity_type: str,
+    entity_key: str,
+    field_name: str,
+    field_value: str,
+    modified_by: str = "user",
+    status_override: str | None = None,
+    audit_run_id: int | None = None,
+) -> int:
+    """
+    Insert or update an annotation.
+    
+    Annotations are keyed by (entity_type, entity_key, field_name).
+    Also records change in annotation_history for audit trail.
+    
+    Args:
+        connection: SQLite connection
+        entity_type: Type of entity (login, config, database, etc.)
+        entity_key: Composite key (server|instance|name)
+        field_name: Field being annotated (notes, reason, status_override)
+        field_value: The annotation value
+        modified_by: Who made the change (user, excel_import, system)
+        status_override: Optional status override (Accept, Reject, Exception)
+        audit_run_id: Link to audit run (optional)
+        
+    Returns:
+        Annotation ID
+    """
+    now = datetime.now(timezone.utc).isoformat()
+    
+    # Check if annotation exists
+    existing = connection.execute("""
+        SELECT id, field_value FROM annotations
+        WHERE entity_type = ? AND entity_key = ? AND field_name = ?
+    """, (entity_type, entity_key, field_name)).fetchone()
+    
+    if existing:
+        old_value = existing[1] if hasattr(existing, '__getitem__') else existing["field_value"]
+        
+        # Update existing
+        connection.execute("""
+            UPDATE annotations 
+            SET field_value = ?, status_override = ?, modified_at = ?, modified_by = ?
+            WHERE entity_type = ? AND entity_key = ? AND field_name = ?
+        """, (field_value, status_override, now, modified_by,
+              entity_type, entity_key, field_name))
+        
+        annotation_id = existing[0] if hasattr(existing, '__getitem__') else existing["id"]
+        
+        # Record history if value changed
+        if old_value != field_value:
+            connection.execute("""
+                INSERT INTO annotation_history
+                (annotation_id, old_value, new_value, changed_at, changed_by, audit_run_id)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (annotation_id, old_value, field_value, now, modified_by, audit_run_id))
+    else:
+        # Insert new
+        cursor = connection.execute("""
+            INSERT INTO annotations
+            (entity_type, entity_key, field_name, field_value, status_override, 
+             created_at, modified_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (entity_type, entity_key, field_name, field_value, status_override,
+              now, modified_by))
+        
+        annotation_id = cursor.lastrowid
+        
+        # Record initial history
+        connection.execute("""
+            INSERT INTO annotation_history
+            (annotation_id, old_value, new_value, changed_at, changed_by, audit_run_id)
+            VALUES (?, NULL, ?, ?, ?, ?)
+        """, (annotation_id, field_value, now, modified_by, audit_run_id))
+    
+    connection.commit()
+    return annotation_id
+
+
+def get_annotations_for_entity(connection, entity_key: str) -> dict:
+    """
+    Get all annotations for an entity.
+    
+    Returns dict with field_name → field_value mappings.
+    """
+    rows = connection.execute("""
+        SELECT field_name, field_value, status_override
+        FROM annotations
+        WHERE entity_key = ?
+    """, (entity_key,)).fetchall()
+    
+    result = {}
+    for row in rows:
+        fn = row[0] if hasattr(row, '__getitem__') else row["field_name"]
+        fv = row[1] if hasattr(row, '__getitem__') else row["field_value"]
+        so = row[2] if hasattr(row, '__getitem__') else row["status_override"]
+        result[fn] = fv
+        if so:
+            result["status_override"] = so
+    
+    return result
+

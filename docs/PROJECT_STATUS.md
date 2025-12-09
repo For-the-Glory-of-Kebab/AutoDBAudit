@@ -1,70 +1,95 @@
-# AutoDBAudit - Project Status
+# Project Status
 
-> **TL;DR**: CLI works, generates 17-sheet Excel report. SQLite not wired yet.
-
----
-
-## Current State (2025-12-08)
-
-### ✅ Working
-| What | Command/File |
-|------|--------------|
-| Full audit to Excel | `python main.py --audit` |
-| 17-sheet report | All sheets populate with real data |
-| Multi-instance | Audits all servers in `sql_targets.json` |
-| SQL 2008-2025+ | Version-specific queries work |
-
-### ⚠️ Exists But Not Wired
-| What | Why |
-|------|-----|
-| SQLite HistoryStore | Code in `sqlite/store.py`, not called from `audit_service.py` |
-| Schema v2 | Defined in `sqlite/schema.py`, never executed |
-
-### ❌ Not Implemented
-| What | Notes |
-|------|-------|
-| `--finalize` command | Would persist Excel annotations to SQLite |
-| Historical diff | Requires SQLite first |
-| Permission Grants sheet | Requirement #28 |
+> **Purpose**: Current state of implementation for new developers.
 
 ---
 
-## Architecture Overview
+## Quick Status
 
-```
-main.py
-  └── cli.py (argparse)
-        └── AuditService.run_audit()
-              ├── ConfigLoader.load() → sql_targets.json
-              ├── SqlConnector.connect() for each target
-              ├── AuditDataCollector.collect_all()
-              │     └── Executes queries via QueryProvider
-              └── EnhancedReportWriter.save()
-                    └── Generates 17-sheet Excel
+| Component | Status | Notes |
+|-----------|--------|-------|
+| Audit (`--audit`) | ✅ Complete | Collects 9 finding types |
+| Remediation Scripts | ✅ Complete | TSQL templates for 5 types |
+| Sync (`--sync`) | ⚠️ Partial | Needs `action_log` table |
+| Finalize (`--finalize`) | ⚠️ Partial | Needs refactor for final design |
+| Excel Columns | ⚠️ Pending | Need Notes/Reason columns |
+
+---
+
+## What Works Now
+
+### Commands
+```bash
+python main.py --audit               # ✅ Full audit to Excel + SQLite
+python main.py --generate-remediation # ✅ TSQL scripts
+python main.py --finalize            # ⚠️ Diff only, no action_log
+python main.py --apply-exceptions    # ⚠️ Reads Excel, needs columns
+python main.py --check-drivers       # ✅ ODBC check
 ```
 
----
-
-## File Quick Reference
-
-| File | Purpose |
-|------|---------|
-| `cli.py` | Entry point, argument parsing |
-| `audit_service.py` | Orchestrates the audit flow |
-| `data_collector.py` | Collects all data from SQL Server |
-| `sql/connector.py` | `SqlConnector` class with version detection |
-| `sql/query_provider.py` | 2008 vs 2012+ query strategies (~1400 lines) |
-| `excel/writer.py` | `EnhancedReportWriter` with 17 sheet mixins |
+### Data Flow
+- ✅ SQL Server → data_collector → Excel + SQLite
+- ✅ SQLite → remediation_service → TSQL scripts
+- ⚠️ Diff logic exists but action_log table missing
+- ⚠️ Excel annotations read but columns not in sheets
 
 ---
 
-## Next Steps (Priority Order)
+## What Needs Work
 
-1. **SQLite Integration** - Wire `HistoryStore` into `audit_service.py`
-2. **`--finalize` Command** - Read Excel annotations, store in SQLite
-3. **Permission Grants Sheet** - Requirement #28
-4. **Historical Diff** - Compare audit runs
+### Priority 1: Schema Changes
+
+Need to add `action_log` table:
+```sql
+CREATE TABLE action_log (
+    id INTEGER PRIMARY KEY,
+    initial_run_id INTEGER,
+    entity_key TEXT,
+    action_type TEXT,
+    action_date TEXT,        -- Real timestamp
+    action_description TEXT,
+    captured_at TEXT
+);
+```
+
+### Priority 2: Excel Columns
+
+Add to each sheet:
+- `Notes` column
+- `Reason` column
+- `Status Override` column (for exceptions)
+
+### Priority 3: Refactor Commands
+
+- `--sync`: Separate from `--finalize`
+- `--sync`: Use `action_log` with real timestamps
+- `--finalize`: Read Excel, persist everything
 
 ---
 
-*Last updated: 2025-12-08*
+## File Map
+
+| File | Purpose | Status |
+|------|---------|--------|
+| `audit_service.py` | Main audit orchestration | ✅ |
+| `data_collector.py` | SQL Server data collection | ✅ |
+| `remediation_service.py` | TSQL generation | ✅ |
+| `finalize_service.py` | Diff logic | ⚠️ Needs refactor |
+| `exception_service.py` | Excel → SQLite | ⚠️ Needs columns |
+| `cli.py` | Command handlers | ⚠️ Needs --sync |
+| `schema.py` | SQLite tables | ⚠️ Needs action_log |
+| `report_writer.py` | Excel generation | ⚠️ Needs columns |
+
+---
+
+## Reading Order for New Devs
+
+1. `docs/AUDIT_WORKFLOW.md` - Understand the lifecycle
+2. `docs/SCHEMA_DESIGN.md` - Understand data model
+3. `docs/CLI_REFERENCE.md` - Understand commands
+4. `src/autodbaudit/application/data_collector.py` - Core collection logic
+5. `src/autodbaudit/infrastructure/sqlite/schema.py` - All tables
+
+---
+
+*Last Updated: 2025-12-09*

@@ -1,16 +1,42 @@
 # AutoDBAudit
 
-**SQL Server Security Audit Tool** - Generates comprehensive 17-sheet Excel reports for security compliance auditing across multiple SQL Server instances (2008 R2 - 2025+).
+**SQL Server Security Audit Tool** - Complete security compliance workflow with audit, remediation, and exception tracking.
 
 ---
 
-## What Works Today ✅
+## Workflow Overview
 
-| Command | What It Does |
-|---------|--------------|
-| `python main.py --audit` | Connects to configured SQL Servers, collects security data, generates Excel report |
+```bash
+# 1. Initial audit → Excel + SQLite
+python main.py --audit
 
-**Output**: `output/sql_audit_YYYYMMDD_HHMMSS.xlsx` (17 sheets)
+# 2. Generate remediation scripts
+python main.py --generate-remediation
+
+# 3. Execute fixes (in SSMS or via app)
+
+# 4. Sync progress (repeat as needed)
+python main.py --sync
+
+# 5. Add Notes/Reasons in Excel for exceptions
+
+# 6. Finalize → Persist to SQLite
+python main.py --finalize --excel output/sql_audit_edited.xlsx
+```
+
+See [docs/AUDIT_WORKFLOW.md](docs/AUDIT_WORKFLOW.md) for complete lifecycle.
+
+---
+
+## Current Status
+
+| Command | Status |
+|---------|--------|
+| `--audit` | ✅ Complete |
+| `--generate-remediation` | ✅ Complete |
+| `--sync` | ⚠️ In Progress |
+| `--finalize` | ⚠️ In Progress |
+| `--apply-exceptions` | ⚠️ In Progress |
 
 ---
 
@@ -26,10 +52,9 @@ pip install -r requirements.txt
 
 ### 2. Configure SQL Targets
 ```powershell
-copy config\sql_targets.example.json config\sql_targets.json
-notepad config\sql_targets.json
+copy sql_targets.example.json sql_targets.json
+notepad sql_targets.json
 ```
-Edit `sql_targets.json` with your SQL Server connection details.
 
 ### 3. Run Audit
 ```powershell
@@ -39,23 +64,15 @@ python main.py --audit
 
 ---
 
-## Project Structure
+## Documentation
 
-```
-src/autodbaudit/
-├── application/              # Business logic
-│   ├── audit_service.py      # Main orchestrator (run_audit)
-│   └── data_collector.py     # Collects data from SQL Server
-├── infrastructure/           # External integrations
-│   ├── sql/                  # SQL Server connectivity
-│   │   ├── connector.py      # SqlConnector class
-│   │   └── query_provider.py # Version-specific SQL queries
-│   ├── sqlite/               # (Exists but not wired up yet)
-│   └── excel/                # Excel generation (21 files)
-│       └── writer.py         # EnhancedReportWriter (17 sheets)
-└── interface/
-    └── cli.py                # Command-line interface
-```
+| Document | Purpose |
+|----------|---------|
+| [AUDIT_WORKFLOW.md](docs/AUDIT_WORKFLOW.md) | Complete lifecycle |
+| [SCHEMA_DESIGN.md](docs/SCHEMA_DESIGN.md) | SQLite tables |
+| [CLI_REFERENCE.md](docs/CLI_REFERENCE.md) | Command reference |
+| [PROJECT_STATUS.md](docs/PROJECT_STATUS.md) | Implementation state |
+| [TODO.md](docs/TODO.md) | Work items |
 
 ---
 

@@ -52,7 +52,8 @@ class AuditDataCollector:
     Collects audit data from SQL Server and writes to Excel.
     
     This class encapsulates all the data collection logic needed
-    for a comprehensive security audit.
+    for a comprehensive security audit. Optionally stores findings
+    to SQLite for diff-based finalize workflow.
     """
     
     def __init__(
@@ -60,6 +61,9 @@ class AuditDataCollector:
         connector: SqlConnector,
         query_provider: QueryProvider,
         writer: EnhancedReportWriter,
+        db_conn=None,
+        audit_run_id: int | None = None,
+        instance_id: int | None = None,
     ) -> None:
         """
         Initialize collector.
@@ -68,10 +72,67 @@ class AuditDataCollector:
             connector: SQL Server connection
             query_provider: Version-appropriate query provider
             writer: Excel report writer to populate
+            db_conn: SQLite connection for findings storage (optional)
+            audit_run_id: Current audit run ID (required if db_conn set)
+            instance_id: Instance ID for this target (required if db_conn set)
         """
         self.conn = connector
         self.prov = query_provider
         self.writer = writer
+        # SQLite storage (optional)
+        self._db_conn = db_conn
+        self._audit_run_id = audit_run_id
+        self._instance_id = instance_id
+        # Track server/instance for entity keys
+        self._server_name = ""
+        self._instance_name = ""
+    
+    def _save_finding(
+        self,
+        finding_type: str,
+        entity_name: str,
+        status: str,
+        risk_level: str | None = None,
+        description: str | None = None,
+        recommendation: str | None = None,
+        details: str | None = None,
+    ) -> None:
+        """
+        Save a finding to SQLite if db_conn is set.
+        
+        Args:
+            finding_type: Type of finding (login, config, etc.)
+            entity_name: Specific entity name
+            status: PASS, FAIL, or WARN
+            risk_level: critical, high, medium, low
+            description: What was found
+            recommendation: What to do about it
+            details: JSON string with extra details
+        """
+        if self._db_conn is None or self._audit_run_id is None:
+            return
+        
+        from autodbaudit.infrastructure.sqlite.schema import save_finding, build_entity_key
+        
+        entity_key = build_entity_key(
+            self._server_name,
+            self._instance_name or "(Default)",
+            entity_name
+        )
+        
+        save_finding(
+            connection=self._db_conn,
+            audit_run_id=self._audit_run_id,
+            instance_id=self._instance_id,
+            entity_key=entity_key,
+            finding_type=finding_type,
+            entity_name=entity_name,
+            status=status,
+            risk_level=risk_level,
+            finding_description=description,
+            recommendation=recommendation,
+            details=details,
+        )
     
     def collect_all(
         self,
@@ -92,6 +153,10 @@ class AuditDataCollector:
         Returns:
             Dict with counts per category
         """
+        # Store for entity key generation
+        self._server_name = server_name
+        self._instance_name = instance_name
+        
         counts = {}
         sn = server_name
         inst = instance_name
@@ -204,13 +269,33 @@ class AuditDataCollector:
         for lg in logins:
             if bool(lg.get("IsSA")):
                 login_name = lg.get("LoginName", "")
+                is_disabled = bool(lg.get("IsDisabled"))
+                is_renamed = login_name.lower() != "sa"
+                
                 self.writer.add_sa_account(
                     server_name=sn,
                     instance_name=inst,
-                    is_disabled=bool(lg.get("IsDisabled")),
-                    is_renamed=login_name.lower() != "sa",
+                    is_disabled=is_disabled,
+                    is_renamed=is_renamed,
                     current_name=login_name,
                     default_db=lg.get("DefaultDatabase", "master"),
+                )
+                
+                # Save finding to SQLite
+                if is_disabled:
+                    status = "PASS"
+                    desc = "SA account is disabled"
+                else:
+                    status = "FAIL"
+                    desc = "SA account is enabled"
+                
+                self._save_finding(
+                    finding_type="sa_account",
+                    entity_name="sa",
+                    status=status,
+                    risk_level="critical" if not is_disabled else None,
+                    description=desc,
+                    recommendation="Disable SA account" if not is_disabled else None,
                 )
                 return 1
         return 0
@@ -218,15 +303,41 @@ class AuditDataCollector:
     def _collect_logins(self, sn: str, inst: str, logins: list[dict]) -> int:
         """Collect server logins."""
         for lg in logins:
+            login_name = lg.get("LoginName", "")
+            login_type = lg.get("LoginType", "")
+            is_disabled = bool(lg.get("IsDisabled"))
+            pwd_policy = lg.get("PasswordPolicyEnforced")
+            
             self.writer.add_login(
                 server_name=sn,
                 instance_name=inst,
-                login_name=lg.get("LoginName", ""),
-                login_type=lg.get("LoginType", ""),
-                is_disabled=bool(lg.get("IsDisabled")),
-                pwd_policy=lg.get("PasswordPolicyEnforced"),
+                login_name=login_name,
+                login_type=login_type,
+                is_disabled=is_disabled,
+                pwd_policy=pwd_policy,
                 default_db=lg.get("DefaultDatabase", ""),
             )
+            
+            # SQL logins (not Windows auth) are findings
+            if login_type == "SQL_LOGIN" and not is_disabled:
+                self._save_finding(
+                    finding_type="login",
+                    entity_name=login_name,
+                    status="WARN",
+                    risk_level="medium",
+                    description=f"SQL login '{login_name}' (not Windows auth)",
+                    recommendation="Consider Windows authentication where possible",
+                )
+            # Disabled logins with policy issues
+            elif not pwd_policy and login_type == "SQL_LOGIN":
+                self._save_finding(
+                    finding_type="login",
+                    entity_name=login_name,
+                    status="FAIL",
+                    risk_level="high",
+                    description=f"SQL login '{login_name}' without password policy",
+                    recommendation="Enable password policy enforcement",
+                )
         return len(logins)
     
     def _collect_roles(self, sn: str, inst: str) -> int:
@@ -260,6 +371,8 @@ class AuditDataCollector:
                 for key, (required, risk) in SECURITY_SETTINGS.items():
                     if key.lower() == setting_key:
                         current = cfg.get("RunningValue", 0) or 0
+                        is_compliant = int(current) == required
+                        
                         self.writer.add_config_setting(
                             server_name=sn,
                             instance_name=inst,
@@ -267,6 +380,16 @@ class AuditDataCollector:
                             current_value=int(current),
                             required_value=required,
                             risk_level=risk,
+                        )
+                        
+                        # Save finding to SQLite
+                        self._save_finding(
+                            finding_type="config",
+                            entity_name=setting_name,
+                            status="PASS" if is_compliant else "FAIL",
+                            risk_level=risk if not is_compliant else None,
+                            description=f"{setting_name}={current} (required: {required})",
+                            recommendation=f"Set {setting_name} to {required}" if not is_compliant else None,
                         )
                         count += 1
                         break
@@ -306,17 +429,31 @@ class AuditDataCollector:
             user_dbs = [db for db in dbs if db.get("DatabaseName") not in SYSTEM_DBS]
             
             for db in dbs:
+                db_name = db.get("DatabaseName", "")
+                is_trustworthy = bool(db.get("IsTrustworthy"))
+                
                 self.writer.add_database(
                     server_name=sn,
                     instance_name=inst,
-                    database_name=db.get("DatabaseName", ""),
+                    database_name=db_name,
                     owner=db.get("Owner", ""),
                     recovery_model=db.get("RecoveryModel", ""),
                     state=db.get("State", ""),
                     data_size_mb=db.get("DataSizeMB") or db.get("SizeMB"),
                     log_size_mb=db.get("LogSizeMB"),
-                    is_trustworthy=bool(db.get("IsTrustworthy")),
+                    is_trustworthy=is_trustworthy,
                 )
+                
+                # Trustworthy flag is a finding
+                if is_trustworthy and db_name not in SYSTEM_DBS:
+                    self._save_finding(
+                        finding_type="database",
+                        entity_name=db_name,
+                        status="FAIL",
+                        risk_level="high",
+                        description=f"Database '{db_name}' has TRUSTWORTHY enabled",
+                        recommendation="Disable TRUSTWORTHY unless specifically required",
+                    )
             return dbs, user_dbs
         except Exception as e:
             logger.warning("Databases failed: %s", e)
@@ -355,6 +492,7 @@ class AuditDataCollector:
                     )
                     count += 1
                     
+                    # Orphaned user finding
                     if is_orphaned:
                         self.writer.add_orphaned_user(
                             server_name=sn,
@@ -362,6 +500,25 @@ class AuditDataCollector:
                             database_name=db_name,
                             user_name=user_name,
                             user_type=user_type,
+                        )
+                        self._save_finding(
+                            finding_type="db_user",
+                            entity_name=f"{db_name}|{user_name}",
+                            status="WARN",
+                            risk_level="medium",
+                            description=f"Orphaned user '{user_name}' in database '{db_name}'",
+                            recommendation="Remove or remap orphaned user",
+                        )
+                    
+                    # Guest enabled finding
+                    if user_name.lower() == "guest" and guest_enabled:
+                        self._save_finding(
+                            finding_type="db_user",
+                            entity_name=f"{db_name}|guest",
+                            status="FAIL",
+                            risk_level="high",
+                            description=f"Guest user enabled in database '{db_name}'",
+                            recommendation="Disable guest user access",
                         )
             except Exception:
                 pass
@@ -410,6 +567,7 @@ class AuditDataCollector:
             for ls in linked:
                 ls_name = ls.get("LinkedServerName", "")
                 local, remote, impersonate, risk = mapping_info.get(ls_name, ("", "", False, ""))
+                rpc_out = bool(ls.get("RpcOutEnabled"))
                 
                 self.writer.add_linked_server(
                     server_name=sn,
@@ -418,12 +576,32 @@ class AuditDataCollector:
                     product=ls.get("Product") or "",
                     provider=ls.get("Provider") or "",
                     data_source=ls.get("DataSource") or "",
-                    rpc_out=bool(ls.get("RpcOutEnabled")),
+                    rpc_out=rpc_out,
                     local_login=local,
                     remote_login=remote,
                     impersonate=impersonate,
                     risk_level=risk,
                 )
+                
+                # High privilege linked server finding
+                if risk == "HIGH_PRIVILEGE":
+                    self._save_finding(
+                        finding_type="linked_server",
+                        entity_name=ls_name,
+                        status="FAIL",
+                        risk_level="high",
+                        description=f"Linked server '{ls_name}' with high privilege mapping",
+                        recommendation="Review linked server credentials and access",
+                    )
+                elif rpc_out:
+                    self._save_finding(
+                        finding_type="linked_server",
+                        entity_name=ls_name,
+                        status="WARN",
+                        risk_level="medium",
+                        description=f"Linked server '{ls_name}' has RPC out enabled",
+                        recommendation="Disable RPC out if not required",
+                    )
             return len(linked)
         except Exception as e:
             logger.warning("Linked servers failed: %s", e)
@@ -477,16 +655,39 @@ class AuditDataCollector:
         try:
             backups = self.conn.execute_query(self.prov.get_backup_history())
             for b in backups:
+                db_name = b.get("DatabaseName", "")
+                days_since = b.get("DaysSinceBackup")
+                
                 self.writer.add_backup_info(
                     server_name=sn,
                     instance_name=inst,
-                    database_name=b.get("DatabaseName", ""),
+                    database_name=db_name,
                     recovery_model=b.get("RecoveryModel", ""),
                     last_backup_date=b.get("BackupDate"),
-                    days_since=b.get("DaysSinceBackup"),
+                    days_since=days_since,
                     backup_path=b.get("BackupPath", ""),
                     backup_size_mb=b.get("BackupSizeMB"),
                 )
+                
+                # Backup findings
+                if days_since is None:
+                    self._save_finding(
+                        finding_type="backup",
+                        entity_name=db_name,
+                        status="FAIL",
+                        risk_level="critical",
+                        description=f"Database '{db_name}' has no backup",
+                        recommendation="Create backup immediately",
+                    )
+                elif days_since > 7:
+                    self._save_finding(
+                        finding_type="backup",
+                        entity_name=db_name,
+                        status="WARN",
+                        risk_level="high" if days_since > 30 else "medium",
+                        description=f"Database '{db_name}' backup is {days_since} days old",
+                        recommendation="Review backup schedule",
+                    )
             return len(backups)
         except Exception as e:
             logger.warning("Backups failed: %s", e)
