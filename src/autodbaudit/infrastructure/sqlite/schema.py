@@ -248,7 +248,7 @@ CREATE TABLE IF NOT EXISTS triggers (
     instance_id INTEGER NOT NULL REFERENCES instances(id) ON DELETE CASCADE,
     audit_run_id INTEGER NOT NULL REFERENCES audit_runs(id) ON DELETE CASCADE,
     trigger_level TEXT NOT NULL,  -- 'SERVER' or 'DATABASE'
-    database_name TEXT,  -- NULL for server triggers
+    database_name TEXT DEFAULT '',  -- Empty string for server triggers (SQLite UNIQUE workaround)
     trigger_name TEXT NOT NULL,
     parent_object TEXT,
     trigger_type TEXT,
@@ -259,7 +259,7 @@ CREATE TABLE IF NOT EXISTS triggers (
     create_date TEXT,
     modify_date TEXT,
     collected_at TEXT NOT NULL,
-    UNIQUE(instance_id, audit_run_id, trigger_level, COALESCE(database_name, ''), trigger_name)
+    UNIQUE(instance_id, audit_run_id, trigger_level, database_name, trigger_name)
 );
 
 -- ============================================================================

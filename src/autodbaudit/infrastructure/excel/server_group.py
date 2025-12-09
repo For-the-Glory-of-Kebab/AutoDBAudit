@@ -113,10 +113,12 @@ class ServerGroupMixin:
         data_cols: list[int],
         ws: Worksheet,
     ) -> None:
-        """Apply background color to specified columns."""
+        """Apply background color to specified columns AND Instance column."""
         fill = PatternFill(start_color=color, end_color=color, fill_type="solid")
         for col in data_cols:
             ws.cell(row=row, column=col).fill = fill
+        # Always ensure Instance column (2) gets the color too
+        ws.cell(row=row, column=2).fill = fill
     
     def _merge_instance(self, config_name: str) -> None:
         """Merge Instance cells for current instance group."""
@@ -130,6 +132,15 @@ class ServerGroupMixin:
                 end_row=current_row - 1,
                 server_name=state.last_instance,
                 is_alt=state.instance_alt,
+            )
+            # Always apply fill to merged instance cell
+            color_main, color_light = SERVER_GROUP_COLORS[
+                state.server_idx % len(SERVER_GROUP_COLORS)
+            ]
+            fill_color = color_main if state.instance_alt else color_light
+            merged = state.ws.cell(row=state.instance_start_row, column=2)
+            merged.fill = PatternFill(
+                start_color=fill_color, end_color=fill_color, fill_type="solid"
             )
     
     def _merge_groups(self, config_name: str) -> None:
