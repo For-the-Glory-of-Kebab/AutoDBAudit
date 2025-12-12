@@ -50,12 +50,12 @@ SYSTEM_DBS = ("master", "tempdb", "model", "msdb")
 class AuditDataCollector:
     """
     Collects audit data from SQL Server and writes to Excel.
-    
+
     This class encapsulates all the data collection logic needed
     for a comprehensive security audit. Optionally stores findings
     to SQLite for diff-based finalize workflow.
     """
-    
+
     def __init__(
         self,
         connector: SqlConnector,
@@ -67,7 +67,7 @@ class AuditDataCollector:
     ) -> None:
         """
         Initialize collector.
-        
+
         Args:
             connector: SQL Server connection
             query_provider: Version-appropriate query provider
@@ -86,7 +86,7 @@ class AuditDataCollector:
         # Track server/instance for entity keys
         self._server_name = ""
         self._instance_name = ""
-    
+
     def _save_finding(
         self,
         finding_type: str,
@@ -99,7 +99,7 @@ class AuditDataCollector:
     ) -> None:
         """
         Save a finding to SQLite if db_conn is set.
-        
+
         Args:
             finding_type: Type of finding (login, config, etc.)
             entity_name: Specific entity name
@@ -111,15 +111,16 @@ class AuditDataCollector:
         """
         if self._db_conn is None or self._audit_run_id is None:
             return
-        
-        from autodbaudit.infrastructure.sqlite.schema import save_finding, build_entity_key
-        
-        entity_key = build_entity_key(
-            self._server_name,
-            self._instance_name or "(Default)",
-            entity_name
+
+        from autodbaudit.infrastructure.sqlite.schema import (
+            save_finding,
+            build_entity_key,
         )
-        
+
+        entity_key = build_entity_key(
+            self._server_name, self._instance_name or "(Default)", entity_name
+        )
+
         save_finding(
             connection=self._db_conn,
             audit_run_id=self._audit_run_id,
@@ -133,7 +134,7 @@ class AuditDataCollector:
             recommendation=recommendation,
             details=details,
         )
-    
+
     def collect_all(
         self,
         server_name: str,
@@ -143,74 +144,77 @@ class AuditDataCollector:
     ) -> dict:
         """
         Collect all audit data for an instance.
-        
+
         Args:
             server_name: Server hostname
             instance_name: Instance name (empty for default)
             config_name: Display name from config
             ip_address: IP address from config
-            
+
         Returns:
             Dict with counts per category
         """
         # Store for entity key generation
         self._server_name = server_name
         self._instance_name = instance_name
-        
+
         counts = {}
         sn = server_name
         inst = instance_name
-        
+
         # 1. Instance Properties
         counts["instances"] = self._collect_instance(sn, inst, config_name, ip_address)
-        
+
         # 2. SA Account (from logins)
         logins = self._get_logins()
         counts["sa"] = self._collect_sa_account(sn, inst, logins)
-        
+
         # 3. Server Logins
         counts["logins"] = self._collect_logins(sn, inst, logins)
-        
+
         # 4. Server Roles
         counts["roles"] = self._collect_roles(sn, inst)
-        
+
         # 5. Configuration (sp_configure)
         counts["config"] = self._collect_config(sn, inst)
-        
+
         # 6. Services
         counts["services"] = self._collect_services(sn, inst)
-        
+
         # 7. Databases
         all_dbs, user_dbs = self._collect_databases(sn, inst)
         counts["databases"] = len(all_dbs)
-        
+
         # 8. Database Users
         counts["db_users"] = self._collect_db_users(sn, inst, user_dbs)
-        
+
         # 9. Database Roles
         counts["db_roles"] = self._collect_db_roles(sn, inst, user_dbs)
-        
+
         # 10. Linked Servers
         counts["linked"] = self._collect_linked_servers(sn, inst)
-        
+
         # 11. Triggers
         counts["triggers"] = self._collect_triggers(sn, inst, user_dbs)
-        
+
         # 12. Backups
         counts["backups"] = self._collect_backups(sn, inst)
-        
+
         # 13. Audit Settings
         counts["audit"] = self._collect_audit_settings(sn, inst)
-        
+
         # 14. Encryption (SMK, DMK, TDE)
         counts["encryption"] = self._collect_encryption(sn, inst)
-        
+
+        # 15. Permission Grants (New)
+        counts["permissions"] = self._collect_permissions(sn, inst, user_dbs)
+
         return counts
-    
+
     def _get_logins(self) -> list[dict]:
         """Get server logins (reused for SA detection)."""
         return self.conn.execute_query(self.prov.get_server_logins())
-    
+
     def _collect_instance(
         self, sn: str, inst: str, config_name: str, config_ip: str
     ) -> int:
@@ -220,7 +224,7 @@ class AuditDataCollector:
             if not props:
                 return 0
             p = props[0]
-            
+
             # Build OS info
             os_distro = p.get("OSDistribution", "")
             os_release = p.get("OSRelease", "")
@@ -230,8 +234,12 @@ class AuditDataCollector:
             elif os_platform:
                 os_info = os_platform
             else:
-                os_info = "Windows" if "Windows" in str(p.get("FullVersionString", "")) else ""
-            
+                os_info = (
+                    "Windows"
+                    if "Windows" in str(p.get("FullVersionString", ""))
+                    else ""
+                )
+
             # IP handling
             dmv_ip = p.get("IPAddress", "")
             tcp_port = p.get("TCPPort")
@@ -239,7 +247,7 @@ class AuditDataCollector:
                 ip_address = f"{config_ip} ({dmv_ip})"
             else:
                 ip_address = config_ip or dmv_ip
-            
+
             self.writer.add_instance(
                 config_name=config_name or sn,
                 server_name=sn,
@@ -263,7 +271,7 @@ class AuditDataCollector:
         except Exception as e:
             logger.warning("Instance properties failed: %s", e)
             return 0
-    
+
     def _collect_sa_account(self, sn: str, inst: str, logins: list[dict]) -> int:
         """Collect SA account status."""
         for lg in logins:
@@ -271,7 +279,7 @@ class AuditDataCollector:
                 login_name = lg.get("LoginName", "")
                 is_disabled = bool(lg.get("IsDisabled"))
                 is_renamed = login_name.lower() != "sa"
-                
+
                 self.writer.add_sa_account(
                     server_name=sn,
                     instance_name=inst,
@@ -280,7 +288,7 @@ class AuditDataCollector:
                     current_name=login_name,
                     default_db=lg.get("DefaultDatabase", "master"),
                 )
-                
+
                 # Save finding to SQLite
                 if is_disabled:
                     status = "PASS"
@@ -288,7 +296,7 @@ class AuditDataCollector:
                 else:
                     status = "FAIL"
                     desc = "SA account is enabled"
-                
+
                 self._save_finding(
                     finding_type="sa_account",
                     entity_name="sa",
@@ -299,7 +307,7 @@ class AuditDataCollector:
                 )
                 return 1
         return 0
-    
+
     def _collect_logins(self, sn: str, inst: str, logins: list[dict]) -> int:
         """Collect server logins."""
         for lg in logins:
@@ -307,7 +315,7 @@ class AuditDataCollector:
             login_type = lg.get("LoginType", "")
             is_disabled = bool(lg.get("IsDisabled"))
             pwd_policy = lg.get("PasswordPolicyEnforced")
-            
+
             self.writer.add_login(
                 server_name=sn,
                 instance_name=inst,
@@ -317,26 +325,31 @@ class AuditDataCollector:
                 pwd_policy=pwd_policy,
                 default_db=lg.get("DefaultDatabase", ""),
             )
-            
-            # Persist to SQLite
+
+            # Persist to SQLite (optional - don't break collection if this fails)
             if self._db_conn and self._instance_id:
-                from autodbaudit.infrastructure.sqlite.schema import save_login
-                save_login(
-                    connection=self._db_conn,
-                    instance_id=self._instance_id,
-                    audit_run_id=self._audit_run_id,
-                    login_name=login_name,
-                    login_type=login_type,
-                    is_disabled=is_disabled,
-                    password_policy=pwd_policy,
-                    default_database=lg.get("DefaultDatabase", ""),
-                    is_sysadmin=bool(lg.get("IsSysadmin")),
-                    is_securityadmin=bool(lg.get("IsSecurityAdmin")),
-                    is_serveradmin=bool(lg.get("IsServerAdmin")),
-                    is_sa=bool(lg.get("IsSA")),
-                    create_date=str(lg.get("CreateDate", "")) if lg.get("CreateDate") else None,
-                )
-            
+                try:
+                    from autodbaudit.infrastructure.sqlite.schema import save_login
+
+                    save_login(
+                        connection=self._db_conn,
+                        instance_id=self._instance_id,
+                        audit_run_id=self._audit_run_id,
+                        login_name=login_name,
+                        login_type=login_type,
+                        is_disabled=is_disabled,
+                        password_policy=pwd_policy,
+                        default_database=lg.get("DefaultDatabase", ""),
+                        is_sa=bool(lg.get("IsSA")),
+                        create_date=(
+                            str(lg.get("CreateDate", ""))
+                            if lg.get("CreateDate")
+                            else None
+                        ),
+                    )
+                except Exception:
+                    pass  # SQLite storage is optional
+
             # SQL logins (not Windows auth) are findings
             if login_type == "SQL_LOGIN" and not is_disabled:
                 self._save_finding(
@@ -358,7 +371,7 @@ class AuditDataCollector:
                     recommendation="Enable password policy enforcement",
                 )
         return len(logins)
-    
+
     def _collect_roles(self, sn: str, inst: str) -> int:
         """Collect server role memberships."""
         try:
@@ -376,7 +389,7 @@ class AuditDataCollector:
         except Exception as e:
             logger.warning("Roles failed: %s", e)
             return 0
-    
+
     def _collect_config(self, sn: str, inst: str) -> int:
         """Collect sp_configure security settings."""
         try:
@@ -385,46 +398,79 @@ class AuditDataCollector:
             for cfg in configs:
                 setting_name = cfg.get("SettingName", "")
                 setting_key = setting_name.lower()
-                
+
                 # Match against security settings
-                for key, (required, risk) in SECURITY_SETTINGS.items():
+                for key, (required, default_risk) in SECURITY_SETTINGS.items():
                     if key.lower() == setting_key:
                         current = cfg.get("RunningValue", 0) or 0
                         configured = cfg.get("ConfiguredValue", 0) or 0
+                        is_dynamic = bool(cfg.get("IsDynamic", 0))
+
                         is_compliant = int(current) == required
-                        
+                        is_config_compliant = int(configured) == required
+
+                        status = "PASS"
+                        risk = None
+                        desc = f"{setting_name}={current} (required: {required})"
+                        rec = None
+
+                        if not is_compliant:
+                            if is_config_compliant:
+                                # Config changed but value not active
+                                status = "WARN"
+                                risk = "medium"
+                                if not is_dynamic:
+                                    desc += " [Pending SQL Restart]"
+                                    rec = "Restart SQL Server service to apply changes"
+                                else:
+                                    desc += " [Pending RECONFIGURE]"
+                                    rec = "Run RECONFIGURE statement to apply changes"
+                            else:
+                                # Neither compliant nor configured
+                                status = "FAIL"
+                                risk = default_risk
+                                rec = f"Set {setting_name} to {required}"
+
                         self.writer.add_config_setting(
                             server_name=sn,
                             instance_name=inst,
                             setting_name=setting_name,
                             current_value=int(current),
                             required_value=required,
-                            risk_level=risk,
+                            risk_level=(
+                                risk if status != "PASS" else "low"
+                            ),  # Low risk for pass
                         )
-                        
-                        # Persist to SQLite
+
+                        # Persist to SQLite (optional - don't break collection if this fails)
                         if self._db_conn and self._instance_id:
-                            from autodbaudit.infrastructure.sqlite.schema import save_config_setting
-                            save_config_setting(
-                                connection=self._db_conn,
-                                instance_id=self._instance_id,
-                                audit_run_id=self._audit_run_id,
-                                setting_name=setting_name,
-                                configured_value=int(configured),
-                                running_value=int(current),
-                                required_value=required,
-                                status="PASS" if is_compliant else "FAIL",
-                                risk_level=risk if not is_compliant else None,
-                            )
-                        
+                            try:
+                                from autodbaudit.infrastructure.sqlite.schema import (
+                                    save_config_setting,
+                                )
+
+                                save_config_setting(
+                                    connection=self._db_conn,
+                                    instance_id=self._instance_id,
+                                    audit_run_id=self._audit_run_id,
+                                    setting_name=setting_name,
+                                    configured_value=int(configured),
+                                    running_value=int(current),
+                                    required_value=required,
+                                    status=status,
+                                    risk_level=risk,
+                                )
+                            except Exception:
+                                pass  # SQLite storage is optional
+
                         # Save finding to SQLite
                         self._save_finding(
                             finding_type="config",
                             entity_name=setting_name,
-                            status="PASS" if is_compliant else "FAIL",
-                            risk_level=risk if not is_compliant else None,
-                            description=f"{setting_name}={current} (required: {required})",
-                            recommendation=f"Set {setting_name} to {required}" if not is_compliant else None,
+                            status=status,
+                            risk_level=risk,
+                            description=desc,
+                            recommendation=rec,
                         )
                         count += 1
                         break
@@ -432,7 +478,7 @@ class AuditDataCollector:
         except Exception as e:
             logger.warning("Config failed: %s", e)
             return 0
-    
+
     def _collect_services(self, sn: str, inst: str) -> int:
         """Collect SQL Server services."""
         try:
@@ -442,7 +488,7 @@ class AuditDataCollector:
                 svc_type = svc.get("ServiceType", "Other")
                 if svc_type in ("SQL Browser", "VSS Writer", "Integration Services"):
                     svc_instance = "(Shared)"
-                    
+
                 self.writer.add_service(
                     server_name=sn,
                     instance_name=svc_instance,
@@ -456,17 +502,17 @@ class AuditDataCollector:
         except Exception as e:
             logger.warning("Services failed: %s", e)
             return 0
-    
+
     def _collect_databases(self, sn: str, inst: str) -> tuple[list[dict], list[dict]]:
         """Collect databases, returns (all_dbs, user_dbs)."""
         try:
             dbs = self.conn.execute_query(self.prov.get_databases())
             user_dbs = [db for db in dbs if db.get("DatabaseName") not in SYSTEM_DBS]
-            
+
             for db in dbs:
                 db_name = db.get("DatabaseName", "")
                 is_trustworthy = bool(db.get("IsTrustworthy"))
-                
+
                 self.writer.add_database(
                     server_name=sn,
                     instance_name=inst,
@@ -478,24 +524,30 @@ class AuditDataCollector:
                     log_size_mb=db.get("LogSizeMB"),
                     is_trustworthy=is_trustworthy,
                 )
-                
-                # Persist to SQLite
+
+                # Persist to SQLite (optional - don't break collection if this fails)
                 if self._db_conn and self._instance_id:
-                    from autodbaudit.infrastructure.sqlite.schema import save_database
-                    save_database(
-                        connection=self._db_conn,
-                        instance_id=self._instance_id,
-                        audit_run_id=self._audit_run_id,
-                        database_name=db_name,
-                        database_id=db.get("DatabaseID"),
-                        owner=db.get("Owner", ""),
-                        state=db.get("State", ""),
-                        recovery_model=db.get("RecoveryModel", ""),
-                        is_trustworthy=is_trustworthy,
-                        is_encrypted=bool(db.get("IsEncrypted")),
-                        size_mb=db.get("DataSizeMB") or db.get("SizeMB"),
-                    )
-                
+                    try:
+                        from autodbaudit.infrastructure.sqlite.schema import (
+                            save_database,
+                        )
+
+                        save_database(
+                            connection=self._db_conn,
+                            instance_id=self._instance_id,
+                            audit_run_id=self._audit_run_id,
+                            database_name=db_name,
+                            database_id=db.get("DatabaseID"),
+                            owner=db.get("Owner", ""),
+                            state=db.get("State", ""),
+                            recovery_model=db.get("RecoveryModel", ""),
+                            is_trustworthy=is_trustworthy,
+                            is_encrypted=bool(db.get("IsEncrypted")),
+                            size_mb=db.get("DataSizeMB") or db.get("SizeMB"),
+                        )
+                    except Exception:
+                        pass  # SQLite storage is optional
+
                 # Trustworthy flag is a finding
                 if is_trustworthy and db_name not in SYSTEM_DBS:
                     self._save_finding(
@@ -510,7 +562,7 @@ class AuditDataCollector:
         except Exception as e:
             logger.warning("Databases failed: %s", e)
             return [], []
-    
+
     def _collect_db_users(self, sn: str, inst: str, user_dbs: list[dict]) -> int:
         """Collect database users from all user databases."""
         count = 0
@@ -524,14 +576,15 @@ class AuditDataCollector:
                     user_name = u.get("UserName", "")
                     mapped_login = u.get("MappedLogin")
                     user_type = u.get("UserType", "")
-                    
+
                     is_orphaned = (
-                        mapped_login is None and
-                        user_type in ("SQL_USER", "WINDOWS_USER") and
-                        user_name not in ("dbo", "guest", "INFORMATION_SCHEMA", "sys")
+                        mapped_login is None
+                        and user_type in ("SQL_USER", "WINDOWS_USER")
+                        and user_name
+                        not in ("dbo", "guest", "INFORMATION_SCHEMA", "sys")
                     )
                     guest_enabled = bool(u.get("GuestEnabled"))
-                    
+
                     self.writer.add_db_user(
                         server_name=sn,
                         instance_name=inst,
@@ -540,27 +593,39 @@ class AuditDataCollector:
                         user_type=user_type,
                         mapped_login=mapped_login,
                         is_orphaned=is_orphaned,
-                        has_connect=guest_enabled if user_name.lower() == "guest" else True,
+                        has_connect=(
+                            guest_enabled if user_name.lower() == "guest" else True
+                        ),
                     )
-                    
-                    # Persist to SQLite
+
+                    # Persist to SQLite (optional - don't break collection if this fails)
                     if self._db_conn and self._instance_id:
-                        from autodbaudit.infrastructure.sqlite.schema import save_db_user
-                        save_db_user(
-                            connection=self._db_conn,
-                            instance_id=self._instance_id,
-                            audit_run_id=self._audit_run_id,
-                            database_name=db_name,
-                            user_name=user_name,
-                            login_name=mapped_login,
-                            user_type=user_type,
-                            is_orphaned=is_orphaned,
-                            is_guest=user_name.lower() == "guest",
-                            is_guest_enabled=guest_enabled if user_name.lower() == "guest" else False,
-                        )
-                    
+                        try:
+                            from autodbaudit.infrastructure.sqlite.schema import (
+                                save_db_user,
+                            )
+
+                            save_db_user(
+                                connection=self._db_conn,
+                                instance_id=self._instance_id,
+                                audit_run_id=self._audit_run_id,
+                                database_name=db_name,
+                                user_name=user_name,
+                                login_name=mapped_login,
+                                user_type=user_type,
+                                is_orphaned=is_orphaned,
+                                is_guest=user_name.lower() == "guest",
+                                is_guest_enabled=(
+                                    guest_enabled
+                                    if user_name.lower() == "guest"
+                                    else False
+                                ),
+                            )
+                        except Exception:
+                            pass  # SQLite storage is optional
+
                     count += 1
-                    
+
                     # Orphaned user finding
                     if is_orphaned:
                         self.writer.add_orphaned_user(
@@ -578,7 +643,7 @@ class AuditDataCollector:
                             description=f"Orphaned user '{user_name}' in database '{db_name}'",
                             recommendation="Remove or remap orphaned user",
                         )
-                    
+
                     # Guest enabled finding
                     if user_name.lower() == "guest" and guest_enabled:
                         self._save_finding(
@@ -592,7 +657,9 @@ class AuditDataCollector:
             except Exception:
                 pass
         return count
-    
+
+        return count
+
     def _collect_db_roles(self, sn: str, inst: str, user_dbs: list[dict]) -> int:
         """Collect database role memberships."""
         count = 0
@@ -601,27 +668,79 @@ class AuditDataCollector:
             if db.get("State", "ONLINE") != "ONLINE":
                 continue
             try:
-                roles = self.conn.execute_query(self.prov.get_database_role_members(db_name))
+                roles = self.conn.execute_query(
+                    self.prov.get_database_role_members(db_name)
+                )
+
+                # Aggregate for Matrix View (User -> [Roles])
+                # Key: (MemberName, MemberType) -> List[RoleName]
+                user_matrix: dict[tuple[str, str], list[str]] = {}
+
                 for r in roles:
+                    role_name = r.get("RoleName", "")
+                    member_name = r.get("MemberName", "")
+                    member_type = r.get("MemberType", "")
+
+                    # Add to standard sheet
                     self.writer.add_db_role_member(
                         server_name=sn,
                         instance_name=inst,
                         database_name=db_name,
-                        role_name=r.get("RoleName", ""),
-                        member_name=r.get("MemberName", ""),
-                        member_type=r.get("MemberType", ""),
+                        role_name=role_name,
+                        member_name=member_name,
+                        member_type=member_type,
                     )
+
+                    # Add to aggregation
+                    key = (member_name, member_type)
+                    if key not in user_matrix:
+                        user_matrix[key] = []
+                    user_matrix[key].append(role_name)
+
+                    # Persist to SQLite
+                    if self._db_conn and self._instance_id:
+                        try:
+                            from autodbaudit.infrastructure.sqlite.schema import (
+                                save_database_role_member,
+                            )
+
+                            save_database_role_member(
+                                connection=self._db_conn,
+                                audit_run_id=self._audit_run_id,
+                                instance_id=self._instance_id,
+                                database_name=db_name,
+                                role_name=role_name,
+                                member_name=member_name,
+                                member_type=member_type,
+                            )
+                        except Exception:
+                            pass
+
                     count += 1
+
+                # Write Matrix Rows
+                for (m_name, m_type), m_roles in user_matrix.items():
+                    self.writer.add_role_matrix_row(
+                        server_name=sn,
+                        instance_name=inst,
+                        database_name=db_name,
+                        principal_name=m_name,
+                        principal_type=m_type,
+                        roles=m_roles,
+                    )
+
             except Exception:
                 pass
         return count
-    
+
     def _collect_linked_servers(self, sn: str, inst: str) -> int:
         """Collect linked server configuration."""
         try:
             linked = self.conn.execute_query(self.prov.get_linked_servers())
-            login_mappings = self.conn.execute_query(self.prov.get_linked_server_logins())
-            
+            login_mappings = self.conn.execute_query(
+                self.prov.get_linked_server_logins()
+            )
+
             # Build mapping dict
             mapping_info: dict[str, tuple[str, str, bool, str]] = {}
             for m in login_mappings:
@@ -632,12 +751,14 @@ class AuditDataCollector:
                 risk = m.get("RiskLevel", "NORMAL")
                 if ls_name not in mapping_info or risk == "HIGH_PRIVILEGE":
                     mapping_info[ls_name] = (local, remote, impersonate, risk)
-            
+
             for ls in linked:
                 ls_name = ls.get("LinkedServerName", "")
-                local, remote, impersonate, risk = mapping_info.get(ls_name, ("", "", False, ""))
+                local, remote, impersonate, risk = mapping_info.get(
+                    ls_name, ("", "", False, "")
+                )
                 rpc_out = bool(ls.get("RpcOutEnabled"))
-                
+
                 self.writer.add_linked_server(
                     server_name=sn,
                     instance_name=inst,
@@ -651,24 +772,30 @@ class AuditDataCollector:
                     impersonate=impersonate,
                     risk_level=risk,
                 )
-                
-                # Persist to SQLite
+
+                # Persist to SQLite (optional - don't break collection if this fails)
                 if self._db_conn and self._instance_id:
-                    from autodbaudit.infrastructure.sqlite.schema import save_linked_server
-                    save_linked_server(
-                        connection=self._db_conn,
-                        instance_id=self._instance_id,
-                        audit_run_id=self._audit_run_id,
-                        linked_server_name=ls_name,
-                        product=ls.get("Product") or "",
-                        provider=ls.get("Provider") or "",
-                        data_source=ls.get("DataSource") or "",
-                        is_rpc_out_enabled=rpc_out,
-                        local_login=local,
-                        remote_login=remote,
-                        is_impersonate=impersonate,
-                    )
-                
+                    try:
+                        from autodbaudit.infrastructure.sqlite.schema import (
+                            save_linked_server,
+                        )
+
+                        save_linked_server(
+                            connection=self._db_conn,
+                            instance_id=self._instance_id,
+                            audit_run_id=self._audit_run_id,
+                            linked_server_name=ls_name,
+                            product=ls.get("Product") or "",
+                            provider=ls.get("Provider") or "",
+                            data_source=ls.get("DataSource") or "",
+                            is_rpc_out_enabled=rpc_out,
+                            local_login=local,
+                            remote_login=remote,
+                            is_impersonate=impersonate,
+                        )
+                    except Exception:
+                        pass  # SQLite storage is optional
+
                 # High privilege linked server finding
                 if risk == "HIGH_PRIVILEGE":
                     self._save_finding(
@@ -692,11 +819,11 @@ class AuditDataCollector:
         except Exception as e:
             logger.warning("Linked servers failed: %s", e)
             return 0
-    
+
     def _collect_triggers(self, sn: str, inst: str, user_dbs: list[dict]) -> int:
         """Collect server and database triggers."""
         count = 0
-        
+
         # Server-level triggers
         try:
             triggers = self.conn.execute_query(self.prov.get_server_triggers())
@@ -708,19 +835,21 @@ class AuditDataCollector:
                     database_name=None,
                     trigger_name=t.get("TriggerName", ""),
                     event_type=t.get("EventType", ""),
-                    is_enabled=bool(t.get("IsEnabled")),
+                    is_enabled=not bool(t.get("IsDisabled")),
                 )
                 count += 1
         except Exception:
             pass
-        
+
         # Database-level triggers
         for db in user_dbs:
             db_name = db.get("DatabaseName", "")
             if db.get("State", "ONLINE") != "ONLINE":
                 continue
             try:
-                triggers = self.conn.execute_query(self.prov.get_database_triggers(db_name))
+                triggers = self.conn.execute_query(
+                    self.prov.get_database_triggers(db_name)
+                )
                 for t in triggers:
                     self.writer.add_trigger(
                         server_name=sn,
@@ -729,13 +858,13 @@ class AuditDataCollector:
                         database_name=db_name,
                         trigger_name=t.get("TriggerName", ""),
                         event_type=t.get("EventType", ""),
-                        is_enabled=bool(t.get("IsEnabled")),
+                        is_enabled=not bool(t.get("IsDisabled")),
                     )
                     count += 1
             except Exception:
                 pass
         return count
-    
+
     def _collect_backups(self, sn: str, inst: str) -> int:
         """Collect backup history."""
         try:
@@ -743,7 +872,7 @@ class AuditDataCollector:
             for b in backups:
                 db_name = b.get("DatabaseName", "")
                 days_since = b.get("DaysSinceBackup")
-                
+
                 self.writer.add_backup_info(
                     server_name=sn,
                     instance_name=inst,
@@ -754,21 +883,31 @@ class AuditDataCollector:
                     backup_path=b.get("BackupPath", ""),
                     backup_size_mb=b.get("BackupSizeMB"),
                 )
-                
-                # Persist to SQLite
+
+                # Persist to SQLite (optional - don't break collection if this fails)
                 if self._db_conn and self._instance_id:
-                    from autodbaudit.infrastructure.sqlite.schema import save_backup_record
-                    save_backup_record(
-                        connection=self._db_conn,
-                        instance_id=self._instance_id,
-                        audit_run_id=self._audit_run_id,
-                        database_name=db_name,
-                        backup_type=b.get("BackupType", "FULL"),
-                        backup_start=str(b.get("BackupDate")) if b.get("BackupDate") else None,
-                        size_bytes=int((b.get("BackupSizeMB") or 0) * 1024 * 1024),
-                        physical_device_name=b.get("BackupPath", ""),
-                    )
-                
+                    try:
+                        from autodbaudit.infrastructure.sqlite.schema import (
+                            save_backup_record,
+                        )
+
+                        save_backup_record(
+                            connection=self._db_conn,
+                            instance_id=self._instance_id,
+                            audit_run_id=self._audit_run_id,
+                            database_name=db_name,
+                            backup_type=b.get("BackupType", "FULL"),
+                            backup_start=(
+                                str(b.get("BackupDate"))
+                                if b.get("BackupDate")
+                                else None
+                            ),
+                            size_bytes=int((b.get("BackupSizeMB") or 0) * 1024 * 1024),
+                            physical_device_name=b.get("BackupPath", ""),
+                        )
+                    except Exception:
+                        pass  # SQLite storage is optional
+
                 # Backup findings
                 if days_since is None:
                     self._save_finding(
@@ -792,7 +931,7 @@ class AuditDataCollector:
         except Exception as e:
             logger.warning("Backups failed: %s", e)
             return 0
-    
+
     def _collect_audit_settings(self, sn: str, inst: str) -> int:
         """Collect audit settings."""
         try:
@@ -809,11 +948,11 @@ class AuditDataCollector:
         except Exception as e:
             logger.warning("Audit settings failed: %s", e)
             return 0
-    
+
     def _collect_encryption(self, sn: str, inst: str) -> int:
         """Collect encryption status (SMK, DMK, TDE)."""
         count = 0
-        
+
         # 1. Service Master Key (instance-level)
         try:
             smk = self.conn.execute_query(self.prov.get_service_master_key())
@@ -847,7 +986,7 @@ class AuditDataCollector:
                 count += 1
         except Exception as e:
             logger.warning("SMK query failed: %s", e)
-        
+
         # 2. Database Master Keys
         try:
             dmks = self.conn.execute_query(self.prov.get_database_master_keys())
@@ -866,7 +1005,7 @@ class AuditDataCollector:
                 count += 1
         except Exception as e:
             logger.warning("DMK query failed: %s", e)
-        
+
         # 3. TDE Status
         try:
             tde = self.conn.execute_query(self.prov.get_tde_status())
@@ -874,7 +1013,7 @@ class AuditDataCollector:
                 enc_state = t.get("EncryptionState") or 0
                 enc_desc = t.get("EncryptionStateDesc", "")
                 is_encrypted = enc_state == 3 or bool(t.get("IsEncrypted"))
-                
+
                 if is_encrypted:
                     cert_name = t.get("CertificateName", "")
                     self.writer.add_encryption_row(
@@ -891,7 +1030,7 @@ class AuditDataCollector:
                     count += 1
         except Exception as e:
             logger.warning("TDE query failed: %s", e)
-        
+
         # If no encryption found at all, add informational row
         if count == 0:
             self.writer.add_encryption_row(
@@ -906,5 +1045,92 @@ class AuditDataCollector:
                 status="N/A",
             )
             count = 1
-        
+
+        return count
+
+    def _collect_permissions(self, sn: str, inst: str, user_dbs: list[dict]) -> int:
+        """Collect server and database permission grants."""
+        count = 0
+        from autodbaudit.infrastructure.sqlite.schema import save_permission
+
+        # 1. Server Permissions
+        try:
+            srv_perms = self.conn.execute_query(self.prov.get_server_permissions())
+            for p in srv_perms:
+                self.writer.add_permission(
+                    server_name=sn,
+                    instance_name=inst,
+                    scope="SERVER",
+                    database_name="",
+                    grantee_name=p.get("GranteeName", ""),
+                    permission_name=p.get("PermissionName", ""),
+                    state=p.get("PermissionState", ""),
+                    entity_name=p.get("EntityName", ""),
+                    class_desc=p.get("PermissionClass", ""),
+                )
+
+                # Persist
+                if self._db_conn and self._instance_id:
+                    try:
+                        save_permission(
+                            connection=self._db_conn,
+                            audit_run_id=self._audit_run_id,
+                            instance_id=self._instance_id,
+                            scope="SERVER",
+                            database_name="",
+                            entity_name=p.get("EntityName", ""),
+                            grantee_name=p.get("GranteeName", ""),
+                            permission_name=p.get("PermissionName", ""),
+                            state=p.get("PermissionState", ""),
+                            class_desc=p.get("PermissionClass", ""),
+                        )
+                    except Exception:
+                        pass
+                count += 1
+        except Exception as e:
+            logger.warning("Server permissions failed: %s", e)
+
+        # 2. Database Permissions
+        for db in user_dbs:
+            db_name = db.get("DatabaseName", "")
+            if db.get("State", "ONLINE") != "ONLINE":
+                continue
+            try:
+                db_perms = self.conn.execute_query(
+                    self.prov.get_database_permissions(db_name)
+                )
+                for p in db_perms:
+                    self.writer.add_permission(
+                        server_name=sn,
+                        instance_name=inst,
+                        scope="DATABASE",
+                        database_name=db_name,
+                        grantee_name=p.get("GranteeName", ""),
+                        permission_name=p.get("PermissionName", ""),
+                        state=p.get("PermissionState", ""),
+                        entity_name=p.get("EntityName", ""),
+                        class_desc=p.get("PermissionClass", ""),
+                    )
+
+                    # Persist
+                    if self._db_conn and self._instance_id:
+                        try:
+                            save_permission(
+                                connection=self._db_conn,
+                                audit_run_id=self._audit_run_id,
+                                instance_id=self._instance_id,
+                                scope="DATABASE",
+                                database_name=db_name,
+                                entity_name=p.get("EntityName", ""),
+                                grantee_name=p.get("GranteeName", ""),
+                                permission_name=p.get("PermissionName", ""),
+                                state=p.get("PermissionState", ""),
+                                class_desc=p.get("PermissionClass", ""),
+                            )
+                        except Exception:
+                            pass
+                    count += 1
+            except Exception:
+                pass
+
         return count

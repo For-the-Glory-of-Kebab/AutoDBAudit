@@ -1,0 +1,14 @@
+{
+    "_comment": "Minimal config. Actual security checks are currently defined in code (data_collector.py).",
+    "organization": "King  Organization",
+    "audit_year": 2025,
+    "audit_date": "2025-01-01",
+    "requirements": {
+        "minimum_sql_version": "2019"
+    },
+    "output": {
+        "directory": "output",
+        "verbosity": "detailed",
+        "include_charts": true
+    }
+}

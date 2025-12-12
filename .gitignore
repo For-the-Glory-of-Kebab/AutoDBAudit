@@ -23,10 +23,12 @@ dist/
 
 # Project-specific
 output/
-credentials/*.enc
-config/sql_targets.json
-config/audit_config.json
 hotfixes/
+
+# Credentials (NEVER sync to git!)
+credentials/*.json
+credentials/*.enc
+!credentials/README.md
 
 # OS
 .DS_Store

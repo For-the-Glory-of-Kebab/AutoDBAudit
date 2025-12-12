@@ -53,7 +53,19 @@ Generate smart TSQL remediation scripts with 4 categories.
 
 ```bash
 python main.py --generate-remediation
+python main.py --generate-remediation --aggressiveness 2
 ```
+
+| Option | Description |
+|--------|-------------|
+| `--aggressiveness N` | Script intensity level (1-3). Default: 1 |
+| `--brutal` | Shortcut for `--aggressiveness 3` |
+
+**Aggressiveness Levels**:
+- **1 (Default)**: Safe. Most actions commented out.
+- **2 (Constructive)**: Revoke privileges are active. Disable/Drop actions are commented.
+- **3 (Brutal)**: All actions active (Disable/Drop/Revoke).
+> **Note**: Self-lockout prevention is ALWAYS active regardless of level.
 
 **Output**: `output/remediation_scripts/<server>_<instance>.sql`
 **Also generates**: `<server>_<instance>_ROLLBACK.sql`
@@ -223,16 +235,20 @@ python main.py --validate-config
 }
 ```
 
-### audit_settings.json
+### audit_config.json
 
 ```json
 {
-  "security_settings": {
-    "xp_cmdshell": {"required": 0, "risk": "critical"},
-    "clr enabled": {"required": 0, "risk": "high"}
+  "organization": "Acme Corp",
+  "audit_year": 2025,
+  "audit_date": "2025-12-12",
+  "requirements": {
+    "minimum_sql_version": "2019",
+    "password_policy": { "check_expiration": true }
   },
-  "backup_requirements": {
-    "max_days_without_full_backup": 7
+  "output": {
+    "verbosity": "detailed",
+    "include_charts": true
   }
 }
 ```
@@ -242,8 +258,8 @@ python main.py --validate-config
 ## Typical Workflow
 
 ```bash
-# Set up environment
-$env:PYTHONPATH="d:\Raja-Initiative\src"
+# Set up environment (PowerShell)
+$env:PYTHONPATH="$PWD\src"
 
 # 1. Run initial audit
 python main.py --audit

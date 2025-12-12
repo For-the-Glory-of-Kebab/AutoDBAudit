@@ -32,10 +32,16 @@ class SqlTarget:
     tags: List[str] = field(default_factory=list)
     enabled: bool = True  # Whether to include in audit
     ip_address: str | None = None  # Optional IP address override
+    name: str | None = None  # Human-readable display name for reports
     
     @property
     def display_name(self) -> str:
-        """Human-readable server name."""
+        """Human-readable server name for reports.
+        
+        Returns the 'name' field if set, otherwise generates from connection info.
+        """
+        if self.name:
+            return self.name
         if self.port:
             return f"{self.server}:{self.port}"
         elif self.instance:
@@ -103,28 +109,69 @@ class ConfigLoader:
         if not filepath.exists():
             raise FileNotFoundError(f"SQL targets config not found: {filepath}")
         
-        with open(filepath, 'r') as f:
+        with open(filepath, 'r', encoding='utf-8') as f:
             data = json.load(f)
         
         targets = []
         for item in data.get("targets", []):
+            # Load credentials from file if specified
+            username = item.get("username")
+            password = item.get("password")
+            credential_file = item.get("credential_file")
+            
+            if credential_file and not password:
+                creds = self._load_credential_file(credential_file)
+                username = creds.get("username", username)
+                password = creds.get("password")
+            
             target = SqlTarget(
                 id=item["id"],
                 server=item["server"],
                 instance=item.get("instance"),
                 port=item.get("port"),
                 auth=item.get("auth", "integrated"),
-                username=item.get("username"),
-                password=item.get("password"),  # For testing only
-                credential_file=item.get("credential_file"),
+                username=username,
+                password=password,
+                credential_file=credential_file,
                 connect_timeout=item.get("connect_timeout", 30),
-                tags=item.get("tags", [])
+                tags=item.get("tags", []),
+                enabled=item.get("enabled", True),
+                ip_address=item.get("ip_address"),
+                name=item.get("name"),
             )
             targets.append(target)
             logger.debug("Loaded target: %s", target.display_name)
         
         logger.info("Loaded %d SQL Server targets", len(targets))
         return targets
+    
+    def _load_credential_file(self, filepath: str) -> dict:
+        """
+        Load credentials from a JSON file.
+        
+        Args:
+            filepath: Path to credential file (relative to project root or absolute)
+            
+        Returns:
+            Dictionary with 'username' and 'password' keys
+        """
+        path = Path(filepath)
+        if not path.is_absolute():
+            # Try relative to project root (parent of config_dir)
+            path = self.config_dir.parent / filepath
+        
+        if not path.exists():
+            logger.warning("Credential file not found: %s", filepath)
+            return {}
+        
+        logger.debug("Loading credentials from: %s", path)
+        with open(path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        
+        return {
+            "username": data.get("username"),
+            "password": data.get("password"),
+        }
     
     def load_audit_config(self, filename: str = "audit_config.json") -> AuditConfig:
         """

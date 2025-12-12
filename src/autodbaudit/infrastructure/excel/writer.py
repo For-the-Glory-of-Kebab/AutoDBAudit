@@ -38,22 +38,22 @@ Sheet Order (16 total):
 
 Usage Example:
     from autodbaudit.infrastructure.excel import EnhancedReportWriter
-    
+
     # Create writer instance
     writer = EnhancedReportWriter()
-    
+
     # Set audit metadata
     writer.set_audit_info(
         run_id=1,
         organization="Acme Corporation",
         started_at=datetime.now(),
     )
-    
+
     # Add data using type-safe methods
     writer.add_instance(server_name="SQLPROD01", ...)
     writer.add_login(server_name="SQLPROD01", ...)
     writer.add_database(...)
-    
+
     # Save generates all sheets (including empty ones)
     writer.save("audit_report.xlsx")
 
@@ -84,53 +84,50 @@ from openpyxl import Workbook
 from autodbaudit.infrastructure.excel.base import SheetConfig
 from autodbaudit.infrastructure.excel.cover import CoverSheetMixin
 from autodbaudit.infrastructure.excel.instances import (
-    InstanceSheetMixin, INSTANCE_CONFIG
+    InstanceSheetMixin,
+    INSTANCE_CONFIG,
 )
 from autodbaudit.infrastructure.excel.sa_account import (
-    SAAccountSheetMixin, SA_ACCOUNT_CONFIG
+    SAAccountSheetMixin,
+    SA_ACCOUNT_CONFIG,
 )
-from autodbaudit.infrastructure.excel.logins import (
-    LoginSheetMixin, LOGIN_CONFIG
-)
-from autodbaudit.infrastructure.excel.roles import (
-    RoleSheetMixin, ROLE_CONFIG
-)
-from autodbaudit.infrastructure.excel.config import (
-    ConfigSheetMixin, CONFIG_CONFIG
-)
-from autodbaudit.infrastructure.excel.services import (
-    ServiceSheetMixin, SERVICE_CONFIG
-)
+from autodbaudit.infrastructure.excel.logins import LoginSheetMixin, LOGIN_CONFIG
+from autodbaudit.infrastructure.excel.roles import RoleSheetMixin, ROLE_CONFIG
+from autodbaudit.infrastructure.excel.config import ConfigSheetMixin, CONFIG_CONFIG
+from autodbaudit.infrastructure.excel.services import ServiceSheetMixin, SERVICE_CONFIG
 from autodbaudit.infrastructure.excel.databases import (
-    DatabaseSheetMixin, DATABASE_CONFIG
+    DatabaseSheetMixin,
+    DATABASE_CONFIG,
 )
-from autodbaudit.infrastructure.excel.db_users import (
-    DBUserSheetMixin, DB_USER_CONFIG
-)
-from autodbaudit.infrastructure.excel.db_roles import (
-    DBRoleSheetMixin, DB_ROLE_CONFIG
-)
+from autodbaudit.infrastructure.excel.db_users import DBUserSheetMixin, DB_USER_CONFIG
+from autodbaudit.infrastructure.excel.db_roles import DBRoleSheetMixin, DB_ROLE_CONFIG
 from autodbaudit.infrastructure.excel.orphaned_users import (
-    OrphanedUserSheetMixin, ORPHANED_USER_CONFIG
+    OrphanedUserSheetMixin,
+    ORPHANED_USER_CONFIG,
 )
 from autodbaudit.infrastructure.excel.linked_servers import (
-    LinkedServerSheetMixin, LINKED_SERVER_CONFIG
+    LinkedServerSheetMixin,
+    LINKED_SERVER_CONFIG,
 )
-from autodbaudit.infrastructure.excel.triggers import (
-    TriggerSheetMixin, TRIGGER_CONFIG
-)
-from autodbaudit.infrastructure.excel.backups import (
-    BackupSheetMixin, BACKUP_CONFIG
-)
+from autodbaudit.infrastructure.excel.triggers import TriggerSheetMixin, TRIGGER_CONFIG
+from autodbaudit.infrastructure.excel.backups import BackupSheetMixin, BACKUP_CONFIG
 from autodbaudit.infrastructure.excel.audit_settings import (
-    AuditSettingSheetMixin, AUDIT_SETTING_CONFIG
+    AuditSettingSheetMixin,
+    AUDIT_SETTING_CONFIG,
 )
 from autodbaudit.infrastructure.excel.encryption import (
-    EncryptionSheetMixin, ENCRYPTION_CONFIG
+    EncryptionSheetMixin,
+    ENCRYPTION_CONFIG,
 )
-from autodbaudit.infrastructure.excel.actions import (
-    ActionSheetMixin, ACTION_CONFIG
+from autodbaudit.infrastructure.excel.permissions import (
+    PermissionSheetMixin,
+    PERMISSION_CONFIG,
 )
+from autodbaudit.infrastructure.excel.role_matrix import (
+    RoleMatrixSheetMixin,
+    ROLE_MATRIX_CONFIG,
+)
+from autodbaudit.infrastructure.excel.actions import ActionSheetMixin, ACTION_CONFIG
 
 
 __all__ = ["EnhancedReportWriter"]
@@ -144,22 +141,24 @@ logger = logging.getLogger(__name__)
 # ============================================================================
 
 SHEET_ORDER: tuple[SheetConfig, ...] = (
-    INSTANCE_CONFIG,        # 2. Instances
-    SA_ACCOUNT_CONFIG,      # 3. SA Account
-    LOGIN_CONFIG,           # 4. Server Logins
-    ROLE_CONFIG,            # 5. Sensitive Roles
-    CONFIG_CONFIG,          # 6. Configuration
-    SERVICE_CONFIG,         # 7. Services
-    DATABASE_CONFIG,        # 8. Databases
-    DB_USER_CONFIG,         # 9. Database Users
-    DB_ROLE_CONFIG,         # 10. Database Roles
-    ORPHANED_USER_CONFIG,   # 11. Orphaned Users
-    LINKED_SERVER_CONFIG,   # 12. Linked Servers
-    TRIGGER_CONFIG,         # 13. Triggers
-    BACKUP_CONFIG,          # 14. Backups
-    AUDIT_SETTING_CONFIG,   # 15. Audit Settings
-    ENCRYPTION_CONFIG,      # 16. Encryption (NEW - Req #11)
-    ACTION_CONFIG,          # 17. Actions
+    INSTANCE_CONFIG,  # 2. Instances
+    SA_ACCOUNT_CONFIG,  # 3. SA Account
+    LOGIN_CONFIG,  # 4. Server Logins
+    ROLE_CONFIG,  # 5. Sensitive Roles
+    CONFIG_CONFIG,  # 6. Configuration
+    SERVICE_CONFIG,  # 7. Services
+    DATABASE_CONFIG,  # 8. Databases
+    DB_USER_CONFIG,  # 9. Database Users
+    DB_ROLE_CONFIG,  # 10. Database Roles
+    ROLE_MATRIX_CONFIG,  # 11. Role Matrix (NEW)
+    PERMISSION_CONFIG,  # 12. Permission Grants
+    ORPHANED_USER_CONFIG,  # 13. Orphaned Users
+    LINKED_SERVER_CONFIG,  # 14. Linked Servers
+    TRIGGER_CONFIG,  # 15. Triggers
+    BACKUP_CONFIG,  # 16. Backups
+    AUDIT_SETTING_CONFIG,  # 17. Audit Settings
+    ENCRYPTION_CONFIG,  # 18. Encryption (Req #11)
+    ACTION_CONFIG,  # 19. Actions
 )
 
 
@@ -167,50 +166,47 @@ SHEET_ORDER: tuple[SheetConfig, ...] = (
 # Main Writer Class
 # ============================================================================
 
+
 class EnhancedReportWriter(
     # Cover sheet (provides set_audit_info and create_cover_sheet)
     CoverSheetMixin,
-    
     # Instance-level sheets
-    InstanceSheetMixin,     # add_instance
-    SAAccountSheetMixin,    # add_sa_account
-    
+    InstanceSheetMixin,  # add_instance
+    SAAccountSheetMixin,  # add_sa_account
     # Login and role sheets
-    LoginSheetMixin,        # add_login
-    RoleSheetMixin,         # add_role_member
-    
+    LoginSheetMixin,  # add_login
+    RoleSheetMixin,  # add_role_member
     # Configuration sheets
-    ConfigSheetMixin,       # add_config_setting
-    ServiceSheetMixin,      # add_service
-    
+    ConfigSheetMixin,  # add_config_setting
+    ServiceSheetMixin,  # add_service
     # Database-level sheets
-    DatabaseSheetMixin,     # add_database
-    DBUserSheetMixin,       # add_db_user
-    DBRoleSheetMixin,       # add_db_role_member
-    OrphanedUserSheetMixin, # add_orphaned_user
-    
+    DatabaseSheetMixin,  # add_database
+    DBUserSheetMixin,  # add_db_user
+    DBRoleSheetMixin,  # add_db_role_member
+    RoleMatrixSheetMixin,  # add_role_matrix_row
+    PermissionSheetMixin,  # add_permission
+    OrphanedUserSheetMixin,  # add_orphaned_user
     # Auxiliary sheets
-    LinkedServerSheetMixin, # add_linked_server
-    TriggerSheetMixin,      # add_trigger
-    BackupSheetMixin,       # add_backup_info
-    AuditSettingSheetMixin, # add_audit_setting
-    EncryptionSheetMixin,   # add_encryption_row (Req #11)
-    
+    LinkedServerSheetMixin,  # add_linked_server
+    TriggerSheetMixin,  # add_trigger
+    BackupSheetMixin,  # add_backup_info
+    AuditSettingSheetMixin,  # add_audit_setting
+    EncryptionSheetMixin,  # add_encryption_row (Req #11)
     # Action tracking
-    ActionSheetMixin,       # add_action
+    ActionSheetMixin,  # add_action
 ):
     """
     Enhanced Excel Report Writer.
-    
-    Generates comprehensive, styled audit reports with 16 worksheets.
+
+    Generates comprehensive, styled audit reports with 18 worksheets.
     Uses multiple inheritance (mixin pattern) to compose sheet
     functionality from specialized modules.
-    
+
     Each mixin provides:
         - Column definitions (via SheetConfig)
         - add_* method to populate the sheet
         - Sheet-specific styling and validation
-    
+
     Inherited Methods (from mixins):
         set_audit_info()    - Set audit run metadata
         add_instance()      - Add SQL Server instance
@@ -222,16 +218,18 @@ class EnhancedReportWriter(
         add_database()      - Add database
         add_db_user()       - Add database user
         add_db_role_member()- Add database role membership
+        add_role_matrix_row()- Add role matrix row
+        add_permission()    - Add permission grant
         add_orphaned_user() - Add orphaned user
         add_linked_server() - Add linked server
         add_trigger()       - Add trigger
         add_backup_info()   - Add backup status
         add_audit_setting() - Add audit setting
         add_action()        - Add remediation action
-    
+
     Instance Methods:
         save()              - Generate and save the workbook
-    
+
     Attributes:
         wb: The openpyxl Workbook instance
         _issue_count: Number of FAIL findings
@@ -239,101 +237,103 @@ class EnhancedReportWriter(
         _warn_count: Number of WARN findings
         _row_counters: Dict tracking current row per sheet
     """
-    
+
     def __init__(self) -> None:
         """
         Initialize the report writer with an empty workbook.
-        
+
         Creates a fresh workbook and initializes all counters.
         The default "Sheet" worksheet is removed when the first
         real sheet is created.
         """
         # Core workbook instance
         self.wb = Workbook()
-        
+
         # Summary statistics counters
         # These are displayed on the Cover sheet
         self._issue_count: int = 0  # Critical/fail findings
-        self._pass_count: int = 0   # Passing checks
-        self._warn_count: int = 0   # Warnings
-        
+        self._pass_count: int = 0  # Passing checks
+        self._warn_count: int = 0  # Warnings
+
         # Row counters for each sheet
         # All sheets start at row 2 (row 1 is the header)
-        self._row_counters: dict[str, int] = {
-            config.name: 2 for config in SHEET_ORDER
-        }
-        
+        self._row_counters: dict[str, int] = {config.name: 2 for config in SHEET_ORDER}
+
         logger.debug("EnhancedReportWriter initialized with empty workbook")
-    
+
     def _ensure_all_sheets(self) -> None:
         """
         Create all sheets with headers, even if no data was added.
-        
+
         This ensures a consistent report structure regardless of
         which data was collected. Empty sheets still have:
             - Header row with column names
             - Column widths set correctly
             - Freeze panes enabled
             - AutoFilter applied
-        
+
         Called automatically by save() before writing to disk.
         """
         for config in SHEET_ORDER:
             # _ensure_sheet is inherited from BaseSheetMixin
             self._ensure_sheet(config)
-    
+
     def _finalize_all_sheets(self) -> None:
         """
         Finalize all sheets by merging any remaining cell groups.
-        
+
         Each mixin may have a _finalize_* method that handles
         merging cells for the last server/instance group added.
         Called by save() before ensuring all sheets exist.
         """
         # Call finalize methods if they exist
-        if hasattr(self, '_finalize_instances'):
+        if hasattr(self, "_finalize_instances"):
             self._finalize_instances()
-        if hasattr(self, '_finalize_logins'):
+        if hasattr(self, "_finalize_logins"):
             self._finalize_logins()
-        if hasattr(self, '_finalize_sa_accounts'):
+        if hasattr(self, "_finalize_sa_accounts"):
             self._finalize_sa_accounts()
-        if hasattr(self, '_finalize_roles'):
+        if hasattr(self, "_finalize_roles"):
             self._finalize_roles()
-        if hasattr(self, '_finalize_config'):
+        if hasattr(self, "_finalize_config"):
             self._finalize_config()
-        if hasattr(self, '_finalize_services'):
+        if hasattr(self, "_finalize_services"):
             self._finalize_services()
-        if hasattr(self, '_finalize_databases'):
+        if hasattr(self, "_finalize_databases"):
             self._finalize_databases()
-        if hasattr(self, '_finalize_db_users'):
+        if hasattr(self, "_finalize_db_users"):
             self._finalize_db_users()
-        if hasattr(self, '_finalize_db_roles'):
+        if hasattr(self, "_finalize_db_roles"):
             self._finalize_db_roles()
-        if hasattr(self, '_finalize_orphaned_users'):
+        if hasattr(self, "_finalize_role_matrix"):
+            self._finalize_role_matrix()
+        if hasattr(self, "_finalize_permissions"):
+            self._finalize_permissions()
+        if hasattr(self, "_finalize_orphaned_users"):
             self._finalize_orphaned_users()
-        if hasattr(self, '_finalize_linked_servers'):
+        if hasattr(self, "_finalize_linked_servers"):
             self._finalize_linked_servers()
-        if hasattr(self, '_finalize_triggers'):
+        if hasattr(self, "_finalize_triggers"):
             self._finalize_triggers()
-        if hasattr(self, '_finalize_backups'):
+        if hasattr(self, "_finalize_backups"):
             self._finalize_backups()
-        if hasattr(self, '_finalize_audit_settings'):
+        if hasattr(self, "_finalize_audit_settings"):
             self._finalize_audit_settings()
-    
+
     def _reorder_sheets(self) -> None:
         """
         Reorder sheets to the standard logical order.
-        
+
         The order is:
             1. Cover (always first)
             2-16. Data sheets in SHEET_ORDER
-        
+
         This ensures consistent sheet ordering regardless of
         the order data was added to the writer.
         """
         # Build desired order: Cover first, then all data sheets
         desired_order = ["Cover"] + [config.name for config in SHEET_ORDER]
-        
+
         # Move sheets to correct positions
         for target_idx, name in enumerate(desired_order):
             if name in self.wb.sheetnames:
@@ -341,56 +341,56 @@ class EnhancedReportWriter(
                 if current_idx != target_idx:
                     offset = target_idx - current_idx
                     self.wb.move_sheet(name, offset=offset)
-    
+
     def save(self, path: Path | str) -> Path:
         """
         Save the report to an Excel file.
-        
+
         This method performs the following steps:
-        
+
         1. Creates any sheets that weren't populated (headers only)
         2. Creates the Cover sheet with summary statistics
         3. Reorders all sheets to the standard order
         4. Saves the workbook to the specified path
-        
+
         The output directory is created if it doesn't exist.
-        
+
         Args:
             path: Output file path (str or Path)
                   Parent directories are created automatically.
-        
+
         Returns:
             Path object pointing to the saved file.
-        
+
         Raises:
             PermissionError: If the file is open in another program
             OSError: If the path is invalid or disk is full
-        
+
         Example:
             path = writer.save("output/audit_2024.xlsx")
             print(f"Saved: {path} ({path.stat().st_size} bytes)")
         """
         path = Path(path)
-        
+
         # Create output directory if needed
         path.parent.mkdir(parents=True, exist_ok=True)
-        
+
         # Step 0: Finalize all sheets (merge remaining cell groups)
         self._finalize_all_sheets()
-        
+
         # Step 1: Ensure all sheets exist (even empty ones)
         self._ensure_all_sheets()
-        
+
         # Step 2: Create cover sheet with summary statistics
         # This uses counters populated by the add_* methods
         self.create_cover_sheet()
-        
+
         # Step 3: Reorder sheets to logical flow
         self._reorder_sheets()
-        
+
         # Step 4: Save to disk
         self.wb.save(path)
-        
+
         # Log summary
         logger.info(
             "Report saved: %s (%d sheets, %d issues, %d passes, %d warnings)",
@@ -400,5 +400,5 @@ class EnhancedReportWriter(
             self._pass_count,
             self._warn_count,
         )
-        
+
         return path

@@ -392,7 +392,7 @@ CREATE TABLE IF NOT EXISTS finding_changes (
     change_type TEXT NOT NULL,          -- 'fixed', 'excepted', 'regression', 'new', 'unchanged'
     old_status TEXT,                    -- Status in from_run
     new_status TEXT,                    -- Status in to_run
-    action_description TEXT,            -- Auto-generated: "Disabled login 'sa' on PROD01\SQL2019"
+    action_description TEXT,            -- Auto-generated: "Disabled login 'sa' on PROD01\\\\SQL2019"
     exception_reason TEXT,              -- User fills this for exceptions
     exception_approved_by TEXT,
     exception_approved_at TEXT,
@@ -439,56 +439,165 @@ CREATE INDEX IF NOT EXISTS idx_findings_status ON findings(audit_run_id, status)
 CREATE INDEX IF NOT EXISTS idx_finding_changes_runs ON finding_changes(from_run_id, to_run_id);
 CREATE INDEX IF NOT EXISTS idx_action_log_initial ON action_log(initial_run_id);
 CREATE INDEX IF NOT EXISTS idx_action_log_entity ON action_log(entity_key);
+
+-- ============================================================================
+-- Permissions (Grant/Deny)
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS permissions (
+    id INTEGER PRIMARY KEY,
+    instance_id INTEGER NOT NULL REFERENCES instances(id) ON DELETE CASCADE,
+    audit_run_id INTEGER NOT NULL REFERENCES audit_runs(id) ON DELETE CASCADE,
+    scope TEXT NOT NULL,          -- 'SERVER' or 'DATABASE'
+    database_name TEXT NOT NULL,  -- Empty string for SERVER permissions
+    entity_name TEXT NOT NULL,    -- Object/Schema/Key name
+    grantee_name TEXT NOT NULL,
+    permission_name TEXT NOT NULL,
+    state TEXT NOT NULL,          -- 'GRANT', 'DENY', 'GRANT_WITH_GRANT_OPTION'
+    class_desc TEXT,              -- 'OBJECT', 'SCHEMA', 'SERVER', etc.
+    collected_at TEXT NOT NULL,
+    UNIQUE(instance_id, audit_run_id, scope, database_name, grantee_name, permission_name, entity_name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_permissions_instance ON permissions(instance_id, audit_run_id);
 """
+
+
+def save_database_role_member(
+    connection,
+    audit_run_id: int,
+    instance_id: int,
+    database_name: str,
+    role_name: str,
+    member_name: str,
+    member_type: str,
+) -> int:
+    """Save a database role membership."""
+    now = datetime.now(timezone.utc).isoformat()
+    cursor = connection.execute(
+        """
+        INSERT OR REPLACE INTO database_role_memberships
+        (instance_id, audit_run_id, database_name, role_name, member_name, member_type, collected_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            instance_id,
+            audit_run_id,
+            database_name,
+            role_name,
+            member_name,
+            member_type,
+            now,
+        ),
+    )
+    return cursor.lastrowid
+
+
+def save_permission(
+    connection,
+    audit_run_id: int,
+    instance_id: int,
+    scope: str,
+    database_name: str,
+    entity_name: str,
+    grantee_name: str,
+    permission_name: str,
+    state: str,
+    class_desc: str | None = None,
+) -> int:
+    """
+    Save a permission grant/deny record.
+
+    Args:
+        connection: SQLite connection
+        audit_run_id: Current audit run ID
+        instance_id: Instance ID
+        scope: 'SERVER' or 'DATABASE'
+        database_name: Database name (or empty string)
+        entity_name: Object/Entity name
+        grantee_name: Who has the permission
+        permission_name: What permission (SELECT, CONNECT, etc.)
+        state: GRANT, DENY, etc.
+        class_desc: OBJECT, SCHEMA, etc.
+
+    Returns:
+        Permission ID
+    """
+    now = datetime.now(timezone.utc).isoformat()
+
+    cursor = connection.execute(
+        """
+        INSERT OR REPLACE INTO permissions 
+        (instance_id, audit_run_id, scope, database_name, entity_name, 
+         grantee_name, permission_name, state, class_desc, collected_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """,
+        (
+            instance_id,
+            audit_run_id,
+            scope,
+            database_name,
+            entity_name,
+            grantee_name,
+            permission_name,
+            state,
+            class_desc,
+            now,
+        ),
+    )
+
+    return cursor.lastrowid
 
 
 def initialize_schema_v2(connection) -> None:
     """
     Initialize schema version 2 tables.
-    
+
     Call after initialize_schema() from HistoryStore.
-    
+
     Args:
         connection: SQLite connection from HistoryStore._get_connection()
     """
     logger.info("Initializing schema v2 tables...")
-    
+
     # Execute all DDL statements
     connection.executescript(SCHEMA_V2_TABLES)
-    
+
     # Update schema version
-    connection.execute("""
+    connection.execute(
+        """
         INSERT OR REPLACE INTO schema_meta (key, value)
         VALUES ('version', '2')
-    """)
-    
+    """
+    )
+
     connection.commit()
     logger.info("Schema v2 initialized successfully")
 
 
 def get_annotation(
-    connection,
-    entity_type: str,
-    entity_key: str,
-    field_name: str
+    connection, entity_type: str, entity_key: str, field_name: str
 ) -> str | None:
     """
     Get an annotation value.
-    
+
     Args:
         connection: SQLite connection
         entity_type: Type like 'login', 'linked_server'
         entity_key: Key like 'SERVER|INSTANCE|loginname'
         field_name: Field like 'description', 'reason'
-        
+
     Returns:
         The annotation value or None
     """
-    row = connection.execute("""
+    row = connection.execute(
+        """
         SELECT field_value FROM annotations
         WHERE entity_type = ? AND entity_key = ? AND field_name = ?
-    """, (entity_type, entity_key, field_name)).fetchone()
-    
+    """,
+        (entity_type, entity_key, field_name),
+    ).fetchone()
+
     return row["field_value"] if row else None
 
 
@@ -500,11 +609,11 @@ def set_annotation(
     field_value: str | None,
     status_override: str | None = None,
     modified_by: str | None = None,
-    audit_run_id: int | None = None
+    audit_run_id: int | None = None,
 ) -> int:
     """
     Set or update an annotation, with history tracking.
-    
+
     Args:
         connection: SQLite connection
         entity_type: Type like 'login', 'linked_server'
@@ -514,53 +623,73 @@ def set_annotation(
         status_override: Optional status override ('exception', etc.)
         modified_by: Who made the change
         audit_run_id: Which audit run this happened in
-        
+
     Returns:
         Annotation ID
     """
     now = datetime.now(timezone.utc).isoformat()
-    
+
     # Check for existing annotation
-    existing = connection.execute("""
+    existing = connection.execute(
+        """
         SELECT id, field_value, status_override 
         FROM annotations
         WHERE entity_type = ? AND entity_key = ? AND field_name = ?
-    """, (entity_type, entity_key, field_name)).fetchone()
-    
+    """,
+        (entity_type, entity_key, field_name),
+    ).fetchone()
+
     if existing:
         # Update existing and log history
-        connection.execute("""
+        connection.execute(
+            """
             INSERT INTO annotation_history 
             (annotation_id, old_value, new_value, old_status, new_status, changed_at, changed_by, audit_run_id)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            existing["id"],
-            existing["field_value"],
-            field_value,
-            existing["status_override"],
-            status_override,
-            now,
-            modified_by,
-            audit_run_id
-        ))
-        
-        connection.execute("""
+        """,
+            (
+                existing["id"],
+                existing["field_value"],
+                field_value,
+                existing["status_override"],
+                status_override,
+                now,
+                modified_by,
+                audit_run_id,
+            ),
+        )
+
+        connection.execute(
+            """
             UPDATE annotations
             SET field_value = ?, status_override = ?, modified_at = ?, modified_by = ?
             WHERE id = ?
-        """, (field_value, status_override, now, modified_by, existing["id"]))
-        
+        """,
+            (field_value, status_override, now, modified_by, existing["id"]),
+        )
+
         connection.commit()
         return existing["id"]
-    
+
     else:
         # Insert new
-        cursor = connection.execute("""
+        cursor = connection.execute(
+            """
             INSERT INTO annotations 
             (entity_type, entity_key, field_name, field_value, status_override, created_at, modified_by)
             VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (entity_type, entity_key, field_name, field_value, status_override, now, modified_by))
-        
+        """,
+            (
+                entity_type,
+                entity_key,
+                field_name,
+                field_value,
+                status_override,
+                now,
+                modified_by,
+            ),
+        )
+
         connection.commit()
         return cursor.lastrowid
 
@@ -568,7 +697,7 @@ def set_annotation(
 def build_entity_key(*parts: str) -> str:
     """
     Build a composite entity key from parts.
-    
+
     Example:
         build_entity_key("PROD-SQL01", "INSTANCE1", "sa")
         # Returns: "PROD-SQL01|INSTANCE1|sa"
@@ -591,7 +720,7 @@ def save_finding(
 ) -> int:
     """
     Save a finding to the database.
-    
+
     Args:
         connection: SQLite connection
         audit_run_id: Current audit run ID
@@ -604,100 +733,119 @@ def save_finding(
         finding_description: What was found
         recommendation: What to do about it
         details: JSON string with entity-specific details
-        
+
     Returns:
         Finding ID
     """
     now = datetime.now(timezone.utc).isoformat()
-    
-    cursor = connection.execute("""
+
+    cursor = connection.execute(
+        """
         INSERT OR REPLACE INTO findings 
         (audit_run_id, instance_id, entity_key, finding_type, entity_name, 
          status, risk_level, finding_description, recommendation, details, collected_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (
-        audit_run_id, instance_id, entity_key, finding_type, entity_name,
-        status, risk_level, finding_description, recommendation, details, now
-    ))
-    
+    """,
+        (
+            audit_run_id,
+            instance_id,
+            entity_key,
+            finding_type,
+            entity_name,
+            status,
+            risk_level,
+            finding_description,
+            recommendation,
+            details,
+            now,
+        ),
+    )
+
     connection.commit()
     return cursor.lastrowid
 
 
 def get_findings_for_run(
-    connection,
-    audit_run_id: int,
-    status_filter: str | None = None
+    connection, audit_run_id: int, status_filter: str | None = None
 ) -> list[dict]:
     """
     Get all findings for an audit run.
-    
+
     Args:
         connection: SQLite connection
         audit_run_id: Audit run ID
         status_filter: Optional filter by status (PASS, FAIL, WARN)
-        
+
     Returns:
         List of finding dicts
     """
     if status_filter:
-        rows = connection.execute("""
+        rows = connection.execute(
+            """
             SELECT * FROM findings 
             WHERE audit_run_id = ? AND status = ?
             ORDER BY finding_type, entity_name
-        """, (audit_run_id, status_filter)).fetchall()
+        """,
+            (audit_run_id, status_filter),
+        ).fetchall()
     else:
-        rows = connection.execute("""
+        rows = connection.execute(
+            """
             SELECT * FROM findings 
             WHERE audit_run_id = ?
             ORDER BY finding_type, entity_name
-        """, (audit_run_id,)).fetchall()
-    
+        """,
+            (audit_run_id,),
+        ).fetchall()
+
     return [dict(row) for row in rows]
 
 
-def compare_findings(
-    connection,
-    from_run_id: int,
-    to_run_id: int
-) -> dict:
+def compare_findings(connection, from_run_id: int, to_run_id: int) -> dict:
     """
     Compare findings between two audit runs.
-    
+
     Args:
         connection: SQLite connection
         from_run_id: Baseline audit run ID
         to_run_id: New audit run ID
-        
+
     Returns:
         Dict with 'fixed', 'excepted', 'regression', 'new' lists
     """
     # Get findings from both runs
-    old_findings = {f["entity_key"]: f for f in get_findings_for_run(connection, from_run_id)}
-    new_findings = {f["entity_key"]: f for f in get_findings_for_run(connection, to_run_id)}
-    
-    result = {
-        "fixed": [],      # Was FAIL/WARN, now PASS
-        "excepted": [],   # Was FAIL/WARN, still FAIL/WARN
-        "regression": [], # Was PASS, now FAIL/WARN
-        "new": [],        # Didn't exist before
+    old_findings = {
+        f["entity_key"]: f for f in get_findings_for_run(connection, from_run_id)
     }
-    
+    new_findings = {
+        f["entity_key"]: f for f in get_findings_for_run(connection, to_run_id)
+    }
+
+    result = {
+        "fixed": [],  # Was FAIL/WARN, now PASS
+        "excepted": [],  # Was FAIL/WARN, still FAIL/WARN
+        "regression": [],  # Was PASS, now FAIL/WARN
+        "new": [],  # Didn't exist before
+    }
+
     for key, old in old_findings.items():
         if key in new_findings:
             new = new_findings[key]
             if old["status"] in ("FAIL", "WARN") and new["status"] == "PASS":
                 result["fixed"].append({"old": old, "new": new})
-            elif old["status"] in ("FAIL", "WARN") and new["status"] in ("FAIL", "WARN"):
+            elif old["status"] in ("FAIL", "WARN") and new["status"] in (
+                "FAIL",
+                "WARN",
+            ):
                 result["excepted"].append({"old": old, "new": new})
             elif old["status"] == "PASS" and new["status"] in ("FAIL", "WARN"):
                 result["regression"].append({"old": old, "new": new})
         # Items that disappeared are ignored (entity removed from server)
-    
+
     for key, new in new_findings.items():
         if key not in old_findings and new["status"] in ("FAIL", "WARN"):
             result["new"].append({"new": new})
-    
+
     return result
 
 
@@ -713,10 +861,10 @@ def upsert_annotation(
 ) -> int:
     """
     Insert or update an annotation.
-    
+
     Annotations are keyed by (entity_type, entity_key, field_name).
     Also records change in annotation_history for audit trail.
-    
+
     Args:
         connection: SQLite connection
         entity_type: Type of entity (login, config, database, etc.)
@@ -726,57 +874,90 @@ def upsert_annotation(
         modified_by: Who made the change (user, excel_import, system)
         status_override: Optional status override (Accept, Reject, Exception)
         audit_run_id: Link to audit run (optional)
-        
+
     Returns:
         Annotation ID
     """
     now = datetime.now(timezone.utc).isoformat()
-    
+
     # Check if annotation exists
-    existing = connection.execute("""
+    existing = connection.execute(
+        """
         SELECT id, field_value FROM annotations
         WHERE entity_type = ? AND entity_key = ? AND field_name = ?
-    """, (entity_type, entity_key, field_name)).fetchone()
-    
+    """,
+        (entity_type, entity_key, field_name),
+    ).fetchone()
+
     if existing:
-        old_value = existing[1] if hasattr(existing, '__getitem__') else existing["field_value"]
-        
+        old_value = (
+            existing[1] if hasattr(existing, "__getitem__") else existing["field_value"]
+        )
+
         # Update existing
-        connection.execute("""
+        connection.execute(
+            """
             UPDATE annotations 
             SET field_value = ?, status_override = ?, modified_at = ?, modified_by = ?
             WHERE entity_type = ? AND entity_key = ? AND field_name = ?
-        """, (field_value, status_override, now, modified_by,
-              entity_type, entity_key, field_name))
-        
-        annotation_id = existing[0] if hasattr(existing, '__getitem__') else existing["id"]
-        
+        """,
+            (
+                field_value,
+                status_override,
+                now,
+                modified_by,
+                entity_type,
+                entity_key,
+                field_name,
+            ),
+        )
+
+        annotation_id = (
+            existing[0] if hasattr(existing, "__getitem__") else existing["id"]
+        )
+
         # Record history if value changed
         if old_value != field_value:
-            connection.execute("""
+            connection.execute(
+                """
                 INSERT INTO annotation_history
                 (annotation_id, old_value, new_value, changed_at, changed_by, audit_run_id)
                 VALUES (?, ?, ?, ?, ?, ?)
-            """, (annotation_id, old_value, field_value, now, modified_by, audit_run_id))
+            """,
+                (annotation_id, old_value, field_value, now, modified_by, audit_run_id),
+            )
     else:
         # Insert new
-        cursor = connection.execute("""
+        cursor = connection.execute(
+            """
             INSERT INTO annotations
             (entity_type, entity_key, field_name, field_value, status_override, 
              created_at, modified_by)
             VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (entity_type, entity_key, field_name, field_value, status_override,
-              now, modified_by))
-        
+        """,
+            (
+                entity_type,
+                entity_key,
+                field_name,
+                field_value,
+                status_override,
+                now,
+                modified_by,
+            ),
+        )
+
         annotation_id = cursor.lastrowid
-        
+
         # Record initial history
-        connection.execute("""
+        connection.execute(
+            """
             INSERT INTO annotation_history
             (annotation_id, old_value, new_value, changed_at, changed_by, audit_run_id)
             VALUES (?, NULL, ?, ?, ?, ?)
-        """, (annotation_id, field_value, now, modified_by, audit_run_id))
-    
+        """,
+            (annotation_id, field_value, now, modified_by, audit_run_id),
+        )
+
     connection.commit()
     return annotation_id
 
@@ -784,30 +965,34 @@ def upsert_annotation(
 def get_annotations_for_entity(connection, entity_key: str) -> dict:
     """
     Get all annotations for an entity.
-    
+
     Returns dict with field_name → field_value mappings.
     """
-    rows = connection.execute("""
+    rows = connection.execute(
+        """
         SELECT field_name, field_value, status_override
         FROM annotations
         WHERE entity_key = ?
-    """, (entity_key,)).fetchall()
-    
+    """,
+        (entity_key,),
+    ).fetchall()
+
     result = {}
     for row in rows:
-        fn = row[0] if hasattr(row, '__getitem__') else row["field_name"]
-        fv = row[1] if hasattr(row, '__getitem__') else row["field_value"]
-        so = row[2] if hasattr(row, '__getitem__') else row["status_override"]
+        fn = row[0] if hasattr(row, "__getitem__") else row["field_name"]
+        fv = row[1] if hasattr(row, "__getitem__") else row["field_value"]
+        so = row[2] if hasattr(row, "__getitem__") else row["status_override"]
         result[fn] = fv
         if so:
             result["status_override"] = so
-    
+
     return result
 
 
 # ============================================================================
 # Data Persistence Helpers
 # ============================================================================
+
 
 def save_login(
     connection,
@@ -819,30 +1004,36 @@ def save_login(
     password_policy: bool = None,
     password_expiration: bool = None,
     default_database: str = None,
-    has_access: bool = True,
-    is_sysadmin: bool = False,
-    is_securityadmin: bool = False,
-    is_serveradmin: bool = False,
     is_sa: bool = False,
     create_date: str = None,
     modify_date: str = None,
 ) -> int:
     """Save a login to the database."""
     now = datetime.now(timezone.utc).isoformat()
-    
-    cursor = connection.execute("""
+
+    cursor = connection.execute(
+        """
         INSERT OR REPLACE INTO logins
         (instance_id, audit_run_id, login_name, login_type, is_disabled,
-         password_policy, password_expiration, default_database, has_access,
-         is_sysadmin, is_securityadmin, is_serveradmin, is_sa,
-         create_date, modify_date, collected_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (
-        instance_id, audit_run_id, login_name, login_type, is_disabled,
-        password_policy, password_expiration, default_database, has_access,
-        is_sysadmin, is_securityadmin, is_serveradmin, is_sa,
-        create_date, modify_date, now
-    ))
+         password_policy_enforced, password_expiration_enabled, default_database, 
+         is_sa_account, create_date, modify_date, collected_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """,
+        (
+            instance_id,
+            audit_run_id,
+            login_name,
+            login_type,
+            is_disabled,
+            password_policy,
+            password_expiration,
+            default_database,
+            is_sa,
+            create_date,
+            modify_date,
+            now,
+        ),
+    )
     connection.commit()
     return cursor.lastrowid
 
@@ -862,25 +1053,43 @@ def save_database(
     is_encrypted: bool = False,
     is_auto_close: bool = False,
     is_auto_shrink: bool = False,
-    page_verify: str = None,
+    data_size_mb: float = None,
+    # Legacy alias for backwards compatibility
     size_mb: float = None,
 ) -> int:
     """Save a database to the database."""
     now = datetime.now(timezone.utc).isoformat()
-    
-    cursor = connection.execute("""
+
+    # Use data_size_mb or fall back to size_mb for backwards compatibility
+    actual_size = data_size_mb if data_size_mb is not None else size_mb
+
+    cursor = connection.execute(
+        """
         INSERT OR REPLACE INTO databases
         (instance_id, audit_run_id, database_id, database_name, owner,
          create_date, state, recovery_model, compatibility_level,
          is_trustworthy, is_encrypted, is_auto_close, is_auto_shrink,
-         page_verify, size_mb, collected_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (
-        instance_id, audit_run_id, database_id, database_name, owner,
-        create_date, state, recovery_model, compatibility_level,
-        is_trustworthy, is_encrypted, is_auto_close, is_auto_shrink,
-        page_verify, size_mb, now
-    ))
+         data_size_mb, collected_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """,
+        (
+            instance_id,
+            audit_run_id,
+            database_id,
+            database_name,
+            owner,
+            create_date,
+            state,
+            recovery_model,
+            compatibility_level,
+            is_trustworthy,
+            is_encrypted,
+            is_auto_close,
+            is_auto_shrink,
+            actual_size,
+            now,
+        ),
+    )
     connection.commit()
     return cursor.lastrowid
 
@@ -903,18 +1112,32 @@ def save_config_setting(
 ) -> int:
     """Save a config setting to the database."""
     now = datetime.now(timezone.utc).isoformat()
-    
-    cursor = connection.execute("""
+
+    cursor = connection.execute(
+        """
         INSERT OR REPLACE INTO config_settings
         (instance_id, audit_run_id, setting_name, configured_value, running_value,
          required_value, status, risk_level, min_value, max_value,
          is_dynamic, is_advanced, description, collected_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (
-        instance_id, audit_run_id, setting_name, configured_value, running_value,
-        required_value, status, risk_level, min_value, max_value,
-        is_dynamic, is_advanced, description, now
-    ))
+    """,
+        (
+            instance_id,
+            audit_run_id,
+            setting_name,
+            configured_value,
+            running_value,
+            required_value,
+            status,
+            risk_level,
+            min_value,
+            max_value,
+            is_dynamic,
+            is_advanced,
+            description,
+            now,
+        ),
+    )
     connection.commit()
     return cursor.lastrowid
 
@@ -936,18 +1159,31 @@ def save_db_user(
 ) -> int:
     """Save a database user to the database."""
     now = datetime.now(timezone.utc).isoformat()
-    
-    cursor = connection.execute("""
+
+    cursor = connection.execute(
+        """
         INSERT OR REPLACE INTO database_users
         (instance_id, audit_run_id, database_name, user_name, login_name,
          user_type, default_schema, is_orphaned, is_dbo, is_guest,
          is_guest_enabled, create_date, collected_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (
-        instance_id, audit_run_id, database_name, user_name, login_name,
-        user_type, default_schema, is_orphaned, is_dbo, is_guest,
-        is_guest_enabled, create_date, now
-    ))
+    """,
+        (
+            instance_id,
+            audit_run_id,
+            database_name,
+            user_name,
+            login_name,
+            user_type,
+            default_schema,
+            is_orphaned,
+            is_dbo,
+            is_guest,
+            is_guest_enabled,
+            create_date,
+            now,
+        ),
+    )
     connection.commit()
     return cursor.lastrowid
 
@@ -963,27 +1199,41 @@ def save_linked_server(
     is_rpc_out_enabled: bool = False,
     is_data_access_enabled: bool = False,
     is_remote_login_enabled: bool = False,
+    # These are ignored - they belong in linked_server_logins table
     uses_self_mapping: bool = False,
     local_login: str = None,
     remote_login: str = None,
     is_impersonate: bool = False,
 ) -> int:
-    """Save a linked server to the database."""
+    """Save a linked server to the database.
+
+    Note: Login mapping params (uses_self_mapping, local_login, remote_login,
+    is_impersonate) are accepted for backwards compatibility but ignored.
+    Use save_linked_server_login() for login mappings.
+    """
     now = datetime.now(timezone.utc).isoformat()
-    
-    cursor = connection.execute("""
+
+    cursor = connection.execute(
+        """
         INSERT OR REPLACE INTO linked_servers
         (instance_id, audit_run_id, linked_server_name, product, provider,
          data_source, is_rpc_out_enabled, is_data_access_enabled,
-         is_remote_login_enabled, uses_self_mapping,
-         local_login, remote_login, is_impersonate, collected_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (
-        instance_id, audit_run_id, linked_server_name, product, provider,
-        data_source, is_rpc_out_enabled, is_data_access_enabled,
-        is_remote_login_enabled, uses_self_mapping,
-        local_login, remote_login, is_impersonate, now
-    ))
+         is_remote_login_enabled, collected_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """,
+        (
+            instance_id,
+            audit_run_id,
+            linked_server_name,
+            product,
+            provider,
+            data_source,
+            is_rpc_out_enabled,
+            is_data_access_enabled,
+            is_remote_login_enabled,
+            now,
+        ),
+    )
     connection.commit()
     return cursor.lastrowid
 
@@ -1004,18 +1254,30 @@ def save_backup_record(
 ) -> int:
     """Save a backup record to the database."""
     now = datetime.now(timezone.utc).isoformat()
-    
-    cursor = connection.execute("""
+
+    cursor = connection.execute(
+        """
         INSERT INTO backup_history
         (instance_id, audit_run_id, database_name, backup_type, backup_start,
          backup_finish, size_bytes, compressed_size, is_copy_only,
          is_encrypted, physical_device_name, collected_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (
-        instance_id, audit_run_id, database_name, backup_type, backup_start,
-        backup_finish, size_bytes, compressed_size, is_copy_only,
-        is_encrypted, physical_device_name, now
-    ))
+    """,
+        (
+            instance_id,
+            audit_run_id,
+            database_name,
+            backup_type,
+            backup_start,
+            backup_finish,
+            size_bytes,
+            compressed_size,
+            is_copy_only,
+            is_encrypted,
+            physical_device_name,
+            now,
+        ),
+    )
     connection.commit()
     return cursor.lastrowid
 
@@ -1035,15 +1297,27 @@ def save_trigger(
 ) -> int:
     """Save a trigger to the database."""
     now = datetime.now(timezone.utc).isoformat()
-    
-    cursor = connection.execute("""
+
+    cursor = connection.execute(
+        """
         INSERT OR REPLACE INTO triggers
         (instance_id, audit_run_id, trigger_name, trigger_type, database_name,
          table_name, is_enabled, is_instead_of, trigger_events, definition, collected_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (
-        instance_id, audit_run_id, trigger_name, trigger_type, database_name,
-        table_name or "", is_enabled, is_instead_of, trigger_events, definition, now
-    ))
+    """,
+        (
+            instance_id,
+            audit_run_id,
+            trigger_name,
+            trigger_type,
+            database_name,
+            table_name or "",
+            is_enabled,
+            is_instead_of,
+            trigger_events,
+            definition,
+            now,
+        ),
+    )
     connection.commit()
     return cursor.lastrowid

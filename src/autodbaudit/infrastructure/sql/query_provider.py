@@ -22,7 +22,7 @@ from typing import ClassVar
 class SqlVersion(Enum):
     """
     SQL Server major version identifiers.
-    
+
     Version mapping:
         10 = 2008/2008R2
         11 = 2012
@@ -34,6 +34,7 @@ class SqlVersion(Enum):
         17 = 2025
         18+ = Future versions (use Sql2019PlusProvider)
     """
+
     SQL_2008 = 10
     SQL_2012 = 11
     SQL_2014 = 12
@@ -47,6 +48,7 @@ class SqlVersion(Enum):
 @dataclass(frozen=True)
 class QueryInfo:
     """Metadata about a SQL query."""
+
     name: str
     description: str
     min_version: int = 10  # Minimum SQL Server major version
@@ -56,144 +58,148 @@ class QueryInfo:
 class QueryProvider(ABC):
     """
     Abstract base class for version-specific SQL queries.
-    
+
     Each method returns a SQL query string appropriate for
     the SQL Server version this provider supports.
     """
-    
+
     # Override in subclasses
     VERSION_NAME: ClassVar[str] = "Unknown"
     MIN_VERSION: ClassVar[int] = 10
     MAX_VERSION: ClassVar[int] = 99
-    
+
     # ========================================================================
     # Server Information
     # ========================================================================
-    
+
     @abstractmethod
     def get_server_info(self) -> str:
         """Get server OS and installation information."""
-    
+
     @abstractmethod
     def get_instance_properties(self) -> str:
         """Get SQL Server instance properties."""
-    
+
     # ========================================================================
     # Services
     # ========================================================================
-    
+
     @abstractmethod
     def get_sql_services(self) -> str:
         """Get SQL Server services (requires xp_regread or WMI)."""
-    
+
     # ========================================================================
     # Configuration
     # ========================================================================
-    
+
     @abstractmethod
     def get_sp_configure(self) -> str:
         """Get all sp_configure settings."""
-    
+
     @abstractmethod
     def get_advanced_options(self) -> str:
         """Get advanced configuration options."""
-    
+
     # ========================================================================
     # Security - Logins
     # ========================================================================
-    
+
     @abstractmethod
     def get_server_logins(self) -> str:
         """Get all server logins with properties."""
-    
+
     @abstractmethod
     def get_server_role_members(self) -> str:
         """Get server role memberships."""
-    
+
     @abstractmethod
-    def get_login_permissions(self) -> str:
-        """Get server-level permissions for logins."""
-    
+    def get_server_permissions(self) -> str:
+        """Get server-level permissions."""
+
+    @abstractmethod
+    def get_database_permissions(self, database: str) -> str:
+        """Get database-level permissions."""
+
     # ========================================================================
     # Security - Databases
     # ========================================================================
-    
+
     @abstractmethod
     def get_databases(self) -> str:
         """Get all databases with properties."""
-    
+
     @abstractmethod
     def get_database_users(self, database: str) -> str:
         """Get users for a specific database."""
-    
+
     @abstractmethod
     def get_database_role_members(self, database: str) -> str:
         """Get database role memberships."""
-    
+
     @abstractmethod
     def get_orphaned_users(self, database: str) -> str:
         """Get orphaned database users."""
-    
+
     # ========================================================================
     # Linked Servers
     # ========================================================================
-    
+
     @abstractmethod
     def get_linked_servers(self) -> str:
         """Get all linked servers with configuration."""
-    
+
     @abstractmethod
     def get_linked_server_logins(self) -> str:
         """Get linked server login mappings."""
-    
+
     # ========================================================================
     # Triggers
     # ========================================================================
-    
+
     @abstractmethod
     def get_server_triggers(self) -> str:
         """Get server-level (DDL) triggers."""
-    
+
     @abstractmethod
     def get_database_triggers(self, database: str) -> str:
         """Get database-level triggers."""
-    
+
     # ========================================================================
     # Backups
     # ========================================================================
-    
+
     @abstractmethod
     def get_backup_history(self) -> str:
         """Get backup history from msdb."""
-    
+
     @abstractmethod
     def get_backup_jobs(self) -> str:
         """Get SQL Agent jobs related to backups."""
-    
+
     # ========================================================================
     # Audit Settings
     # ========================================================================
-    
+
     @abstractmethod
     def get_audit_settings(self) -> str:
         """Get login audit and security settings."""
-    
+
     # ========================================================================
     # Encryption
     # ========================================================================
-    
+
     @abstractmethod
     def get_service_master_key(self) -> str:
         """Get Service Master Key status (instance-level)."""
-    
+
     @abstractmethod
     def get_database_master_keys(self) -> str:
         """Get Database Master Keys across all databases."""
-    
+
     @abstractmethod
     def get_tde_status(self) -> str:
         """Get Transparent Data Encryption status."""
-    
+
     @abstractmethod
     def get_encryption_certificates(self) -> str:
         """Get certificates used for encryption."""
@@ -202,18 +208,18 @@ class QueryProvider(ABC):
 class Sql2008Provider(QueryProvider):
     """
     Query provider for SQL Server 2008/2008 R2.
-    
+
     Avoids features not available in 2008:
     - No STRING_AGG (use FOR XML PATH)
     - No TRY_CAST (use CASE with ISNUMERIC)
     - Different DMV structure
     - physical_memory_in_bytes instead of physical_memory_kb
     """
-    
+
     VERSION_NAME = "SQL Server 2008/2008R2"
     MIN_VERSION = 10
     MAX_VERSION = 10
-    
+
     def get_server_info(self) -> str:
         return """
         SELECT 
@@ -228,7 +234,7 @@ class Sql2008Provider(QueryProvider):
             CAST(SERVERPROPERTY('IsClustered') AS INT) AS IsClustered,
             CAST(SERVERPROPERTY('IsHadrEnabled') AS INT) AS IsHadrEnabled
         """
-    
+
     def get_instance_properties(self) -> str:
         # SQL 2008 doesn't have dm_os_host_info, use sys.dm_os_sys_info
         return """
@@ -267,7 +273,7 @@ class Sql2008Provider(QueryProvider):
              FROM sys.dm_exec_connections 
              WHERE local_tcp_port IS NOT NULL) AS TCPPort
         """
-    
+
     def get_sql_services(self) -> str:
         # SQL 2008 doesn't have sys.dm_server_services
         # Use xp_cmdshell with wmic for cleaner output format
@@ -393,7 +399,7 @@ class Sql2008Provider(QueryProvider):
         
         SET NOCOUNT OFF;
         """
-    
+
     def get_sp_configure(self) -> str:
         return """
         SELECT 
@@ -408,7 +414,7 @@ class Sql2008Provider(QueryProvider):
         FROM sys.configurations
         ORDER BY name
         """
-    
+
     def get_advanced_options(self) -> str:
         return """
         SELECT 
@@ -427,7 +433,7 @@ class Sql2008Provider(QueryProvider):
             'show advanced options'
         )
         """
-    
+
     def get_server_logins(self) -> str:
         return """
         SELECT 
@@ -444,7 +450,7 @@ class Sql2008Provider(QueryProvider):
             CAST(LOGINPROPERTY(p.name, 'IsLocked') AS INT) AS IsLocked,
             CAST(LOGINPROPERTY(p.name, 'IsMustChange') AS INT) AS MustChangePassword,
             CAST(LOGINPROPERTY(p.name, 'BadPasswordCount') AS INT) AS BadPasswordCount,
-            CASE WHEN p.name = 'sa' THEN 1 ELSE 0 END AS IsSA,
+            CASE WHEN p.principal_id = 1 THEN 1 ELSE 0 END AS IsSA,
             sl.is_policy_checked AS PasswordPolicyEnforced,
             sl.is_expiration_checked AS PasswordExpirationEnabled
         FROM sys.server_principals p
@@ -452,7 +458,7 @@ class Sql2008Provider(QueryProvider):
         WHERE p.type IN ('S', 'U', 'G', 'C', 'K')  -- SQL, Windows User, Group, Cert, Asym Key
         ORDER BY p.name
         """
-    
+
     def get_server_role_members(self) -> str:
         return """
         SELECT 
@@ -465,20 +471,62 @@ class Sql2008Provider(QueryProvider):
         JOIN sys.server_principals m ON rm.member_principal_id = m.principal_id
         ORDER BY r.name, m.name
         """
-    
-    def get_login_permissions(self) -> str:
+
+    def get_server_permissions(self) -> str:
+        """Get all server-level permissions."""
         return """
         SELECT 
-            p.name AS LoginName,
-            perm.permission_name AS Permission,
+            p.name AS GranteeName,
+            p.type_desc AS GranteeType,
+            perm.class_desc AS PermissionClass,
+            perm.permission_name AS PermissionName,
             perm.state_desc AS PermissionState,
-            perm.class_desc AS PermissionClass
+            CASE perm.class
+                WHEN 100 THEN 'SERVER' -- Server
+                WHEN 101 THEN (SELECT name FROM sys.server_principals WHERE principal_id = perm.major_id) -- Server Principal
+                WHEN 105 THEN (SELECT name FROM sys.endpoints WHERE endpoint_id = perm.major_id) -- Endpoint
+                ELSE 'Unknown'
+            END AS EntityName
         FROM sys.server_permissions perm
         JOIN sys.server_principals p ON perm.grantee_principal_id = p.principal_id
-        WHERE perm.state IN ('G', 'W')  -- Grant, Grant with Grant
+        WHERE p.name NOT LIKE '##%' -- Exclude system internal principals
         ORDER BY p.name, perm.permission_name
         """
-    
+
+    def get_database_permissions(self, database: str) -> str:
+        """Get database-level permissions."""
+        return f"""
+        SELECT 
+            p.name AS GranteeName,
+            p.type_desc AS GranteeType,
+            perm.class_desc AS PermissionClass,
+            perm.permission_name AS PermissionName,
+            perm.state_desc AS PermissionState,
+            CASE perm.class
+                WHEN 0 THEN '{database}' -- Database
+                WHEN 1 THEN OBJECT_NAME(perm.major_id) -- Object
+                WHEN 3 THEN SCHEMA_NAME(perm.major_id) -- Schema
+                WHEN 4 THEN (SELECT name FROM [{database}].sys.database_principals WHERE principal_id = perm.major_id) -- User
+                WHEN 5 THEN (SELECT name FROM [{database}].sys.assemblies WHERE assembly_id = perm.major_id) -- Assembly
+                WHEN 6 THEN (SELECT name FROM [{database}].sys.types WHERE user_type_id = perm.major_id) -- Type
+                WHEN 10 THEN (SELECT name FROM [{database}].sys.xml_schema_collections WHERE xml_collection_id = perm.major_id) -- XML Schema
+                WHEN 15 THEN (SELECT name FROM [{database}].sys.service_message_types WHERE message_type_id = perm.major_id) -- Message Type
+                WHEN 16 THEN (SELECT name FROM [{database}].sys.service_contracts WHERE service_contract_id = perm.major_id) -- Contract
+                WHEN 17 THEN (SELECT name FROM [{database}].sys.services WHERE service_id = perm.major_id) -- Service
+                WHEN 18 THEN (SELECT name FROM [{database}].sys.remote_service_bindings WHERE remote_service_binding_id = perm.major_id) -- Binding
+                WHEN 19 THEN (SELECT name FROM [{database}].sys.routes WHERE route_id = perm.major_id) -- Route
+                WHEN 23 THEN (SELECT name FROM [{database}].sys.fulltext_catalogs WHERE fulltext_catalog_id = perm.major_id) -- Fulltext Catalog
+                WHEN 24 THEN (SELECT name FROM [{database}].sys.symmetric_keys WHERE symmetric_key_id = perm.major_id) -- Symmetric Key
+                WHEN 25 THEN (SELECT name FROM [{database}].sys.certificates WHERE certificate_id = perm.major_id) -- Certificate
+                WHEN 26 THEN (SELECT name FROM [{database}].sys.asymmetric_keys WHERE asymmetric_key_id = perm.major_id) -- Asymmetric Key
+                ELSE 'Unknown'
+            END AS EntityName
+        FROM [{database}].sys.database_permissions perm
+        JOIN [{database}].sys.database_principals p ON perm.grantee_principal_id = p.principal_id
+        WHERE p.name NOT IN ('dbo', 'guest', 'sys', 'INFORMATION_SCHEMA')
+        ORDER BY p.name, perm.permission_name
+        """
+
     def get_databases(self) -> str:
         return """
         SELECT 
@@ -502,7 +550,7 @@ class Sql2008Provider(QueryProvider):
         FROM sys.databases d
         ORDER BY d.name
         """
-    
+
     def get_database_users(self, database: str) -> str:
         # Note: Caller must USE database first or use dynamic SQL
         return f"""
@@ -521,7 +569,7 @@ class Sql2008Provider(QueryProvider):
         WHERE dp.type IN ('S', 'U', 'G', 'C', 'K')
         ORDER BY dp.name
         """
-    
+
     def get_database_role_members(self, database: str) -> str:
         return f"""
         SELECT 
@@ -533,7 +581,7 @@ class Sql2008Provider(QueryProvider):
         JOIN [{database}].sys.database_principals m ON rm.member_principal_id = m.principal_id
         ORDER BY r.name, m.name
         """
-    
+
     def get_orphaned_users(self, database: str) -> str:
         return f"""
         SELECT 
@@ -546,7 +594,7 @@ class Sql2008Provider(QueryProvider):
           AND sp.name IS NULL
           AND dp.name NOT IN ('dbo', 'guest', 'INFORMATION_SCHEMA', 'sys')
         """
-    
+
     def get_linked_servers(self) -> str:
         return """
         SELECT 
@@ -565,7 +613,7 @@ class Sql2008Provider(QueryProvider):
         WHERE s.is_linked = 1
         ORDER BY s.name
         """
-    
+
     def get_linked_server_logins(self) -> str:
         return """
         SELECT 
@@ -592,7 +640,7 @@ class Sql2008Provider(QueryProvider):
         WHERE s.is_linked = 1
         ORDER BY s.name, p.name
         """
-    
+
     def get_server_triggers(self) -> str:
         return """
         SELECT 
@@ -607,7 +655,7 @@ class Sql2008Provider(QueryProvider):
         LEFT JOIN sys.server_trigger_events te ON t.object_id = te.object_id
         ORDER BY t.name
         """
-    
+
     def get_database_triggers(self, database: str) -> str:
         return f"""
         SELECT 
@@ -622,7 +670,7 @@ class Sql2008Provider(QueryProvider):
         WHERE t.parent_class = 0  -- Database triggers only
         ORDER BY t.name
         """
-    
+
     def get_backup_history(self) -> str:
         return """
         SELECT 
@@ -654,7 +702,7 @@ class Sql2008Provider(QueryProvider):
           AND d.state_desc = 'ONLINE'  -- Only online databases
         ORDER BY d.name
         """
-    
+
     def get_backup_jobs(self) -> str:
         return """
         SELECT 
@@ -683,7 +731,7 @@ class Sql2008Provider(QueryProvider):
         WHERE j.name LIKE '%backup%' OR j.name LIKE '%bak%'
         ORDER BY j.name
         """
-    
+
     def get_audit_settings(self) -> str:
         return """
         SELECT 
@@ -692,7 +740,7 @@ class Sql2008Provider(QueryProvider):
             (SELECT CAST(value_in_use AS INT) FROM sys.configurations WHERE name = 'c2 audit mode') AS C2AuditMode,
             (SELECT CAST(value_in_use AS INT) FROM sys.configurations WHERE name = 'common criteria compliance enabled') AS CommonCriteria
         """
-    
+
     def get_service_master_key(self) -> str:
         return """
         SELECT 
@@ -705,7 +753,7 @@ class Sql2008Provider(QueryProvider):
         FROM master.sys.symmetric_keys 
         WHERE name = '##MS_ServiceMasterKey##'
         """
-    
+
     def get_database_master_keys(self) -> str:
         # SQL 2008: Need to iterate databases, return consolidated view
         return """
@@ -754,7 +802,7 @@ class Sql2008Provider(QueryProvider):
         
         SET NOCOUNT OFF;
         """
-    
+
     def get_tde_status(self) -> str:
         # SQL 2008 R2 has sys.dm_database_encryption_keys
         return """
@@ -773,7 +821,7 @@ class Sql2008Provider(QueryProvider):
             END AS EncryptionStateDesc,
             dek.key_algorithm AS Algorithm,
             dek.key_length AS KeyLength,
-            dek.encryptor_type AS EncryptorType,
+            NULL AS EncryptorType,
             c.name AS CertificateName,
             dek.create_date AS CreatedDate,
             dek.set_date AS ModifyDate,
@@ -784,7 +832,7 @@ class Sql2008Provider(QueryProvider):
         WHERE d.database_id > 4
         ORDER BY d.name
         """
-    
+
     def get_encryption_certificates(self) -> str:
         return """
         SELECT 
@@ -805,18 +853,18 @@ class Sql2008Provider(QueryProvider):
 class Sql2019PlusProvider(QueryProvider):
     """
     Query provider for SQL Server 2012 and later.
-    
+
     Uses modern features where beneficial:
     - STRING_AGG (2017+, with fallback)
     - TRY_CAST where helpful
     - dm_os_host_info (2017+)
     - Better error handling
     """
-    
+
     VERSION_NAME = "SQL Server 2012+"
     MIN_VERSION = 11
     MAX_VERSION = 99
-    
+
     def get_server_info(self) -> str:
         # dm_os_host_info is 2017+, fall back gracefully
         return """
@@ -835,7 +883,7 @@ class Sql2019PlusProvider(QueryProvider):
             CAST(SERVERPROPERTY('InstanceDefaultLogPath') AS NVARCHAR(512)) AS DefaultLogPath,
             CAST(SERVERPROPERTY('InstanceDefaultBackupPath') AS NVARCHAR(512)) AS DefaultBackupPath
         """
-    
+
     def get_instance_properties(self) -> str:
         # 2017+ has dm_os_host_info for OS version
         return """
@@ -876,7 +924,7 @@ class Sql2019PlusProvider(QueryProvider):
              FROM sys.dm_exec_connections 
              WHERE local_tcp_port IS NOT NULL) AS TCPPort
         """
-    
+
     def get_sql_services(self) -> str:
         # sys.dm_server_services gives all SQL-related services
         return """
@@ -908,7 +956,7 @@ class Sql2019PlusProvider(QueryProvider):
             service_account AS ServiceAccount,
             servicename AS DisplayName,
             process_id AS ProcessId,
-            last_startup_time AS LastStartup,
+            CAST(last_startup_time AS DATETIME) AS LastStartup,
             is_clustered AS IsClustered,
             cluster_nodename AS ClusterNode,
             instant_file_initialization_enabled AS FileInitEnabled
@@ -921,7 +969,7 @@ class Sql2019PlusProvider(QueryProvider):
             END,
             servicename
         """
-    
+
     def get_sp_configure(self) -> str:
         return """
         SELECT 
@@ -936,7 +984,7 @@ class Sql2019PlusProvider(QueryProvider):
         FROM sys.configurations
         ORDER BY name
         """
-    
+
     def get_advanced_options(self) -> str:
         return """
         SELECT 
@@ -966,7 +1014,7 @@ class Sql2019PlusProvider(QueryProvider):
             'contained database authentication'
         )
         """
-    
+
     def get_server_logins(self) -> str:
         return """
         SELECT 
@@ -984,7 +1032,7 @@ class Sql2019PlusProvider(QueryProvider):
             CAST(LOGINPROPERTY(p.name, 'IsLocked') AS INT) AS IsLocked,
             CAST(LOGINPROPERTY(p.name, 'IsMustChange') AS INT) AS MustChangePassword,
             CAST(LOGINPROPERTY(p.name, 'BadPasswordCount') AS INT) AS BadPasswordCount,
-            CASE WHEN p.name = 'sa' OR p.sid = 0x01 THEN 1 ELSE 0 END AS IsSA,
+            CASE WHEN p.principal_id = 1 THEN 1 ELSE 0 END AS IsSA,
             sl.is_policy_checked AS PasswordPolicyEnforced,
             sl.is_expiration_checked AS PasswordExpirationEnabled,
             CASE WHEN sl.password_hash IS NULL AND p.type = 'S' THEN 1 ELSE 0 END AS IsEmptyPassword
@@ -993,7 +1041,7 @@ class Sql2019PlusProvider(QueryProvider):
         WHERE p.type IN ('S', 'U', 'G', 'C', 'K')
         ORDER BY p.name
         """
-    
+
     def get_server_role_members(self) -> str:
         return """
         SELECT 
@@ -1009,21 +1057,62 @@ class Sql2019PlusProvider(QueryProvider):
         JOIN sys.server_principals m ON rm.member_principal_id = m.principal_id
         ORDER BY r.name, m.name
         """
-    
-    def get_login_permissions(self) -> str:
+
+    def get_server_permissions(self) -> str:
+        """Get all server-level permissions."""
         return """
         SELECT 
-            p.name AS LoginName,
-            perm.permission_name AS Permission,
-            perm.state_desc AS PermissionState,
+            p.name AS GranteeName,
+            p.type_desc AS GranteeType,
             perm.class_desc AS PermissionClass,
-            CASE WHEN perm.state = 'W' THEN 1 ELSE 0 END AS WithGrantOption
+            perm.permission_name AS PermissionName,
+            perm.state_desc AS PermissionState,
+            CASE perm.class
+                WHEN 100 THEN 'SERVER' -- Server
+                WHEN 101 THEN (SELECT name FROM sys.server_principals WHERE principal_id = perm.major_id) -- Server Principal
+                WHEN 105 THEN (SELECT name FROM sys.endpoints WHERE endpoint_id = perm.major_id) -- Endpoint
+                ELSE 'Unknown'
+            END AS EntityName
         FROM sys.server_permissions perm
         JOIN sys.server_principals p ON perm.grantee_principal_id = p.principal_id
-        WHERE perm.state IN ('G', 'W')
+        WHERE p.name NOT LIKE '##%' -- Exclude system internal principals
         ORDER BY p.name, perm.permission_name
         """
-    
+
+    def get_database_permissions(self, database: str) -> str:
+        """Get database-level permissions."""
+        return f"""
+        SELECT 
+            p.name AS GranteeName,
+            p.type_desc AS GranteeType,
+            perm.class_desc AS PermissionClass,
+            perm.permission_name AS PermissionName,
+            perm.state_desc AS PermissionState,
+            CASE perm.class
+                WHEN 0 THEN '{database}' -- Database
+                WHEN 1 THEN OBJECT_NAME(perm.major_id) -- Object
+                WHEN 3 THEN SCHEMA_NAME(perm.major_id) -- Schema
+                WHEN 4 THEN (SELECT name FROM [{database}].sys.database_principals WHERE principal_id = perm.major_id) -- User
+                WHEN 5 THEN (SELECT name FROM [{database}].sys.assemblies WHERE assembly_id = perm.major_id) -- Assembly
+                WHEN 6 THEN (SELECT name FROM [{database}].sys.types WHERE user_type_id = perm.major_id) -- Type
+                WHEN 10 THEN (SELECT name FROM [{database}].sys.xml_schema_collections WHERE xml_collection_id = perm.major_id) -- XML Schema
+                WHEN 15 THEN (SELECT name FROM [{database}].sys.service_message_types WHERE message_type_id = perm.major_id) -- Message Type
+                WHEN 16 THEN (SELECT name FROM [{database}].sys.service_contracts WHERE service_contract_id = perm.major_id) -- Contract
+                WHEN 17 THEN (SELECT name FROM [{database}].sys.services WHERE service_id = perm.major_id) -- Service
+                WHEN 18 THEN (SELECT name FROM [{database}].sys.remote_service_bindings WHERE remote_service_binding_id = perm.major_id) -- Binding
+                WHEN 19 THEN (SELECT name FROM [{database}].sys.routes WHERE route_id = perm.major_id) -- Route
+                WHEN 23 THEN (SELECT name FROM [{database}].sys.fulltext_catalogs WHERE fulltext_catalog_id = perm.major_id) -- Fulltext Catalog
+                WHEN 24 THEN (SELECT name FROM [{database}].sys.symmetric_keys WHERE symmetric_key_id = perm.major_id) -- Symmetric Key
+                WHEN 25 THEN (SELECT name FROM [{database}].sys.certificates WHERE certificate_id = perm.major_id) -- Certificate
+                WHEN 26 THEN (SELECT name FROM [{database}].sys.asymmetric_keys WHERE asymmetric_key_id = perm.major_id) -- Asymmetric Key
+                ELSE 'Unknown'
+            END AS EntityName
+        FROM [{database}].sys.database_permissions perm
+        JOIN [{database}].sys.database_principals p ON perm.grantee_principal_id = p.principal_id
+        WHERE p.name NOT IN ('dbo', 'guest', 'sys', 'INFORMATION_SCHEMA')
+        ORDER BY p.name, perm.permission_name
+        """
+
     def get_databases(self) -> str:
         return """
         SELECT 
@@ -1050,7 +1139,7 @@ class Sql2019PlusProvider(QueryProvider):
         FROM sys.databases d
         ORDER BY d.name
         """
-    
+
     def get_database_users(self, database: str) -> str:
         return f"""
         SELECT 
@@ -1077,7 +1166,7 @@ class Sql2019PlusProvider(QueryProvider):
         WHERE dp.type IN ('S', 'U', 'G', 'C', 'K')
         ORDER BY dp.name
         """
-    
+
     def get_database_role_members(self, database: str) -> str:
         return f"""
         SELECT 
@@ -1091,7 +1180,7 @@ class Sql2019PlusProvider(QueryProvider):
         JOIN [{database}].sys.database_principals m ON rm.member_principal_id = m.principal_id
         ORDER BY r.name, m.name
         """
-    
+
     def get_orphaned_users(self, database: str) -> str:
         return f"""
         SELECT 
@@ -1106,7 +1195,7 @@ class Sql2019PlusProvider(QueryProvider):
           AND dp.name NOT IN ('dbo', 'guest', 'INFORMATION_SCHEMA', 'sys')
           AND dp.authentication_type != 2  -- Not contained database user
         """
-    
+
     def get_linked_servers(self) -> str:
         return """
         SELECT 
@@ -1132,7 +1221,7 @@ class Sql2019PlusProvider(QueryProvider):
         WHERE s.is_linked = 1
         ORDER BY s.name
         """
-    
+
     def get_linked_server_logins(self) -> str:
         return """
         SELECT 
@@ -1159,7 +1248,7 @@ class Sql2019PlusProvider(QueryProvider):
         WHERE s.is_linked = 1
         ORDER BY s.name, p.name
         """
-    
+
     def get_server_triggers(self) -> str:
         return """
         SELECT 
@@ -1174,7 +1263,7 @@ class Sql2019PlusProvider(QueryProvider):
         LEFT JOIN sys.server_trigger_events te ON t.object_id = te.object_id
         ORDER BY t.name
         """
-    
+
     def get_database_triggers(self, database: str) -> str:
         return f"""
         SELECT 
@@ -1191,7 +1280,7 @@ class Sql2019PlusProvider(QueryProvider):
         FROM [{database}].sys.triggers t
         ORDER BY t.name
         """
-    
+
     def get_backup_history(self) -> str:
         return """
         SELECT 
@@ -1225,7 +1314,7 @@ class Sql2019PlusProvider(QueryProvider):
         WHERE d.database_id > 4
         ORDER BY d.name
         """
-    
+
     def get_backup_jobs(self) -> str:
         return """
         SELECT 
@@ -1260,7 +1349,7 @@ class Sql2019PlusProvider(QueryProvider):
            OR c.name = 'Database Maintenance'
         ORDER BY j.name
         """
-    
+
     def get_audit_settings(self) -> str:
         return """
         SELECT 
@@ -1270,7 +1359,7 @@ class Sql2019PlusProvider(QueryProvider):
             (SELECT CAST(value_in_use AS INT) FROM sys.configurations WHERE name = 'common criteria compliance enabled') AS CommonCriteria,
             (SELECT CAST(value_in_use AS INT) FROM sys.configurations WHERE name = 'contained database authentication') AS ContainedDbAuth
         """
-    
+
     def get_service_master_key(self) -> str:
         return """
         SELECT 
@@ -1283,7 +1372,7 @@ class Sql2019PlusProvider(QueryProvider):
         FROM master.sys.symmetric_keys 
         WHERE name = '##MS_ServiceMasterKey##'
         """
-    
+
     def get_database_master_keys(self) -> str:
         # 2012+: Use sp_MSforeachdb for convenience
         return """
@@ -1332,7 +1421,7 @@ class Sql2019PlusProvider(QueryProvider):
         
         SET NOCOUNT OFF;
         """
-    
+
     def get_tde_status(self) -> str:
         return """
         SELECT 
@@ -1363,7 +1452,7 @@ class Sql2019PlusProvider(QueryProvider):
         WHERE d.database_id > 4
         ORDER BY d.name
         """
-    
+
     def get_encryption_certificates(self) -> str:
         return """
         SELECT 
@@ -1387,11 +1476,11 @@ class Sql2019PlusProvider(QueryProvider):
 def get_query_provider(version_major: int) -> QueryProvider:
     """
     Factory function to get the appropriate query provider for a SQL Server version.
-    
-    This function is future-proof: any version >= 11 (SQL 2012) uses 
-    Sql2019PlusProvider, which works for 2012, 2014, 2016, 2017, 2019, 
+
+    This function is future-proof: any version >= 11 (SQL 2012) uses
+    Sql2019PlusProvider, which works for 2012, 2014, 2016, 2017, 2019,
     2022, 2025, and future versions since T-SQL syntax is stable.
-    
+
     Args:
         version_major: Major version number
             - 10 = SQL Server 2008/2008R2
@@ -1403,7 +1492,7 @@ def get_query_provider(version_major: int) -> QueryProvider:
             - 16 = SQL Server 2022
             - 17 = SQL Server 2025
             - 18+ = Future versions (uses Sql2019PlusProvider)
-        
+
     Returns:
         QueryProvider instance appropriate for the version
     """

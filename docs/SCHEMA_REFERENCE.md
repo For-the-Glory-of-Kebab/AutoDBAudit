@@ -1,6 +1,12 @@
-# SQLite Schema Design
+# SQLite Schema Reference
 
-> **Purpose**: Reference for all SQLite tables and their relationships.
+> **Purpose**: Reference for all SQLite tables and their relationships.  
+> **Last Updated**: 2025-12-11
+
+> [!IMPORTANT]
+> The **canonical schema** is defined in code at:  
+> `src/autodbaudit/infrastructure/sqlite/schema.py`  
+> This document provides a high-level overview.
 
 ---
 

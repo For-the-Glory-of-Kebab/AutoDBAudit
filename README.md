@@ -47,15 +47,17 @@ See [docs/CLI_REFERENCE.md](docs/CLI_REFERENCE.md) for full command reference.
 
 ## Current Status
 
-| Command | Status |
-|---------|--------|
-| `--audit` | ✅ Complete |
-| `--generate-remediation` | ✅ Smart 4-category scripts |
-| `--apply-remediation` | ✅ With --dry-run, --rollback |
-| `--status` | ✅ Dashboard |
-| `--sync` | ✅ Progress tracking |
-| `--finalize` | ✅ Complete |
-| `--deploy-hotfixes` | ⏳ Pending |
+| Command | Status | Notes |
+|---------|--------|-------|
+| `--audit` | ✅ Working | Excel + SQLite output |
+| `--generate-remediation` | ✅ Working | 4-category scripts + rollback |
+| `--apply-remediation` | ✅ Working | With --dry-run, --rollback |
+| `--status` | ✅ Working | Dashboard summary |
+| `--sync` | ✅ Working | Progress tracking |
+| `--finalize` | ⚠️ Partial | Basic implementation |
+| `--deploy-hotfixes` | ⏳ Pending | Stubs only |
+
+See [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md) for comprehensive details.
 
 ---
 
@@ -64,21 +66,32 @@ See [docs/CLI_REFERENCE.md](docs/CLI_REFERENCE.md) for full command reference.
 
 ### 1. Setup Environment
 ```powershell
-cd d:\Raja-Initiative
+# Clone/navigate to project directory
 python -m venv venv
 .\venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
 ### 2. Configure SQL Targets
-```powershell
-copy sql_targets.example.json sql_targets.json
-notepad sql_targets.json
+Edit `sql_targets.json` with your SQL Server connection details:
+```json
+{
+  "targets": [
+    {
+      "id": "my-server",
+      "server": "localhost",
+      "port": 1433,
+      "auth": "sql",
+      "username": "audit_user",
+      "password": "secret"
+    }
+  ]
+}
 ```
 
 ### 3. Run Audit
 ```powershell
-$env:PYTHONPATH="d:\Raja-Initiative\src"
+$env:PYTHONPATH="$PWD\src"
 python main.py --audit
 ```
 
@@ -86,13 +99,17 @@ python main.py --audit
 
 ## Documentation
 
+All documentation is in the [`docs/`](docs/) folder:
+
 | Document | Purpose |
 |----------|---------|
+| [INDEX.md](docs/INDEX.md) | Documentation index |
+| [PROJECT_STATUS.md](docs/PROJECT_STATUS.md) | Current implementation state |
 | [AUDIT_WORKFLOW.md](docs/AUDIT_WORKFLOW.md) | Complete lifecycle |
-| [SCHEMA_DESIGN.md](docs/SCHEMA_DESIGN.md) | SQLite tables |
 | [CLI_REFERENCE.md](docs/CLI_REFERENCE.md) | Command reference |
-| [PROJECT_STATUS.md](docs/PROJECT_STATUS.md) | Implementation state |
+| [SCHEMA_REFERENCE.md](docs/SCHEMA_REFERENCE.md) | SQLite tables |
 | [TODO.md](docs/TODO.md) | Work items |
+
 
 ---
 
@@ -122,14 +139,12 @@ See [docs/excel_report_layout.md](docs/excel_report_layout.md) for column detail
 
 ---
 
-## What's NOT Working Yet
+## Pending Features
 
 | Feature | Status |
 |---------|--------|
-| SQLite historical tracking | Code exists, not wired |
-| `--finalize` command | Not implemented |
+| `--deploy-hotfixes` | Design complete, not implemented |
 | Permission Grants sheet | Planned |
-| Remediation scripts | Planned |
 
 ---
 
@@ -164,7 +179,7 @@ See [docs/excel_report_layout.md](docs/excel_report_layout.md) for column detail
 python test_setup.py
 
 # Generate full report (test mode)
-$env:PYTHONPATH="d:\Raja-Initiative\src"
+$env:PYTHONPATH="$PWD\src"
 python test_multi_instance.py
 ```
 

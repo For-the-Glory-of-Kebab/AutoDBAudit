@@ -1,0 +1,64 @@
+{
+    "_comment": "SQL Server Audit Targets Configuration",
+    "_instructions": [
+        "Add your SQL Server targets below.",
+        "Each target needs: id, server, and authentication details.",
+        "Use 'auth': 'integrated' for Windows authentication,",
+        "or 'auth': 'sql' with credential_file pointing to credentials/*.json"
+    ],
+    "targets": [
+        {
+            "id": "home-2025-docker",
+            "name": "SQL Server 2025 (Docker)",
+            "server": "localhost",
+            "instance": null,
+            "port": 1444,
+            "auth": "sql",
+            "credential_file": "credentials/sql2025.json",
+            "connect_timeout": 30,
+            "tags": [
+                "development",
+                "docker"
+            ],
+            "enabled": true,
+            "_comment": "SQL Server 2025 Docker instance"
+        },
+        {
+            "id": "home-2022",
+            "name": "SQL Server 2022 (Intheend)",
+            "server": "localhost",
+            "instance": "Intheend",
+            "port": 13727,
+            "auth": "sql",
+            "credential_file": "credentials/sql2022.json",
+            "connect_timeout": 30,
+            "tags": [
+                "development",
+                "2022"
+            ],
+            "enabled": true,
+            "_comment": "SQL Server 2022 instance"
+        },
+        {
+            "id": "home-2008",
+            "name": "SQL Server 2008 R2 (BigBad2008)",
+            "server": "localhost",
+            "instance": "BigBad2008",
+            "port": 10525,
+            "auth": "sql",
+            "credential_file": "credentials/sql2008.json",
+            "connect_timeout": 30,
+            "tags": [
+                "development",
+                "2025"
+            ],
+            "enabled": true,
+            "_comment": "SQL Server 2008 instance"
+        }
+    ],
+    "global_settings": {
+        "timeout_seconds": 30,
+        "encrypt_connection": true,
+        "trust_server_certificate": true
+    }
+}

@@ -8,6 +8,9 @@ pyodbc>=5.0.0,<6.0.0
 # Supports advanced formatting: icons, charts, conditional formatting
 openpyxl>=3.1.0,<4.0.0
 
+# Image support for Excel (required by openpyxl for inserting images)
+pillow>=10.0.0
+
 # Windows API access for DPAPI credential encryption
 # Platform-specific: Windows only
 pywin32>=306

@@ -41,10 +41,14 @@ ROLE_COLUMNS = (
 
 ROLE_CONFIG = SheetConfig(name="Sensitive Roles", columns=ROLE_COLUMNS)
 
+# Accounts to exclude from highlighting (Strict Policy)
+SAFE_PREFIXES = ("NT SERVICE\\",)
+SAFE_NAMES = set()
+
 
 class RoleSheetMixin(BaseSheetMixin):
     """Mixin for Sensitive Roles sheet with server/instance grouping."""
-    
+
     _role_sheet = None
     _role_last_server: str = ""
     _role_last_instance: str = ""
@@ -52,7 +56,7 @@ class RoleSheetMixin(BaseSheetMixin):
     _role_instance_start_row: int = 2
     _role_server_idx: int = 0
     _role_instance_alt: bool = False
-    
+
     def add_role_member(
         self,
         server_name: str,
@@ -72,39 +76,39 @@ class RoleSheetMixin(BaseSheetMixin):
             self._role_server_idx = 0
             self._role_instance_alt = False
             self._add_role_dropdowns()
-        
+
         ws = self._role_sheet
         current_row = self._row_counters[ROLE_CONFIG.name]
         inst_display = instance_name or "(Default)"
-        
+
         # Check if SERVER changed
         if server_name != self._role_last_server:
             if self._role_last_server:
                 self._merge_role_groups(ws)
                 self._role_server_idx += 1
-            
+
             self._role_server_start_row = current_row
             self._role_instance_start_row = current_row
             self._role_last_server = server_name
             self._role_last_instance = inst_display
             self._role_instance_alt = False
-        
+
         # Check if INSTANCE changed (within same server)
         elif inst_display != self._role_last_instance:
             self._merge_role_instance(ws)
             self._role_instance_start_row = current_row
             self._role_last_instance = inst_display
             self._role_instance_alt = not self._role_instance_alt
-        
+
         # Get colors
         color_main, color_light = SERVER_GROUP_COLORS[
             self._role_server_idx % len(SERVER_GROUP_COLORS)
         ]
         row_color = color_main if self._role_instance_alt else color_light
-        
+
         # Convert is_disabled to is_enabled (inverted logic)
         is_enabled = not is_disabled
-        
+
         data = [
             server_name,
             inst_display,
@@ -112,17 +116,19 @@ class RoleSheetMixin(BaseSheetMixin):
             member_name,
             member_type,
             None,  # Enabled
-            "",    # Justification
-            "",    # Last Revised
+            "",  # Justification
+            "",  # Last Revised
         ]
-        
+
         row = self._write_row(ws, ROLE_CONFIG, data)
-        
+
         # Apply shade to informational columns
-        fill = PatternFill(start_color=row_color, end_color=row_color, fill_type="solid")
+        fill = PatternFill(
+            start_color=row_color, end_color=row_color, fill_type="solid"
+        )
         for col in [1, 2, 3, 4, 5]:  # Server, Instance, Role, Member, Type
             ws.cell(row=row, column=col).fill = fill
-        
+
         # Style Enabled column with icon + color
         enabled_cell = ws.cell(row=row, column=6)
         if is_enabled:
@@ -133,12 +139,16 @@ class RoleSheetMixin(BaseSheetMixin):
             enabled_cell.value = f"{Icons.FAIL} No"
             enabled_cell.font = Fonts.FAIL
             enabled_cell.fill = Fills.FAIL
-        
-        # Highlight sysadmin with warning if NOT disabled
-        if role_name.lower() == "sysadmin" and is_enabled:
+
+        # Highlight sysadmin with warning if NOT disabled and NOT whitelisted
+        is_safe = member_name.lower() in SAFE_NAMES or any(
+            member_name.upper().startswith(p) for p in SAFE_PREFIXES
+        )
+
+        if role_name.lower() == "sysadmin" and is_enabled and not is_safe:
             for col in [3, 4, 5]:  # Role, Member, Type
                 ws.cell(row=row, column=col).fill = Fills.WARN
-    
+
     def _merge_role_instance(self, ws) -> None:
         """Merge Instance cells for current instance group."""
         current_row = self._row_counters[ROLE_CONFIG.name]
@@ -151,11 +161,11 @@ class RoleSheetMixin(BaseSheetMixin):
                 server_name=self._role_last_instance,
                 is_alt=self._role_instance_alt,
             )
-    
+
     def _merge_role_groups(self, ws) -> None:
         """Merge both Server and Instance cells."""
         self._merge_role_instance(ws)
-        
+
         current_row = self._row_counters[ROLE_CONFIG.name]
         if current_row > self._role_server_start_row:
             color_main, _ = SERVER_GROUP_COLORS[
@@ -173,16 +183,16 @@ class RoleSheetMixin(BaseSheetMixin):
             merged.fill = PatternFill(
                 start_color=color_main, end_color=color_main, fill_type="solid"
             )
-    
+
     def _finalize_roles(self) -> None:
         """Finalize roles sheet - merge remaining groups."""
         if self._role_sheet and self._role_last_server:
             self._merge_role_groups(self._role_sheet)
-    
+
     def _add_role_dropdowns(self) -> None:
         """Add dropdown validations for status columns."""
         from autodbaudit.infrastructure.excel.base import add_dropdown_validation
-        
+
         ws = self._role_sheet
         # Enabled column (F) - column 6
         add_dropdown_validation(ws, "F", ["✓ Yes", "✗ No"])

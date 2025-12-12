@@ -1,0 +1,24 @@
+feat: Remediation Aggressiveness, Safety Overrides, and SQL 2008 Fixes
+
+Implements granular control over remediation script generation and resolves critical compatibility issues for older SQL Server versions.
+
+**Features:**
+- **Remediation Aggressiveness**: Introduced `--aggressiveness` [1|2|3] flag to CLI.
+    - Level 1 (Default): Safe mode (Commented checks).
+    - Level 2 (Revoke): Uncommented privilege revocation.
+    - Level 3 (Brutal): Uncommented disable/drop actions.
+- **Universal Safety Override**: Implemented mandatory lockout prevention for the *connecting user*. Remediation actions for this user are ALWAYS commented out with `!!! LOCKOUT RISK !!!` warning, overriding all aggressiveness settings.
+
+**Bug Fixes:**
+- **SQL 2008 SA Detection**: Fixed logic in `Sql2008Provider` and `Sql2019PlusProvider` to identify the SA account by `principal_id = 1` instead of `name = 'sa'`. This resolves missing audit records for renamed SA accounts (e.g., `$@`).
+- **SQL 2008 Transaction Errors**: Enabled `autocommit=True` in `ScriptExecutor` (via pyodbc). Resolves "CREATE/ALTER cannot be run in a transaction" errors on SQL Server 2008 R2.
+
+**Documentation:**
+- **Project Status**: Updated `PROJECT_STATUS.md` with Phase 8 & 9 completion.
+- **Runbook**: Synced `AI_RUNBOOK.md` with current capability state.
+- **CLI Reference**: Documented new `--aggressiveness` flag.
+- **Session Handoff**: Created `docs/SESSION_HANDOFF_DEV_SWITCH.md` for context continuity.
+
+**Verification:**
+- Verified SA fix against local instance with simulated renamed account.
+- Verified aggressiveness levels and safety override on `localhost` target.

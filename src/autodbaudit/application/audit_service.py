@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 class AuditService:
     """
     Main audit engine orchestrator.
-    
+
     Manages the audit workflow:
     1. Load configuration
     2. Connect to SQL targets
@@ -37,26 +37,24 @@ class AuditService:
     4. Collect all audit data
     5. Generate Excel report
     6. Store data in SQLite for history
-    
+
     Usage:
         service = AuditService(
             config_dir=Path("config"),
             output_dir=Path("output")
         )
-        
+
         report_path = service.run_audit(
             targets_file="sql_targets.json"
         )
     """
-    
+
     def __init__(
-        self,
-        config_dir: Path | str = "config",
-        output_dir: Path | str = "output"
+        self, config_dir: Path | str = "config", output_dir: Path | str = "output"
     ) -> None:
         """
         Initialize audit service.
-        
+
         Args:
             config_dir: Directory containing configuration files
             output_dir: Directory for output files (Excel, SQLite, etc.)
@@ -65,13 +63,13 @@ class AuditService:
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.config_loader = ConfigLoader(str(self.config_dir))
-        
+
         # SQLite history store (lazy initialized)
         self._history_store: HistoryStore | None = None
         self._audit_run_id: int | None = None
-        
+
         logger.info("AuditService initialized")
-    
+
     def _get_history_store(self) -> HistoryStore:
         """Get or create the history store."""
         if self._history_store is None:
@@ -81,131 +79,166 @@ class AuditService:
             # Initialize v2 tables (extended schema)
             initialize_schema_v2(self._history_store._get_connection())
         return self._history_store
-    
+
     def run_audit(
         self,
         targets_file: str = "sql_targets.json",
-        organization: str | None = None
-    ) -> Path:
+        organization: str | None = None,
+        # Allow external control over saving
+        skip_save: bool = False,
+        # Allow reusing existing writer (for SyncService injection)
+        writer: EnhancedReportWriter | None = None,
+    ) -> Path | EnhancedReportWriter:
         """
         Run the audit workflow.
-        
+
+        Refactored to support decoupled collection and reporting.
+
         Args:
             targets_file: SQL targets configuration filename
             organization: Optional organization name for report
-            
+            skip_save: If True, returns populate writer instead of saving file
+            writer: Optional existing writer to use
+
         Returns:
-            Path to generated Excel report
-            
-        Raises:
-            RuntimeError: If audit fails completely
+            Path object if saved, or EnhancedReportWriter if skip_save=True
+        """
+        # Step 1: Perform the scan (collect data)
+        # This populates the writer and the database
+        writer, run_id, counts = self._perform_audit_scan(
+            targets_file, organization, writer
+        )
+
+        # Step 2: Save Report (unless skipped)
+        if skip_save:
+            logger.info("Skipping report save (caller will handle it)")
+            return writer
+
+        # Standard flow: Save and return path
+        return self._save_report(writer, run_id)
+
+    def _perform_audit_scan(
+        self,
+        targets_file: str,
+        organization: str | None,
+        writer: EnhancedReportWriter | None = None,
+    ) -> tuple[EnhancedReportWriter, int, dict]:
+        """
+        Core audit logic: Connects, Scans, Collects.
+
+        Returns:
+            (populated_writer, audit_run_id, summary_counts)
         """
         logger.info("=" * 60)
-        logger.info("Starting SQL Server Audit")
+        logger.info("Starting SQL Server Audit Scan")
         logger.info("=" * 60)
-        
+
+        # Try to load audit config for metadata
+        try:
+            audit_config = self.config_loader.load_audit_config()
+            config_org = audit_config.organization
+        except Exception:
+            config_org = None
+
+        final_org = organization or config_org or "Security Audit"
+        audit_name = "SQL Server Security Audit"
+
         # Initialize SQLite history store
         store = self._get_history_store()
-        audit_run = store.begin_audit_run(organization=organization or "Security Audit")
+        audit_run = store.begin_audit_run(organization=final_org)
         self._audit_run_id = audit_run.id
-        
-        # Create Excel writer
-        writer = EnhancedReportWriter()
-        writer.set_audit_info(
-            run_id=audit_run.id,
-            organization=organization or "Security Audit",
-            started_at=datetime.now(),
-        )
-        
+
+        # Create Excel writer if not provided
+        if writer is None:
+            writer = EnhancedReportWriter()
+            writer.set_audit_info(
+                run_id=audit_run.id,
+                organization=final_org,
+                audit_name=audit_name,
+                started_at=datetime.now(),
+            )
+
         success_count = 0
         error_count = 0
-        
+
         try:
             # Load SQL targets
             targets = self.config_loader.load_sql_targets(targets_file)
             logger.info("Loaded %d SQL targets from %s", len(targets), targets_file)
-            
+
             # Process each target
             for target in targets:
                 if not target.enabled:
                     logger.info("Skipping disabled target: %s", target.display_name)
                     continue
-                    
+
                 try:
                     self._process_target(target, writer, store)
                     success_count += 1
                 except Exception as e:
                     error_count += 1
                     logger.error(
-                        "Failed to process target %s: %s",
-                        target.display_name, e
+                        "Failed to process target %s: %s", target.display_name, e
                     )
-                    # Continue with other targets
-            
+
             # Mark audit run as complete
             status = "completed" if error_count == 0 else "completed_with_errors"
             store.complete_audit_run(audit_run.id, status)
-            
-            # Generate report
-            report_path = self._save_report(writer, audit_run.id)
-            
-            logger.info("=" * 60)
-            logger.info("Audit completed: %d succeeded, %d failed", success_count, error_count)
-            logger.info("Report: %s", report_path)
-            logger.info("Database: %s", self.output_dir / "audit_history.db")
-            logger.info("=" * 60)
-            
-            return report_path
-            
+
+            summary_counts = {"success": success_count, "error": error_count}
+
+            logger.info(
+                "Scan completed: %d succeeded, %d failed", success_count, error_count
+            )
+            return writer, audit_run.id, summary_counts
+
         except Exception as e:
             # Mark audit run as failed
             if self._audit_run_id:
                 store.complete_audit_run(self._audit_run_id, "failed")
             logger.exception("Audit failed with fatal error: %s", e)
             raise RuntimeError(f"Audit failed: {e}") from e
-    
+
     def _process_target(
-        self, 
-        target: SqlTarget, 
-        writer: EnhancedReportWriter,
-        store: HistoryStore
+        self, target: SqlTarget, writer: EnhancedReportWriter, store: HistoryStore
     ) -> None:
         """
         Process a single SQL target.
-        
+
         Connects, detects version, collects all audit data.
-        
+
         Args:
             target: SQL target configuration
             writer: Excel report writer
             store: SQLite history store
         """
         logger.info("Processing target: %s", target.display_name)
-        
+
         # Create connector
         connector = SqlConnector(
             server_instance=target.server_instance,
             auth=target.auth,
             username=target.username,
             password=target.password,
-            connect_timeout=target.connect_timeout
+            connect_timeout=target.connect_timeout,
         )
-        
+
         # Test connection
         if not connector.test_connection():
             raise ConnectionError(f"Cannot connect to {target.display_name}")
-        
+
         # Detect version and get query provider
         version_info = connector.detect_version()
         logger.info(
             "Detected: %s version %s (%s)",
-            target.display_name, version_info.version, version_info.edition
+            target.display_name,
+            version_info.version,
+            version_info.edition,
         )
-        
+
         # Store server and instance in SQLite
         server = store.upsert_server(
-            hostname=target.server,
-            ip_address=target.ip_address
+            hostname=target.server, ip_address=target.ip_address
         )
         instance = store.upsert_instance(
             server=server,
@@ -213,19 +246,19 @@ class AuditService:
             version=version_info.version,
             version_major=version_info.version_major,
             edition=version_info.edition,
-            product_level=version_info.product_level
+            product_level=version_info.product_level,
         )
-        
+
         # Link instance to this audit run
         if self._audit_run_id:
             store.link_instance_to_run(self._audit_run_id, instance.id)
-        
+
         query_provider = get_query_provider(version_info.version_major)
-        
+
         # Create collector with SQLite connection for findings storage
         collector = AuditDataCollector(
-            connector, 
-            query_provider, 
+            connector,
+            query_provider,
             writer,
             db_conn=store._get_connection(),
             audit_run_id=self._audit_run_id,
@@ -237,7 +270,7 @@ class AuditService:
             config_name=target.display_name,
             ip_address=target.ip_address or "",
         )
-        
+
         logger.info(
             "Collected: %d logins, %d roles, %d dbs, %d services",
             counts.get("logins", 0),
@@ -245,22 +278,22 @@ class AuditService:
             counts.get("databases", 0),
             counts.get("services", 0),
         )
-    
+
     def _save_report(self, writer: EnhancedReportWriter, run_id: int) -> Path:
         """
         Save Excel report.
-        
+
         Args:
             writer: Populated Excel report writer
             run_id: Audit run ID for filename
-            
+
         Returns:
             Path to generated Excel file
         """
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"sql_audit_{timestamp}.xlsx"
         output_path = self.output_dir / filename
-        
+
         writer.save(output_path)
         return output_path
 
