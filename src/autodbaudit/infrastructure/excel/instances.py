@@ -152,7 +152,8 @@ class InstanceSheetMixin(BaseSheetMixin):
         status_cell = ws.cell(row=row, column=8)
         apply_status_styling(status_cell, version_status)
         if version_status_note:
-            status_cell.comment = version_status_note
+            from openpyxl.comments import Comment
+            status_cell.comment = Comment(version_status_note, "AutoDBAudit")
         
         # Apply boolean styling for Clustered (col 11) and HADR (col 12)
         apply_boolean_styling(ws.cell(row=row, column=11), is_clustered)
