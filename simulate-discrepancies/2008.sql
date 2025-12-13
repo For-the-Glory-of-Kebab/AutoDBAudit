@@ -463,6 +463,41 @@ VALUES (
         'REQUIREMENT_VIOLATION',
         'Explicit permissions with security issues'
     );
+
+    USE [master];
+GO
+
+DECLARE @saName sysname;
+
+-- Built-in sa login is always SID 0x01
+SELECT @saName = name
+FROM sys.server_principals
+WHERE sid = 0x01
+  AND type_desc = 'SQL_LOGIN';
+
+IF @saName IS NULL
+BEGIN
+    RAISERROR('Built-in sa login (SID 0x01) not found.', 16, 1);
+    RETURN;
+END
+
+-- If audit renamed it (e.g. to $@), rename it back
+IF @saName <> N'sa'
+BEGIN
+    IF EXISTS (SELECT 1 FROM sys.server_principals WHERE name = N'sa')
+    BEGIN
+        RAISERROR('Login "sa" already exists; cannot rename %s to sa.', 16, 1, @saName);
+        RETURN;
+    END
+
+    EXEC sp_renamelogin @loginame = @saName, @newname = N'sa';
+    PRINT 'Ensured sa login is enabled and named "sa" for testing purposes.';
+END
+
+-- Ensure sa is ENABLED (explicit discrepancy)
+EXEC ('ALTER LOGIN [sa] ENABLE');
+GO
+
 GO
 PRINT '=== SQL SERVER 2008 R2 INSTANCE SECURITY TEST SETUP COMPLETE ==='
 PRINT '✅ SAFE EXECUTION - ACCESS PRESERVED:' 

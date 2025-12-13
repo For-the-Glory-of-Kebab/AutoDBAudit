@@ -133,7 +133,13 @@ Covers:
 | Risk Level | Critical / High / Medium / Low |
 | Status | ⏳ Open / ✓ Closed / ⚠️ Exception |
 
-Manual remediation tracking with assignee and due dates.
+| Status | ⏳ Open / ✓ Closed / ⚠️ Exception |
+| Found Date | First Detected Date (Preserved DB / Editable Excel) |
+
+**Diff-Log Only**: This sheet is an **Audit Trail** of changes.
+- It lists items that have **Changed Status** (e.g. Broken -> Fixed, or Fixed -> Regression) since the baseline.
+- It does **not** list static "Open" findings (use the specific sheets for current state).
+- **Date Persistence**: The "Found Date" is immutable in the DB (first seen), but manual Excel edits override it on Sync to allow backdating/correction.
 
 ---
 

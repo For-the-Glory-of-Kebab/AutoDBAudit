@@ -100,10 +100,10 @@ class RemediationService:
                 return []
             audit_run_id = row["id"]
 
-        # Get findings grouped by instance
+        # Get findings grouped by instance (include port for disambiguation)
         findings = conn.execute(
             """
-            SELECT f.*, i.instance_name, i.id as instance_db_id, s.hostname as server_name
+            SELECT f.*, i.instance_name, i.port, i.id as instance_db_id, s.hostname as server_name
             FROM findings f
             JOIN instances i ON f.instance_id = i.id
             JOIN servers s ON i.server_id = s.id
@@ -120,39 +120,38 @@ class RemediationService:
             logger.info("No findings requiring remediation")
             return []
 
-        # Group by server/instance (using instance_db_id for uniqueness)
+        # Group by server/instance/port (using instance_db_id for uniqueness)
         by_instance: dict[tuple, list] = {}
         for f in findings:
             inst_id = f["instance_db_id"]
-            key = (f["server_name"], f["instance_name"], inst_id)
+            port = f["port"] or 1433
+            key = (f["server_name"], f["instance_name"], port, inst_id)
             if key not in by_instance:
                 by_instance[key] = []
             by_instance[key].append(dict(f))
 
-        # Build map of connecting users per instance: (server, instance) -> username
-        # sql_targets structure: [{"server": "...", "instance": "...", "username": "..."}]
+        # Build map of connecting users per instance: (server, port) -> username
+        # Port is the primary disambiguator for default instances
         conn_user_map = {}
         if sql_targets:
             for t in sql_targets:
-                # Normalize keys
+                # Normalize keys - use port as additional discriminator
                 srv = t.get("server", "").lower()
-                inst = (t.get("instance") or "").lower()
+                port = t.get("port") or 1433
                 usr = t.get("username", "")
-                conn_user_map[(srv, inst)] = usr
+                conn_user_map[(srv, port)] = usr
 
         generated = []
-        for (server, instance, inst_id), instance_findings in by_instance.items():
-            # Lookup connecting user
-            # Map keys are lower case
-            # normalized instance: "" for default
-            lookup_inst = instance.lower() if instance else ""
-            conn_user = conn_user_map.get((server.lower(), lookup_inst))
-            print(
-                f"DEBUG: Server='{server}', Inst='{instance}', ConnUser='{conn_user}'"
+        for (server, instance, port, inst_id), instance_findings in by_instance.items():
+            # Lookup connecting user by server + port
+            conn_user = conn_user_map.get((server.lower(), port))
+            logger.debug(
+                "Remediation: Server='%s', Inst='%s', Port=%d, ConnUser='%s'",
+                server, instance, port, conn_user or "N/A"
             )
 
             paths = self._generate_instance_scripts(
-                server, instance, inst_id, instance_findings, conn_user, aggressiveness
+                server, instance, inst_id, instance_findings, conn_user, aggressiveness, port
             )
             generated.extend(paths)
 
@@ -167,12 +166,21 @@ class RemediationService:
         findings: list[dict],
         conn_user: str | None = None,
         aggressiveness: int = 1,
+        port: int = 1433,
     ) -> list[Path]:
         """Generate remediation + rollback scripts for an instance."""
 
-        instance_label = f"{instance}" if instance else "(Default)"
-        # Include instance_id in filename for uniqueness
-        safe_name = f"{server}_{inst_id}_{instance or 'default'}".replace(
+        # Instance label: include port when it's a non-standard default instance
+        if instance:
+            instance_label = instance
+        elif port and port != 1433:
+            instance_label = f"(Default:{port})"
+        else:
+            instance_label = "(Default)"
+        
+        # Include port in filename for uniqueness when needed
+        port_suffix = f"_{port}" if port and port != 1433 else ""
+        safe_name = f"{server}{port_suffix}_{inst_id}_{instance or 'default'}".replace(
             "\\", "_"
         ).replace(",", "_")
 
@@ -382,6 +390,7 @@ class RemediationService:
             caution_section,
             review_section,
             info_section,
+            port=port,
         )
         main_path = self.output_dir / f"{safe_name}.sql"
         main_path.write_text("\n".join(main_script), encoding="utf-8")
@@ -415,6 +424,7 @@ class RemediationService:
         caution_section: list,
         review_section: list,
         info_section: list,
+        port: int = 1433,
     ) -> list[str]:
         """Build the main remediation script."""
         lines = [
@@ -422,6 +432,7 @@ class RemediationService:
             "=" * 60,
             "REMEDIATION SCRIPT - AutoDBAudit",
             f"Server: {server}",
+            f"Port: {port}",
             f"Instance: {instance}",
             f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
             "=" * 60,
@@ -612,6 +623,9 @@ Run this only if you have another SysAdmin account ready!
         # Just disable it.
         if setting.lower() == "show advanced options":
             prelude = ""
+            # If we are disabling advanced options specifically, we don't need a postlude cleanup
+            # because the main action IS the cleanup
+            postlude = ""
         else:
             # For other settings, we must ensure advanced options are visible first
             prelude = """PRINT 'Enabling show advanced options (temporary)...';
@@ -619,6 +633,12 @@ EXEC sp_configure 'show advanced options', 1;
 RECONFIGURE WITH OVERRIDE;
 GO
 
+"""
+            # And we MUST disable it afterwards to keep the server clean
+            postlude = """
+PRINT 'Disabling show advanced options (cleanup)...';
+EXEC sp_configure 'show advanced options', 0;
+RECONFIGURE WITH OVERRIDE;
 """
 
         return f"""{header}
@@ -630,10 +650,11 @@ RECONFIGURE WITH OVERRIDE;
 IF EXISTS (SELECT 1 FROM sys.configurations WHERE name = '{setting}' AND value_in_use = 0)
     PRINT '  [OK] {setting} verified disabled';
 ELSE IF EXISTS (SELECT 1 FROM sys.configurations WHERE name = '{setting}' AND value = 0 AND is_dynamic = 0)
-    PRINT '  [PENDING] {setting} configured to 0 but requires SQL RESTART to take effect.';
+    PRINT '  [PENDING RESTART] {setting} set to 0 but requires SQL SERVER RESTART.';
 ELSE
     PRINT '  [WARNING] {setting} verification failed. Value_in_use is still 1 (Force failed?).';
-GO
+
+{postlude}GO
 """
 
     def _script_enable_password_policy(

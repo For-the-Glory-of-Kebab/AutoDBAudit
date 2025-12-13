@@ -51,6 +51,17 @@ python src/simulate_update.py --downgrade
 -   **Effect**: Modifies `output/audit_history.db`.
 -   **Result**: The tool now believes your SQL instances are old (e.g., SQL 2017 RTM).
 
+## Step 3B: Simulate Security Violations (The Discrepancies)
+
+To verify the tool detects misconfigurations (e.g., xp_cmdshell enabled, weak passwords), run the violation scripts.
+
+**Run the sql simulation:**
+```powershell
+python run_simulation.py --mode apply
+```
+-   **Effect**: Creates "Bad" logins, configs, and objects on your SQL instances.
+-   **Result**: The next audit should light up with FAILs.
+
 ## Step 4: Apply Remediation (Real or Pretend)
 
 **Option A: Real Fix**
@@ -62,6 +73,12 @@ python main.py --apply-remediation
 **Option B: Pretend (For Testing Sync Logic Only)**
 If you don't want to actually change your server configuration (e.g., disable xp_cmdshell), you can skip this. However, if you don't apply fixes, the Sync report will show "Still Failing" instead of "Fixed".
 *Recommendation: Apply one safe fix (e.g., create a test user or dummy change) if possible, or just accept that things will be "Still Failing" but the Version will be "Updated" in the logs/report.*
+
+**Option C: Revert Simulation**
+If you ran `run_simulation.py --mode apply` (Step 3B), you can clean it up later with:
+```powershell
+python run_simulation.py --mode revert
+```
 
 ## Step 5: Sync / Re-Audit (Run 2)
 

@@ -107,6 +107,10 @@ class ActionSheetMixin(BaseSheetMixin):
         recommendation: str,
         status: str = "Open",
         found_date: datetime | None = None,
+        assigned_to: str = "",
+        due_date: str = "",
+        resolution_date: str = "",
+        resolution_notes: str = "",
     ) -> None:
         """
         Add an action item row with automatic ID and date.
@@ -117,34 +121,19 @@ class ActionSheetMixin(BaseSheetMixin):
         Args:
             server_name: Server hostname
             instance_name: SQL Server instance name
-            category: Finding category for grouping:
-                - "SA Account" - SA security issues
-                - "Configuration" - sp_configure issues
-                - "Backup" - Backup compliance issues
-                - "Login" - Login security issues
-                - "Permissions" - Permission issues
+            category: Finding category for grouping
             finding: Clear description of the issue found
-            risk_level: Severity of the finding:
-                - "Critical" - Immediate action required
-                - "High" - Address within 7 days
-                - "Medium" - Address within 30 days
-                - "Low" - Address when possible
+            risk_level: Severity of the finding
             recommendation: Specific steps to remediate
-            status: Current status:
-                - "Open" - Not yet addressed
-                - "Closed" - Remediated
-                - "Exception" - Risk accepted
+            status: Current status
             found_date: When finding was discovered (defaults to now)
+            assigned_to: (Optional) Preserved 'Assigned To' value
+            due_date: (Optional) Preserved 'Due Date' value
+            resolution_date: (Optional) Preserved 'Resolution Date' value
+            resolution_notes: (Optional) Preserved 'Resolution Notes' value
         
         Example:
-            writer.add_action(
-                server_name="SQLPROD01",
-                instance_name="",
-                category="SA Account",
-                finding="SA account is enabled and not renamed",
-                risk_level="Critical",
-                recommendation="Disable SA and rename to '$@'",
-            )
+            writer.add_action(..., assigned_to="DBA Team")
         """
         if self._action_sheet is None:
             self._action_sheet = self._ensure_sheet(ACTION_CONFIG)
@@ -168,10 +157,10 @@ class ActionSheetMixin(BaseSheetMixin):
             recommendation,
             None,  # Status - styled separately
             format_date(found_date),  # Found Date (auto)
-            "",    # Assigned To (manual)
-            "",    # Due Date (manual)
-            "",    # Resolution Date (manual)
-            "",    # Resolution Notes (manual)
+            assigned_to,    # Assigned To (manual/preserved)
+            due_date,       # Due Date (manual/preserved)
+            resolution_date, # Resolution Date (manual/preserved)
+            resolution_notes, # Resolution Notes (manual/preserved)
         ]
         
         row = self._write_row(ws, ACTION_CONFIG, data)

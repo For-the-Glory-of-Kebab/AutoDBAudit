@@ -49,6 +49,23 @@ class SqlTarget:
         return self.server
     
     @property
+    def unique_instance(self) -> str:
+        """Unique instance identifier for entity keys.
+        
+        When instance name is null/empty (default instance), uses port for disambiguation.
+        This ensures multiple default instances on different ports are distinguishable.
+        
+        Returns:
+            Instance identifier like "MSSQLSERVER", "SQLEXPRESS", or ":1434" (port-based)
+        """
+        if self.instance:
+            return self.instance
+        # Default instance - use port for disambiguation if non-standard
+        if self.port and self.port != 1433:
+            return f":{self.port}"
+        return ""  # Standard default instance on 1433
+    
+    @property
     def server_instance(self) -> str:
         """Server instance string for connection."""
         if self.port:

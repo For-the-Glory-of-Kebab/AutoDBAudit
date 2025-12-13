@@ -96,55 +96,130 @@ class ScriptExecutor:
                 self._targets_cache = []
         return self._targets_cache
 
-    def _find_target(self, server: str) -> SqlTarget | None:
-        """Find target matching the server hostname (fuzzy match)."""
+    def _find_target(
+        self, server: str, port: int | None = None, instance: str | None = None
+    ) -> SqlTarget | None:
+        """
+        Find target matching criteria with prioritization:
+        1. Exact Match: Server + Port + Instance
+        2. Server + Port
+        3. Server + Instance
+        4. Server + Default Port (1433/None)
+        5. Server Only (First available)
+        """
         targets = self._load_targets()
         server_norm = server.lower()
+        instance_norm = instance.lower() if instance else None
 
         # Handle localhost aliases
         aliases = {server_norm}
         if server_norm in ("localhost", "127.0.0.1", "."):
             aliases = {"localhost", "127.0.0.1", "."}
 
-        for t in targets:
-            h = t.server.lower()
-            if h in aliases:
-                return t
+        # 1. Exact Match: Server + Port + Instance (if all provided)
+        if port and instance_norm is not None:
+            for t in targets:
+                h = t.server.lower()
+                p = t.port or 1433
+                i = (t.instance or "").lower()
+                if h in aliases and p == port and i == instance_norm:
+                    return t
 
-        # If no strict/alias match, try matching just the computer name if FQDN
-        # e.g. "server.domain.com" matching "server"
+        # 2. Server + Port
+        if port:
+            for t in targets:
+                h = t.server.lower()
+                p = t.port or 1433
+                if h in aliases and p == port:
+                    return t
+
+        # 3. Server + Instance
+        if instance_norm is not None:
+            for t in targets:
+                h = t.server.lower()
+                i = (t.instance or "").lower()
+                if h in aliases and i == instance_norm:
+                    return t
+
+        # 4. Server + Default Port (Implicit 1433)
+        # If no port specified, we prefer the target on 1433 over others
+        if not port:
+            for t in targets:
+                h = t.server.lower()
+                p = t.port or 1433
+                if h in aliases and p == 1433:
+                    return t
+
+        # 5. Fallback: Server partial match (FQDN) + Port/Instance logic
         if "." in server_norm:
             short_name = server_norm.split(".")[0]
             for t in targets:
                 h = t.server.lower()
                 if h == short_name:
-                    return t
+                    # Apply similar logic checks if needed, or just return first FQDN match
+                    # For safety, let's repeat the checks or just return it?
+                    # Let's keep it simple: return if port matches or is default
+                    p = t.port or 1433
+                    # Same logic for port checking could apply here
+                    if not port or (t.port or 1433) == port:
+                        return t
 
+        # 6. Fallback: First Server match (Lowest Priority)
+        for t in targets:
+            h = t.server.lower()
+            if h in aliases:
+                return t
+        
         return None
 
     def _get_connection_for_script(
         self, script_path: Path
-    ) -> tuple[str, str, str | None]:
+    ) -> tuple[str, str, str | None, int | None]:
         """
-        Extract server/instance from script and find matching target.
+        Extract server/instance/port from script and find matching target.
 
-        Returns: (server, instance, connection_login)
+        Returns: (server, instance, connection_login, port)
         """
         content = script_path.read_text(encoding="utf-8")
 
-        # Parse server/instance from script header
+        # Parse server/instance/port from script header
         server_match = re.search(r"Server:\s*(.+)", content)
         instance_match = re.search(r"Instance:\s*(.+)", content)
+        port_match = re.search(r"Port:\s*(\d+)", content)
 
         server = server_match.group(1).strip() if server_match else ""
         instance = instance_match.group(1).strip() if instance_match else ""
+        
+        port: int | None = None
+        if port_match:
+            try:
+                port = int(port_match.group(1))
+            except ValueError:
+                pass
 
-        # Clean up instance name
-        if instance == "(Default)":
-            instance = ""
-
-        # Find matching target
-        target = self._find_target(server)
+        # Handle "(Default)" or "(Default:1434)"
+        # We KEEP the instance string for _find_target logic if it has info,
+        # but we also want the cleaned version for the connection string later.
+        # Actually, _find_target expects the REAL instance name ("" or "SQLEXPRESS").
+        # So we should clean it, but extract port first.
+        
+        cleaned_instance = instance
+        if instance.startswith("(Default"):
+            # Try to extract port from instance label if not in header
+            if not port and ":" in instance:
+                try:
+                    # Extract 1434 from (Default:1434)
+                    inner = instance.strip("()")
+                    _, p_str = inner.split(":", 1)
+                    port = int(p_str)
+                except (ValueError, IndexError):
+                    pass
+            
+            # Default instance name is empty string
+            cleaned_instance = ""
+        
+        # Find matching target with port AND instance awareness
+        target = self._find_target(server, port, cleaned_instance)
         connection_login = None
 
         if target:
@@ -152,8 +227,13 @@ class ScriptExecutor:
                 connection_login = "WINDOWS_AUTH"
             else:
                 connection_login = target.username or "sa"
+                
+            # If we didn't have a port from script but found a target, use target's port
+            if not port:
+                port = target.port or 1433
 
-        return server, instance, connection_login
+        return server, cleaned_instance, connection_login, port
+
 
     def _parse_batches(self, content: str) -> list[str]:
         """Split script content into GO-separated batches."""
@@ -328,11 +408,12 @@ class ScriptExecutor:
         batches = self._parse_batches(content)
 
         # Get connection info
-        server, instance, connection_login = self._get_connection_for_script(
+        server, instance, connection_login, port = self._get_connection_for_script(
             script_path
         )
 
         print(f"Server: {server}")
+        print(f"Port: {port or 1433}")
         print(f"Instance: {instance or '(Default)'}")
         print(f"Connection: {connection_login or 'Unknown'}")
         print(f"Batches: {len(batches)}")
@@ -366,7 +447,7 @@ class ScriptExecutor:
 
         # Actually execute
         try:
-            conn = self._connect(server, instance)
+            conn = self._connect(server, instance, port)
         except Exception as e:
             logger.error("Failed to connect: %s", e)
             result.warnings.append(f"Connection failed: {e}")
@@ -427,24 +508,27 @@ class ScriptExecutor:
 
         return result
 
-    def _connect(self, server: str, instance: str):
+    def _connect(self, server: str, instance: str, port: int | None = None):
         """Create connection to SQL Server."""
         import pyodbc
 
         # Find matching target
-        target = self._find_target(server)
+        target = self._find_target(server, port)
 
         if not target:
-            raise ValueError(f"No target found for server: {server}")
+            # Fallback if no target found but we have explicit info?
+            # For safety, require target config
+            raise ValueError(f"No target found for server: {server}" + (f" port {port}" if port else ""))
 
         # Build connection string
         host = target.server
-        port = target.port or 1433
+        # Use target port if defined, otherwise passed port, otherwise 1433
+        target_port = target.port or port or 1433
 
         if instance:
             server_str = f"{host}\\{instance}"
         else:
-            server_str = f"{host},{port}"
+            server_str = f"{host},{target_port}"
 
         if target.auth == "integrated":
             conn_str = (

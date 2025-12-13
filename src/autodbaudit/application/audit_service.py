@@ -278,7 +278,7 @@ class AuditService:
         )
         counts = collector.collect_all(
             server_name=target.server,
-            instance_name=target.instance,
+            instance_name=target.unique_instance,  # Use port-aware identifier
             config_name=target.display_name,
             ip_address=target.ip_address or "",
         )

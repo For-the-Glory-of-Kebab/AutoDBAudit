@@ -10,7 +10,7 @@
 - [ ] 🧠 **Phase 4: Refinement & Advanced Logic**
   - [x] **Excel**: Add indicator for discrepancies missing Fix/Justification ✅ (2025-12-13)
   - [ ] **Architecture**: Review Excel Lifecycle (One Working Copy vs Many Snapshots)
-  - [ ] **Logic**: Handle Reversion (Pass -> Fail) in Action Log (Gray out previous fix?)
+  - [x] **Logic**: Handle Reversion (Pass -> Fail) in Action Log (Gray out previous fix?)
 
 ---
 
@@ -49,6 +49,9 @@
 - [x] **Styling**: Added ACTION_BG color and ACTION Fill to excel_styles.py
 - [x] **Helper**: Added ACTION_COLUMN definition and apply_action_needed_styling() to base.py
 - [x] **Docs**: Updated excel_report_layout.md with new feature documentation
+- [x] **Simulation Runner**: Created run_simulation.py with apply/revert modes
+- [x] **SQL Fixes**: Patched 2019+.sql for SQL 2008 R2 compatibility (THROW -> RAISERROR)
+- [x] **Instance ID**: Fixed multiple default instances via port detection
 
 ### 2025-12-12: E2E Prep & Architecture Refinement
 - [x] **Schema Fix**: Solved `run_type` and `action_log` missing/crash (Fresh Start)

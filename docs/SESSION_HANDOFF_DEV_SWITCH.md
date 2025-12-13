@@ -1,67 +1,86 @@
 # Session Handoff: Development Machine Switch
 > **Date**: 2025-12-13
 > **To**: AutoDBAudit Agent (Next Session)
-> **From**: AutoDBAudit Agent (Previous Session)
-> **Objective**: Seamless context continuity affecting Phase 8 (Refinement) and Phase 9 (Debugging).
+> **From**: AutoDBAudit Agent (Phase 10 Completion)
+> **Objective**: Continuity for E2E Testing and Audit Logic Validation.
 
 ---
 
-## 🛑 Critical Code Changes (Must Read)
+## 🛑 Recent Critical Changes (Phase 10)
 
-### 1. SA Account Detection Fix (SQL 2008 / Renamed SA)
-**File**: `src/autodbaudit/infrastructure/sql/query_provider.py`
--   **Change**: Converted SA detection logic from `name = 'sa'` (fragile) to `principal_id = 1` (immutable).
--   **Affected Providers**: `Sql2008Provider` and `Sql2019PlusProvider`.
--   **Reason**: User has a renamed SA account (e.g., `$@`), causing it to be missed in previous reports.
--   **Verification status**: Verified via `verify_sa_query.py` (Deleted).
+### 1. Action Sheet = "Audit Trail" (Diff Log)
+**File**: `src/autodbaudit/application/sync_service.py`
+-   **Logic**: The Action Sheet no longer lists ALL open findings. It strictly lists **CHANGES** (Fixes, Regressions, New Findings) based on `action_log`.
+-   **Date Persistence**: 
+    -   **DB**: `action_date` is strictly "First Detected".
+    -   **Excel**: Manual edits to `Found Date` in Excel **OVERRIDE** DB dates on sync.
+-   **Validation**: Validated that `_upsert_action` preserves timestamps.
 
-### 2. Remediation Aggressiveness & Safety
-**File**: `src/autodbaudit/application/remediation_service.py` & `cli.py`
--   **Feature**: Added `--aggressiveness` [1|2|3] flag.
-    -   **1 (Safe)**: Review only.
-    -   **2 (Constructive)**: Revoke permissions active.
-    -   **3 (Brutal)**: Disable/Drop active.
--   **SAFETY OVERRIDE**: Logic added to `_script_review_login` to **ALWAYS** comment out remediation for the *connecting user*, with `!!! LOCKOUT RISK !!!` warning, regardless of aggressiveness level.
+### 2. Simulation Runner (`run_simulation.py`)
+-   **New Tool**: Created `run_simulation.py` in root.
+-   **Purpose**: Runs `simulate-discrepancies/2019+.sql` (Apply) or `2019+_revert.sql` (Revert) against ALL targets in `sql_targets.json`.
+-   **Fixes Applied**:
+    -   **SQL 2008 Compatibility**: Replaced `THROW` with `RAISERROR` and `sp_renamelogin` with `ALTER LOGIN` in `2019+.sql`.
+    -   **Regex**: Fixed `GO` splitting to handle comments (`GO -- ...`).
 
-### 3. SQL 2008 Transaction Hotfix
-**File**: `src/autodbaudit/application/script_executor.py`
--   **Change**: Enabled `autocommit=True` for `pyodbc` connection.
--   **Reason**: SQL 2008 R2 threw "CREATE/ALTER cannot be run in a transaction" errors. This mimics SSMS behavior.
+### 3. Instance Identification (Port-Based)
+**File**: `src/autodbaudit/infrastructure/config_loader.py` & `sync_service.py`
+-   **Problem**: Multiple "Default Instances" on different ports were colliding.
+-   **Fix**: `SqlTarget.unique_instance` now appends port (e.g., `:1434`) if instance name is empty/default.
+-   **Result**: "Safe defaults" logic ensures distinct tracking in `audit_runs` and `action_log`.
 
 ---
 
 ## 📊 Project Status
 
--   **Phase 8**: Complete (Aggressiveness implemented).
--   **Phase 9**: Complete (Bugs fixed).
--   **Report Accuracy**: Verified. "DEFAULT" instance name reports were investigated; data in DB/Config is correct. Reporting logic is correct. Any mismatch is likely cached/stale data or user interpretation.
+-   **Phase 10 (Precision)**: Complete.
+-   **Simulation Scripts**: Validated & Compatible (2008-2025).
+-   **Sync Logic**: Verified "Audit Trail" mode.
 
 ---
 
-## 🚀 Immediate Next Steps (Start Here)
+## 🚀 Immediate Next Steps (E2E Flow)
 
-1.  **Run a Clean Audit**:
+The user is currently running the **Simulation Phase**.
+
+1.  **Apply Discrepancies**:
     ```bash
-    python src/autodbaudit/interface/cli.py --audit --new --name "Machine_Switch_Verify"
+    python run_simulation.py --mode apply
     ```
-2.  **Verify SA Account**:
-    -   Open generated Excel.
-    -   Check "SA Account" sheet.
-    -   Confirm record exists for SQL 2008 instance (and any others).
-3.  **Generate Remediation (Test Safety)**:
+    *(Note: This was just fixed. User should run this effectively now).*
+
+2.  **Run Audit (Detection)**:
     ```bash
-    python src/autodbaudit/interface/cli.py --generate-remediation --aggressiveness 3
+    python src/autodbaudit/main.py --audit --new --name "Simulated_Audit"
     ```
-    -   Inspect script for connecting user (e.g., `King` or configured user).
-    -   Confirm `!!! LOCKOUT RISK !!!` warning is present.
+
+3.  **Generate Remediation**:
+    ```bash
+    python src/autodbaudit/main.py --generate-remediation --aggressiveness 2
+    ```
+
+4.  **Execute Remediation**:
+    -   User runs generated SQL scripts in SSMS (or via future tool).
+    -   *Checkpoint*: Ensure SQL 2008 scripts don't fail.
+
+5.  **Sync (Verify)**:
+    ```bash
+    python src/autodbaudit/main.py --sync
+    ```
+    -   **Verify**: Action Sheet should show "Fixed" items.
+
+6.  **Revert**:
+    ```bash
+    python run_simulation.py --mode revert
+    ```
 
 ---
 
-## 📁 Key File Locations
+## 📁 Key Files Modified
 
 | Component | Path |
 |-----------|------|
-| **Query Provider** | `src/autodbaudit/infrastructure/sql/query_provider.py` |
-| **Remediation Logic** | `src/autodbaudit/application/remediation_service.py` |
-| **Excel Instance** | `src/autodbaudit/infrastructure/excel/instances.py` |
+| **Simulation Runner** | `run_simulation.py` |
+| **Sync Service** | `src/autodbaudit/application/sync_service.py` |
+| **SQL 2019+ Script** | `simulate-discrepancies/2019+.sql` |
 | **Project Status** | `docs/PROJECT_STATUS.md` |

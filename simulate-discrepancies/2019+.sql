@@ -480,6 +480,39 @@ VALUES (
         'REQUIREMENT_VIOLATION',
         'Explicit permissions with security issues'
     );
+    USE [master];
+GO
+
+DECLARE @saName sysname;
+
+SELECT @saName = name
+FROM sys.server_principals
+WHERE sid = 0x01
+  AND type_desc = 'SQL_LOGIN';
+
+    IF @saName IS NULL
+    BEGIN
+        RAISERROR('Built-in sa login (SID 0x01) not found.', 16, 1);
+        RETURN;
+    END
+
+    IF @saName <> N'sa'
+    BEGIN
+        IF EXISTS (SELECT 1 FROM sys.server_principals WHERE name = N'sa')
+        BEGIN
+            RAISERROR('Login "sa" already exists; refusing to rename.', 16, 1);
+            RETURN;
+        END
+
+        DECLARE @SqlRename NVARCHAR(MAX) = 'ALTER LOGIN [' + @saName + '] WITH NAME = [sa]';
+        EXEC sp_executesql @SqlRename;
+    END
+
+-- Force discrepancy state
+ALTER LOGIN [sa] ENABLE;
+PRINT 'Ensured sa login is enabled and named "sa" for testing purposes.';
+GO
+
 GO
 PRINT '=== SQL SERVER 2019+ INSTANCE SECURITY TEST SETUP COMPLETE ===';
 PRINT '✅ SAFE EXECUTION - ACCESS PRESERVED:';

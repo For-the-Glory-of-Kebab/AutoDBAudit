@@ -26,6 +26,12 @@ We use a **Single Table Inheritance** model in `audit_runs`:
 -   **Permissions**: We now explicitly audit GRANT/DENY permissions (Req #28).
 -   **Security Matrix**: We now generate a visual Role Matrix (Req #27).
 
+### 4. Action Sheet Strategy: "Deep Audit Trail"
+The Action Sheet is strictly a **Diff Log**.
+-   **Change Tracking**: Only lists items when their status changes (Fail->Fixed, Pass->Fail).
+-   **Date Persistence**: DB holds "First Detected" date. Excel manual edits (Notes, dates) override DB on Sync.
+-   **Goal**: Provide a permanent history of remediation efforts, not just a current "To-Do" snapshot.
+
 ---
 
 ## Implementation State
@@ -108,6 +114,12 @@ AutoDBAudit/
 -   ✅ **Fix**: SA Account Remediation missing on SQL 2008 (Fixed via `principal_id` check)
 -   ✅ **Verified**: "DEFAULT" Instance Names confirmed correct in DB/Config
 -   ✅ **Hotfix**: SQL 2008 Transaction Errors (Enabled `autocommit`)
+
+### Phase 10: Precision & Audit Trail (Dec 13)
+-   ✅ **Instance Identification**: Resolved "Default Instance" ambiguity using explicit Port targeting (e.g., `(Default:1434)`).
+-   ✅ **Late Arrival**: Sync now correctly identifies and logs servers that come online after the baseline.
+-   ✅ **Action Sheet Logic**: Refactored to "Audit Trail" mode (History-based, Manual Edit Preservation).
+-   ✅ **Config Remediation**: Fixed "Remote Access" script to properly cleanly toggle configurations.
 
 ---
 

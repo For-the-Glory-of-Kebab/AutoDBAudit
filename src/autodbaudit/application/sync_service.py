@@ -295,79 +295,98 @@ class SyncService:
         # Get all actions for this sync cycle (which we just updated)
         # We filter by last_sync_run_id = current_run_id to show relevant updates,
         # or maybe all actions? User wants "fixes".
-        # Let's show ALL valid actions for the baseline.
-
+        # Refactored: List ALL current Open findings + ALL Fixed items from history.
+        # List actions from the action_log history (Audit Trail).
+        # This shows fixed items and regressions over time.
+        
         # Read existing annotations from previous Excel (if any) to preserve user edits
         preserved_annotations = self._read_existing_action_annotations(path_latest)
-
+        
         actions = self.get_actions(initial_run_id)
         valid_actions_count = 0
-
+        
         for action in actions:
-            # Only add if it's a relevant status
-            if action["action_type"] in ("fixed", "regression", "new"):
-                # Parse entity key (format: server|instance|finding_type|entity_name)
-                entity = action["entity_key"]
-                parts = entity.split("|")
-                server = parts[0] if parts else entity
-                # Instance is second part, empty means default
-                instance = parts[1] if len(parts) > 1 and parts[1] else "(Default)"
+            # We list all actions in the log as they represent the audit trail of changes
+            # (Fixed, Regression, New, etc.)
+            
+            # Parse entity key (format: server|instance|finding_type|entity_name)
+            entity = action["entity_key"]
+            parts = entity.split("|")
+            server = parts[0] if parts else entity
+            # Instance is second part, empty means default
+            instance = parts[1] if len(parts) > 1 and parts[1] else "(Default)"
+            
+            # Get finding description for key matching
+            finding_desc = action["action_description"] or f"{action['action_type']}: {action['finding_type']}"
+            
+            # Build lookup key to find preserved annotations
+            inst_normalized = "" if instance == "(Default)" else instance
+            lookup_key = f"{server}|{inst_normalized}|{finding_desc}"
+
+            # Default values for required columns
+            risk = "High" if action["action_type"] == "regression" else "Medium"
+            rec = (
+                "Remediated via sync."
+                if action["action_type"] == "fixed"
+                else "Investigate regression."
+            )
+            status_map = {
+                "fixed": "Closed",
+                "regression": "Open",
+                "new": "Open",
+            }
+            status = status_map.get(action["action_type"], "Open")
+
+            # Initialize manual fields
+            assigned_to = ""
+            due_date = ""
+            notes = ""
+
+            # Parse timestamp - prefer user's date if they edited it in Excel
+            f_date = None
+            if lookup_key in preserved_annotations:
+                ann = preserved_annotations[lookup_key]
+                assigned_to = ann.get("assigned_to", "")
+                due_date = ann.get("due_date", "")
+                notes = ann.get("resolution_notes", "")
                 
-                # Get finding description for key matching
-                finding_desc = action["action_description"] or f"{action['action_type']}: {action['finding_type']}"
-                
-                # Build lookup key to find preserved annotations
-                inst_normalized = "" if instance == "(Default)" else instance
-                lookup_key = f"{server}|{inst_normalized}|{finding_desc}"
+                user_date = ann.get("found_date")
+                if user_date:
+                    if isinstance(user_date, datetime):
+                        f_date = user_date
+                    elif isinstance(user_date, str):
+                        try:
+                            clean_date = user_date.replace("Z", "+00:00")
+                            f_date = datetime.fromisoformat(clean_date)
+                        except (ValueError, TypeError):
+                            pass
+            
+            # Fall back to DB date (Action Log Date - strict First Detected)
+            if not f_date and action["action_date"]:
+                try:
+                    f_date = datetime.fromisoformat(action["action_date"])
+                except (ValueError, TypeError):
+                    f_date = datetime.now()
 
-                # Default values for required columns
-                risk = "High" if action["action_type"] == "regression" else "Medium"
-                rec = (
-                    "Remediated via sync."
-                    if action["action_type"] == "fixed"
-                    else "Investigate regression."
-                )
-                status_map = {
-                    "fixed": "Closed",
-                    "regression": "Open",
-                    "new": "Open",
-                }
-                status = status_map.get(action["action_type"], "Open")
-
-                # Parse timestamp - prefer user's date if they edited it in Excel
-                f_date = None
-                if lookup_key in preserved_annotations:
-                    user_date = preserved_annotations[lookup_key].get("found_date")
-                    if user_date:
-                        if isinstance(user_date, datetime):
-                            f_date = user_date
-                        elif isinstance(user_date, str):
-                            try:
-                                f_date = datetime.fromisoformat(user_date.replace("Z", "+00:00"))
-                            except (ValueError, TypeError):
-                                pass
-                
-                # Fall back to DB date if no preserved date
-                if f_date is None:
-                    try:
-                        # ISO format from DB
-                        f_date = datetime.fromisoformat(action["action_date"])
-                    except (ValueError, TypeError):
-                        f_date = datetime.now()
-
-                writer.add_action(
-                    server_name=server,
-                    instance_name=instance,
-                    category=action["finding_type"],
-                    finding=finding_desc,
-                    risk_level=risk,
-                    recommendation=rec,
-                    status=status,
-                    found_date=f_date,
-                )
-                valid_actions_count += 1
-
-        logger.info("Injected %d actions into Excel report", valid_actions_count)
+            writer.add_action(
+                server_name=server,
+                instance_name=instance,
+                category=action["finding_type"] or "General",
+                finding=finding_desc,
+                risk_level=risk,
+                recommendation=rec,
+                status=status,
+                found_date=f_date,
+                assigned_to=assigned_to,
+                due_date=due_date,
+                resolution_notes=notes,
+            )
+            valid_actions_count += 1
+            
+        if valid_actions_count == 0:
+            logger.info("No actions in history log to report.")
+        else:
+            logger.info("Injected %d actions into Excel report", valid_actions_count)
 
         # -------------------------------------------------------------------------
         # 3. Calculate Dual Stats (Baseline vs Current AND Previous vs Current)
@@ -597,67 +616,79 @@ class SyncService:
 
             else:
                 # Key missing in current run (Entity deleted?)
-
-                # Check coverage: Was the instance even scanned?
                 parts = key.split("|")
                 if len(parts) >= 2:
                     instance_key = f"{parts[0]}|{parts[1]}"
-                    if instance_key not in scanned_instances:
+                    
+                    if instance_key in scanned_instances:
+                        # Instance was scanned, finding is gone -> FIXED
+                        # Only mark fixed if it was previously FAIL/WARN
+                        if initial["status"] in ("FAIL", "WARN"):
+                            self._upsert_action(
+                                conn,
+                                initial_run_id,
+                                key,
+                                initial["finding_type"],
+                                "fixed",
+                                now,
+                                existing_actions,
+                                f"Fixed (Removed): {initial['finding_type']} - {initial['entity_name']}",
+                                current_run_id,
+                            )
+                            counts["fixed"] += 1
+                    else:
+                        # Instance wasn't scanned -> Assume Unreachable -> No Change
                         if instance_key not in unreachable_warnings:
-                            logger.warning(
-                                "Target %s appears Unreachable. Skipping fix detection.",
-                                instance_key,
-                            )
-                            print(
-                                f"⚠️  WARNING: Target {instance_key} was unreachable. Assuming NO CHANGE."
-                            )
                             unreachable_warnings.add(instance_key)
-                        continue
 
-                # If it was a problem before, and now it's gone (and server IS online), we consider it FIXED.
-                # E.g. Orphaned User removed, Rogue Login dropped.
-                if initial["status"] in ("FAIL", "WARN"):
-                    print(
-                        f"DEBUG: Found deleted item {initial['entity_name']} ({initial['finding_type']}) - Marking FIXED"
-                    )
+        # --------------------------------------------------------------------
+        # PROCESS LATE ARRIVALS: Findings in Current but NOT in Initial
+        # --------------------------------------------------------------------
+        
+        # Build set of instances present in INITIAL run
+        initial_instances = set()
+        for key in initial_findings:
+            parts = key.split("|")
+            if len(parts) >= 2:
+                initial_instances.add(f"{parts[0]}|{parts[1]}")
+        
+        for key, current in current_findings.items():
+            # If we haven't seen this key in initial findings
+            if key not in initial_findings:
+                # Check status - only care if it's FAIL/WARN
+                if current["status"] in ("FAIL", "WARN"):
+                    # Is this a new instance or just a new finding on old instance?
+                    parts = key.split("|")
+                    instance_key = f"{parts[0]}|{parts[1]}" if len(parts) >= 2 else ""
+                    
+                    is_late_arrival = instance_key and instance_key not in initial_instances
+                    
+                    if is_late_arrival:
+                        # LATE ARRIVAL: Treat as baseline finding
+                        desc = f"Baseline Finding (Late Arrival): {current['finding_type']}"
+                        logger.info("Late arrival server detected: %s", instance_key)
+                    else:
+                        # NEW ISSUE on existing server
+                        desc = f"New Issue Detected: {current['finding_type']}"
+                    
+                    # Upsert as 'new' action so it appears in report
                     self._upsert_action(
                         conn,
                         initial_run_id,
                         key,
-                        initial["finding_type"],
-                        "fixed",
+                        current["finding_type"],
+                        "new",
                         now,
                         existing_actions,
-                        f"Fixed: {initial['finding_type']} - {initial['entity_name']} (Removed)",
+                        desc,
                         current_run_id,
                     )
-                    counts["fixed"] += 1
-                else:
-                    print(
-                        f"DEBUG: Found deleted item {initial['entity_name']} but it was PASS - Ignoring"
-                    )
+                    counts["new"] += 1
 
-        # New findings (didn't exist in initial)
-        for key, current in current_findings.items():
-            if key not in initial_findings and current["status"] in ("FAIL", "WARN"):
-                print(f"DEBUG: Found NEW item {current['entity_name']} - Marking NEW")
-                self._upsert_action(
-                    conn,
-                    initial_run_id,
-                    key,
-                    current["finding_type"],
-                    "new",
-                    now,
-                    existing_actions,
-                    f"New finding: {current['finding_type']} - {current['entity_name']}",
-                    current_run_id,
-                )
-                counts["new"] += 1
+        for w in unreachable_warnings:
+            logger.warning("Target %s appears Unreachable. Skipping fix detection.", w)
+            print(f"⚠️  WARNING: Target {w} was unreachable. Assuming NO CHANGE.")
 
-        print(
-            f"DEBUG: Sync Update Complete. Fixed={counts['fixed']}, New={counts['new']}"
-        )
-        conn.commit()
         return counts
 
     def _upsert_action(
