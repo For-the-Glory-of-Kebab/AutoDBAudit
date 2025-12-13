@@ -21,6 +21,8 @@ from autodbaudit.infrastructure.excel.base import (
     SheetConfig,
     format_date,
     format_size_mb,
+    ACTION_COLUMN,
+    apply_action_needed_styling,
 )
 from autodbaudit.infrastructure.excel.server_group import ServerGroupMixin
 
@@ -29,6 +31,7 @@ __all__ = ["BackupSheetMixin", "BACKUP_CONFIG"]
 
 
 BACKUP_COLUMNS = (
+    ACTION_COLUMN,  # Column A: Action indicator
     ColumnDef("Server", 16, Alignments.LEFT),
     ColumnDef("Instance", 14, Alignments.LEFT),
     ColumnDef("Database", 22, Alignments.LEFT),
@@ -90,6 +93,7 @@ class BackupSheetMixin(ServerGroupMixin, BaseSheetMixin):
         size_str = format_size_mb(backup_size_mb) if backup_size_mb else ""
         
         data = [
+            None,  # Action indicator (column A)
             server_name,
             instance_name or "(Default)",
             database_name,
@@ -104,12 +108,19 @@ class BackupSheetMixin(ServerGroupMixin, BaseSheetMixin):
         
         row = self._write_row(ws, BACKUP_CONFIG, data)
         
-        self._apply_row_color(row, row_color, data_cols=[1, 2, 3, 4, 5, 6, 7, 8], ws=ws)
-        apply_status_styling(ws.cell(row=row, column=9), status)
+        # Apply action indicator - show ⏳ for FAIL/WARN backup status
+        needs_action = status != "pass"
+        apply_action_needed_styling(ws.cell(row=row, column=1), needs_action)
+        
+        # Apply row color (shifted +1)
+        self._apply_row_color(row, row_color, data_cols=[2, 3, 4, 5, 6, 7, 8, 9], ws=ws)
+        
+        # Apply status styling (Status is now column 10, shifted +1 from 9)
+        apply_status_styling(ws.cell(row=row, column=10), status)
         
         if backup_date_str == "NEVER":
-            ws.cell(row=row, column=5).fill = Fills.FAIL
-            ws.cell(row=row, column=5).font = Fonts.FAIL
+            ws.cell(row=row, column=6).fill = Fills.FAIL  # Last Full Backup column (shifted +1)
+            ws.cell(row=row, column=6).font = Fonts.FAIL
     
     def _finalize_backups(self) -> None:
         """Finalize backups sheet - merge remaining groups."""
@@ -121,5 +132,6 @@ class BackupSheetMixin(ServerGroupMixin, BaseSheetMixin):
         from autodbaudit.infrastructure.excel.base import add_dropdown_validation
         
         ws = self._backup_sheet
-        # Status column (I) - column 9
-        add_dropdown_validation(ws, "I", ["PASS", "WARN", "FAIL"])
+        # Status column (J) - column 10 (shifted +1 from I)
+        add_dropdown_validation(ws, "J", ["PASS", "WARN", "FAIL"])
+

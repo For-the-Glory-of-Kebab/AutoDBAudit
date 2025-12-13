@@ -297,21 +297,28 @@ class SyncService:
         # or maybe all actions? User wants "fixes".
         # Let's show ALL valid actions for the baseline.
 
+        # Read existing annotations from previous Excel (if any) to preserve user edits
+        preserved_annotations = self._read_existing_action_annotations(path_latest)
+
         actions = self.get_actions(initial_run_id)
         valid_actions_count = 0
 
         for action in actions:
             # Only add if it's a relevant status
             if action["action_type"] in ("fixed", "regression", "new"):
-                # Parse entity key (format: server or server\instance)
+                # Parse entity key (format: server|instance|finding_type|entity_name)
                 entity = action["entity_key"]
-                if "\\" in entity:
-                    parts = entity.split("\\", 1)
-                    server = parts[0]
-                    instance = parts[1]
-                else:
-                    server = entity
-                    instance = "(Default)"
+                parts = entity.split("|")
+                server = parts[0] if parts else entity
+                # Instance is second part, empty means default
+                instance = parts[1] if len(parts) > 1 and parts[1] else "(Default)"
+                
+                # Get finding description for key matching
+                finding_desc = action["action_description"] or f"{action['action_type']}: {action['finding_type']}"
+                
+                # Build lookup key to find preserved annotations
+                inst_normalized = "" if instance == "(Default)" else instance
+                lookup_key = f"{server}|{inst_normalized}|{finding_desc}"
 
                 # Default values for required columns
                 risk = "High" if action["action_type"] == "regression" else "Medium"
@@ -327,19 +334,32 @@ class SyncService:
                 }
                 status = status_map.get(action["action_type"], "Open")
 
-                # Parse timestamp
-                try:
-                    # ISO format from DB
-                    f_date = datetime.fromisoformat(action["action_date"])
-                except (ValueError, TypeError):
-                    f_date = datetime.now()
+                # Parse timestamp - prefer user's date if they edited it in Excel
+                f_date = None
+                if lookup_key in preserved_annotations:
+                    user_date = preserved_annotations[lookup_key].get("found_date")
+                    if user_date:
+                        if isinstance(user_date, datetime):
+                            f_date = user_date
+                        elif isinstance(user_date, str):
+                            try:
+                                f_date = datetime.fromisoformat(user_date.replace("Z", "+00:00"))
+                            except (ValueError, TypeError):
+                                pass
+                
+                # Fall back to DB date if no preserved date
+                if f_date is None:
+                    try:
+                        # ISO format from DB
+                        f_date = datetime.fromisoformat(action["action_date"])
+                    except (ValueError, TypeError):
+                        f_date = datetime.now()
 
                 writer.add_action(
                     server_name=server,
                     instance_name=instance,
                     category=action["finding_type"],
-                    finding=action["action_description"]
-                    or f"{action['action_type']}: {action['finding_type']}",
+                    finding=finding_desc,
                     risk_level=risk,
                     recommendation=rec,
                     status=status,
@@ -357,8 +377,8 @@ class SyncService:
         # Now we want "Recent Activity" (Recent Sync -> Current)
 
         # Find previous run ID (ignoring current)
-        conn = sqlite3.connect(self.db_path)  # Already connected
-        conn.row_factory = sqlite3.Row  # Already set
+        conn = sqlite3.connect(self.db_path)  # Fresh connection for stats
+        conn.row_factory = sqlite3.Row
 
         prev_run_query = conn.execute(
             "SELECT id FROM audit_runs WHERE id < ? ORDER BY id DESC LIMIT 1",
@@ -369,10 +389,22 @@ class SyncService:
 
         if prev_run_query:
             prev_run_id = prev_run_query[0]
+            logger.info(
+                "Sync stats: prev_run_id=%d, current_run_id=%d, initial_run_id=%d",
+                prev_run_id, current_run_id, initial_run_id
+            )
+            
             # Use schema's generic comparator
             from autodbaudit.infrastructure.sqlite.schema import compare_findings
 
             diff_recent = compare_findings(conn, prev_run_id, current_run_id)
+            
+            logger.debug(
+                "Recent diff: fixed=%d, regression=%d, new=%d",
+                len(diff_recent["fixed"]),
+                len(diff_recent["regression"]),
+                len(diff_recent["new"])
+            )
 
             # Count them up
             recent_stats["fixed"] = len(diff_recent["fixed"])
@@ -381,6 +413,12 @@ class SyncService:
 
             # Add drift to recent stats too (since it happened in this run)
             recent_stats["fixed"] += drift_count
+            
+            # If prev_run == initial_run, recent stats == baseline stats (expected)
+            if prev_run_id == initial_run_id:
+                logger.info("First sync detected: 'Since Last Run' == 'Since Baseline'")
+        else:
+            logger.warning("No previous run found for recent stats calculation")
 
         conn.close()
 
@@ -676,6 +714,68 @@ class SyncService:
                     current_run_id,
                 ),
             )
+
+    def _read_existing_action_annotations(
+        self, excel_path: Path
+    ) -> dict:
+        """
+        Read user-entered data from existing Actions sheet.
+        
+        Preserves:
+        - Found Date (if user edited it)
+        - Assigned To, Due Date, Resolution Date, Resolution Notes
+        
+        Returns:
+            Dict keyed by (server, instance, finding) -> user annotations
+        """
+        from openpyxl import load_workbook
+        
+        preserved = {}
+        
+        if not excel_path.exists():
+            return preserved
+        
+        try:
+            wb = load_workbook(excel_path, read_only=True, data_only=True)
+            if "Actions" not in wb.sheetnames:
+                wb.close()
+                return preserved
+            
+            ws = wb["Actions"]
+            
+            # Column mapping (1-indexed):
+            # A=ID, B=Server, C=Instance, D=Category, E=Finding, F=Risk,
+            # G=Recommendation, H=Status, I=Found Date, J=Assigned To,
+            # K=Due Date, L=Resolution Date, M=Resolution Notes
+            
+            for row in ws.iter_rows(min_row=2, values_only=True):
+                if not row or not row[0]:  # Skip empty rows
+                    continue
+                    
+                # Create key from Server|Instance|Finding
+                server = row[1] or ""
+                instance = row[2] or ""
+                finding = row[4] or ""
+                
+                # Normalize instance for key matching
+                inst_normalized = "" if instance == "(Default)" else instance
+                key = f"{server}|{inst_normalized}|{finding}"
+                
+                preserved[key] = {
+                    "found_date": row[8] if len(row) > 8 else None,
+                    "assigned_to": row[9] if len(row) > 9 else None,
+                    "due_date": row[10] if len(row) > 10 else None,
+                    "resolution_date": row[11] if len(row) > 11 else None,
+                    "resolution_notes": row[12] if len(row) > 12 else None,
+                }
+            
+            wb.close()
+            logger.info("Read %d existing action annotations from Excel", len(preserved))
+            
+        except Exception as e:
+            logger.warning("Could not read existing actions: %s", e)
+        
+        return preserved
 
     def get_action_summary(self, initial_run_id: int | None = None) -> dict:
         """Get summary of all actions for an audit cycle."""

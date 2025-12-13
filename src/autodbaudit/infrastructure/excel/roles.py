@@ -22,6 +22,8 @@ from autodbaudit.infrastructure.excel.base import (
     BaseSheetMixin,
     SheetConfig,
     LAST_REVISED_COLUMN,
+    ACTION_COLUMN,
+    apply_action_needed_styling,
 )
 
 
@@ -29,6 +31,7 @@ __all__ = ["RoleSheetMixin", "ROLE_CONFIG"]
 
 
 ROLE_COLUMNS = (
+    ACTION_COLUMN,  # Column A: Action indicator
     ColumnDef("Server", 18, Alignments.LEFT),
     ColumnDef("Instance", 15, Alignments.LEFT),
     ColumnDef("Role", 20, Alignments.LEFT),
@@ -109,7 +112,14 @@ class RoleSheetMixin(BaseSheetMixin):
         # Convert is_disabled to is_enabled (inverted logic)
         is_enabled = not is_disabled
 
+        # Check if this is a privileged role needing justification
+        is_safe = member_name.lower() in SAFE_NAMES or any(
+            member_name.upper().startswith(p) for p in SAFE_PREFIXES
+        )
+        needs_justification = role_name.lower() == "sysadmin" and is_enabled and not is_safe
+
         data = [
+            None,  # Action indicator (column A)
             server_name,
             inst_display,
             role_name,
@@ -122,15 +132,18 @@ class RoleSheetMixin(BaseSheetMixin):
 
         row = self._write_row(ws, ROLE_CONFIG, data)
 
-        # Apply shade to informational columns
+        # Apply action indicator - show ⏳ for sysadmin members needing justification
+        apply_action_needed_styling(ws.cell(row=row, column=1), needs_justification)
+
+        # Apply shade to informational columns (shifted +1)
         fill = PatternFill(
             start_color=row_color, end_color=row_color, fill_type="solid"
         )
-        for col in [1, 2, 3, 4, 5]:  # Server, Instance, Role, Member, Type
+        for col in [2, 3, 4, 5, 6]:  # Server=2, Instance=3, Role=4, Member=5, Type=6
             ws.cell(row=row, column=col).fill = fill
 
-        # Style Enabled column with icon + color
-        enabled_cell = ws.cell(row=row, column=6)
+        # Style Enabled column with icon + color (now column 7)
+        enabled_cell = ws.cell(row=row, column=7)
         if is_enabled:
             enabled_cell.value = f"{Icons.PASS} Yes"
             enabled_cell.font = Fonts.PASS
@@ -141,12 +154,8 @@ class RoleSheetMixin(BaseSheetMixin):
             enabled_cell.fill = Fills.FAIL
 
         # Highlight sysadmin with warning if NOT disabled and NOT whitelisted
-        is_safe = member_name.lower() in SAFE_NAMES or any(
-            member_name.upper().startswith(p) for p in SAFE_PREFIXES
-        )
-
-        if role_name.lower() == "sysadmin" and is_enabled and not is_safe:
-            for col in [3, 4, 5]:  # Role, Member, Type
+        if needs_justification:
+            for col in [4, 5, 6]:  # Role=4, Member=5, Type=6
                 ws.cell(row=row, column=col).fill = Fills.WARN
 
     def _merge_role_instance(self, ws) -> None:
@@ -155,7 +164,7 @@ class RoleSheetMixin(BaseSheetMixin):
         if current_row > self._role_instance_start_row:
             merge_server_cells(
                 ws,
-                server_col=2,
+                server_col=3,  # Instance column (shifted +1 for action column)
                 start_row=self._role_instance_start_row,
                 end_row=current_row - 1,
                 server_name=self._role_last_instance,
@@ -173,13 +182,13 @@ class RoleSheetMixin(BaseSheetMixin):
             ]
             merge_server_cells(
                 ws,
-                server_col=1,
+                server_col=2,  # Server column (shifted +1 for action column)
                 start_row=self._role_server_start_row,
                 end_row=current_row - 1,
                 server_name=self._role_last_server,
                 is_alt=True,
             )
-            merged = ws.cell(row=self._role_server_start_row, column=1)
+            merged = ws.cell(row=self._role_server_start_row, column=2)
             merged.fill = PatternFill(
                 start_color=color_main, end_color=color_main, fill_type="solid"
             )
@@ -194,5 +203,6 @@ class RoleSheetMixin(BaseSheetMixin):
         from autodbaudit.infrastructure.excel.base import add_dropdown_validation
 
         ws = self._role_sheet
-        # Enabled column (F) - column 6
-        add_dropdown_validation(ws, "F", ["✓ Yes", "✗ No"])
+        # Enabled column (G) - column 7 (shifted +1 from F)
+        add_dropdown_validation(ws, "G", ["✓ Yes", "✗ No"])
+

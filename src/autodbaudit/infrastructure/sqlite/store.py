@@ -116,19 +116,21 @@ class HistoryStore:
         """
         )
 
-        # Instances table
+        # Instances table - port is included in unique key to distinguish
+        # default instances on same host with different ports
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS instances (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 server_id INTEGER NOT NULL,
                 instance_name TEXT NOT NULL DEFAULT '',
+                port INTEGER NOT NULL DEFAULT 1433,
                 version TEXT,
                 version_major INTEGER,
                 edition TEXT,
                 product_level TEXT,
                 FOREIGN KEY (server_id) REFERENCES servers(id) ON DELETE CASCADE,
-                UNIQUE (server_id, instance_name)
+                UNIQUE (server_id, instance_name, port)
             )
         """
         )
@@ -320,6 +322,7 @@ class HistoryStore:
         self,
         server: Server,
         instance_name: str,
+        port: int,
         version: str,
         version_major: int,
         edition: str | None = None,
@@ -331,6 +334,7 @@ class HistoryStore:
         Args:
             server: Server object (must have id)
             instance_name: Instance name (empty string for default)
+            port: TCP port (used to distinguish instances on same host)
             version: Full version string
             version_major: Major version number
             edition: SQL Server edition
@@ -345,13 +349,13 @@ class HistoryStore:
         conn = self._get_connection()
         instance_name = instance_name or ""  # Normalize None to empty string
 
-        # Check for existing instance
+        # Check for existing instance (include port in lookup for uniqueness)
         row = conn.execute(
             """
             SELECT id FROM instances 
-            WHERE server_id = ? AND instance_name = ?
+            WHERE server_id = ? AND instance_name = ? AND port = ?
         """,
-            (server.id, instance_name),
+            (server.id, instance_name, port),
         ).fetchone()
 
         if row:
@@ -370,6 +374,7 @@ class HistoryStore:
                 id=row["id"],
                 server_id=server.id,
                 instance_name=instance_name,
+                port=port,
                 version=version,
                 version_major=version_major,
                 edition=edition,
@@ -385,12 +390,13 @@ class HistoryStore:
             cursor = conn.execute(
                 """
                 INSERT INTO instances 
-                (server_id, instance_name, version, version_major, edition, product_level)
-                VALUES (?, ?, ?, ?, ?, ?)
+                (server_id, instance_name, port, version, version_major, edition, product_level)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
                 (
                     server.id,
                     instance_name,
+                    port,
                     version,
                     version_major,
                     edition,
@@ -403,6 +409,7 @@ class HistoryStore:
                 id=cursor.lastrowid,
                 server_id=server.id,
                 instance_name=instance_name,
+                port=port,
                 version=version,
                 version_major=version_major,
                 edition=edition,
@@ -418,7 +425,7 @@ class HistoryStore:
         return instance
 
     def upsert_instance_from_info(
-        self, server: Server, info: SqlServerInfo
+        self, server: Server, info: SqlServerInfo, port: int = 1433
     ) -> Instance:
         """
         Convenience method to upsert from SqlServerInfo.
@@ -426,6 +433,7 @@ class HistoryStore:
         Args:
             server: Server object
             info: SqlServerInfo from detect_version()
+            port: TCP port (default 1433)
 
         Returns:
             Instance object
@@ -433,6 +441,7 @@ class HistoryStore:
         return self.upsert_instance(
             server=server,
             instance_name=info.instance_name or "",
+            port=port,
             version=info.version,
             version_major=info.version_major,
             edition=info.edition,

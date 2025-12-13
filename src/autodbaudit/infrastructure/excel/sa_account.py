@@ -20,6 +20,8 @@ from autodbaudit.infrastructure.excel_styles import (
 from autodbaudit.infrastructure.excel.base import (
     BaseSheetMixin,
     SheetConfig,
+    ACTION_COLUMN,
+    apply_action_needed_styling,
 )
 
 
@@ -27,6 +29,7 @@ __all__ = ["SAAccountSheetMixin", "SA_ACCOUNT_CONFIG"]
 
 
 SA_ACCOUNT_COLUMNS = (
+    ACTION_COLUMN,  # Column A: Action indicator
     ColumnDef("Server", 18, Alignments.LEFT),
     ColumnDef("Instance", 15, Alignments.LEFT),
     ColumnDef("Status", 12, Alignments.CENTER, is_status=True),
@@ -93,7 +96,9 @@ class SAAccountSheetMixin(BaseSheetMixin):
             status = "fail"
             self._increment_issue()
         
+        # Action indicator will be set after write
         data = [
+            None,  # Action indicator (column A)
             server_name,
             instance_name or "(Default)",
             None,  # Status
@@ -106,15 +111,19 @@ class SAAccountSheetMixin(BaseSheetMixin):
         
         row = self._write_row(ws, SA_ACCOUNT_CONFIG, data)
         
-        # Apply light color to Server, Instance, Current Name, Default DB
+        # Apply action indicator (column A) - show ⏳ for non-pass items
+        needs_action = status != "pass"
+        apply_action_needed_styling(ws.cell(row=row, column=1), needs_action)
+        
+        # Apply light color to Server, Instance, Current Name, Default DB (shifted +1)
         fill = PatternFill(start_color=color_light, end_color=color_light, fill_type="solid")
-        for col in [1, 2, 6, 7]:
+        for col in [2, 3, 7, 8]:  # Server=2, Instance=3, CurrentName=7, DefaultDB=8
             ws.cell(row=row, column=col).fill = fill
         
-        # Apply status styling
-        apply_status_styling(ws.cell(row=row, column=3), status)
-        apply_boolean_styling(ws.cell(row=row, column=4), is_disabled)
-        apply_boolean_styling(ws.cell(row=row, column=5), is_renamed)
+        # Apply status styling (shifted +1)
+        apply_status_styling(ws.cell(row=row, column=4), status)  # Status is now col 4
+        apply_boolean_styling(ws.cell(row=row, column=5), is_disabled)  # Is Disabled is now col 5
+        apply_boolean_styling(ws.cell(row=row, column=6), is_renamed)  # Is Renamed is now col 6
     
     def _merge_sa_server(self, ws) -> None:
         """Merge Server cells for current server group."""
@@ -125,13 +134,13 @@ class SAAccountSheetMixin(BaseSheetMixin):
             ]
             merge_server_cells(
                 ws,
-                server_col=1,
+                server_col=2,  # Server is now column B (shifted +1)
                 start_row=self._sa_server_start_row,
                 end_row=current_row - 1,
                 server_name=self._sa_last_server,
                 is_alt=True,
             )
-            merged = ws.cell(row=self._sa_server_start_row, column=1)
+            merged = ws.cell(row=self._sa_server_start_row, column=2)  # Column B
             merged.fill = PatternFill(
                 start_color=color_main, end_color=color_main, fill_type="solid"
             )
@@ -146,9 +155,9 @@ class SAAccountSheetMixin(BaseSheetMixin):
         from autodbaudit.infrastructure.excel.base import add_dropdown_validation
         
         ws = self._sa_account_sheet
-        # Status column (C) - column 3
-        add_dropdown_validation(ws, "C", ["PASS", "FAIL", "WARN"])
-        # Is Disabled column (D) - column 4
-        add_dropdown_validation(ws, "D", ["✓", "✗"])
-        # Is Renamed column (E) - column 5
+        # Status column (D) - column 4 (shifted +1 from C)
+        add_dropdown_validation(ws, "D", ["PASS", "FAIL", "WARN"])
+        # Is Disabled column (E) - column 5 (shifted +1 from D)
         add_dropdown_validation(ws, "E", ["✓", "✗"])
+        # Is Renamed column (F) - column 6 (shifted +1 from E)
+        add_dropdown_validation(ws, "F", ["✓", "✗"])

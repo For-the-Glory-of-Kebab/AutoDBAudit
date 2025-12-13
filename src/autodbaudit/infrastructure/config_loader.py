@@ -70,6 +70,17 @@ class AuditConfig:
     verbosity: str = "detailed"
     minimum_sql_version: str = "2019"
     requirements: Dict[str, Any] = field(default_factory=dict)
+    
+    @property
+    def expected_builds(self) -> Dict[str, str]:
+        """
+        Get expected build versions per SQL major version year.
+        
+        Returns:
+            Dict mapping SQL year ("2022", "2019", etc.) to expected build string.
+            Empty dict if not configured (all versions assumed current).
+        """
+        return self.requirements.get("expected_builds", {})
 
 
 class ConfigLoader:

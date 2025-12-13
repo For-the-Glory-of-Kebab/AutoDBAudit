@@ -64,6 +64,7 @@ class AuditDataCollector:
         db_conn=None,
         audit_run_id: int | None = None,
         instance_id: int | None = None,
+        expected_builds: dict[str, str] | None = None,  # NEW: {sql_year: expected_version}
     ) -> None:
         """
         Initialize collector.
@@ -75,6 +76,7 @@ class AuditDataCollector:
             db_conn: SQLite connection for findings storage (optional)
             audit_run_id: Current audit run ID (required if db_conn set)
             instance_id: Instance ID for this target (required if db_conn set)
+            expected_builds: Dict mapping SQL year to expected version string
         """
         self.conn = connector
         self.prov = query_provider
@@ -86,6 +88,8 @@ class AuditDataCollector:
         # Track server/instance for entity keys
         self._server_name = ""
         self._instance_name = ""
+        # Version compliance checking
+        self._expected_builds = expected_builds or {}
 
     def _save_finding(
         self,
@@ -134,6 +138,40 @@ class AuditDataCollector:
             recommendation=recommendation,
             details=details,
         )
+    
+    def _check_version_compliance(
+        self, version: str, version_major: int
+    ) -> tuple[str, str]:
+        """
+        Check if SQL Server version matches expected build.
+        
+        Args:
+            version: Current full version string (e.g. "16.0.4100.1")
+            version_major: Major version number
+            
+        Returns:
+            Tuple of (status, note) - status is PASS/WARN, note is description
+        """
+        from autodbaudit.infrastructure.excel.base import get_sql_year
+        
+        sql_year = get_sql_year(version_major)
+        
+        # If no expected builds configured, assume current
+        if not self._expected_builds:
+            return "PASS", ""
+        
+        # Check if this major version has an expected build
+        expected = self._expected_builds.get(sql_year)
+        if not expected:
+            # No expectation for this version = assume current
+            return "PASS", ""
+        
+        # Compare versions
+        if version == expected:
+            return "PASS", f"At expected build {expected}"
+        
+        # Version mismatch - show update available
+        return "WARN", f"Current: {version}, Expected: {expected}"
 
     def collect_all(
         self,
@@ -247,6 +285,13 @@ class AuditDataCollector:
                 ip_address = f"{config_ip} ({dmv_ip})"
             else:
                 ip_address = config_ip or dmv_ip
+            
+            # Version compliance check
+            version = p.get("Version", "")
+            version_major = p.get("VersionMajor", 0)
+            version_status, version_note = self._check_version_compliance(
+                version, version_major
+            )
 
             self.writer.add_instance(
                 config_name=config_name or sn,
@@ -255,8 +300,8 @@ class AuditDataCollector:
                 machine_name=p.get("MachineName") or p.get("PhysicalMachine", ""),
                 ip_address=ip_address,
                 tcp_port=tcp_port,
-                version=p.get("Version", ""),
-                version_major=p.get("VersionMajor", 0),
+                version=version,
+                version_major=version_major,
                 edition=p.get("Edition", ""),
                 product_level=p.get("ProductLevel", ""),
                 is_clustered=bool(p.get("IsClustered")),
@@ -266,7 +311,25 @@ class AuditDataCollector:
                 memory_gb=p.get("MemoryGB"),
                 cu_level=p.get("CULevel", ""),
                 build_number=p.get("BuildNumber"),
+                version_status=version_status,
+                version_status_note=version_note,
             )
+            
+            # Save version finding if not compliant
+            if version_status == "WARN":
+                from autodbaudit.infrastructure.excel.base import get_sql_year
+                sql_year = get_sql_year(version_major)
+                expected = self._expected_builds.get(sql_year, "unknown")
+                
+                self._save_finding(
+                    finding_type="version",
+                    entity_name=f"sql_version_{sql_year}",
+                    status="WARN",
+                    risk_level="medium",
+                    description=f"SQL {sql_year} at {version}, expected {expected}",
+                    recommendation=f"Update to SQL Server {sql_year} build {expected}",
+                )
+            
             return 1
         except Exception as e:
             logger.warning("Instance properties failed: %s", e)
@@ -656,8 +719,6 @@ class AuditDataCollector:
                         )
             except Exception:
                 pass
-        return count
-
         return count
 
     def _collect_db_roles(self, sn: str, inst: str, user_dbs: list[dict]) -> int:

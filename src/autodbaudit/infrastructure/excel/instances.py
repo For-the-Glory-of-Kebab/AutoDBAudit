@@ -35,6 +35,7 @@ INSTANCE_COLUMNS = (
     ColumnDef("IP Address", 16, Alignments.LEFT),  # From dm_exec_connections
     ColumnDef("Version", 12, Alignments.LEFT),
     ColumnDef("Build", 14, Alignments.LEFT),
+    ColumnDef("Version Status", 12, Alignments.CENTER),  # NEW: PASS/WARN
     ColumnDef("SQL Year", 8, Alignments.CENTER),
     ColumnDef("Edition", 20, Alignments.LEFT),
     ColumnDef("Clustered", 8, Alignments.CENTER),
@@ -76,8 +77,12 @@ class InstanceSheetMixin(BaseSheetMixin):
         memory_gb: int | None = None,
         cu_level: str = "",
         build_number: int | None = None,
+        version_status: str = "PASS",  # NEW: PASS, WARN, or FAIL
+        version_status_note: str = "",  # NEW: tooltip/description
     ) -> None:
         """Add an instance row to the Instances sheet."""
+        from autodbaudit.infrastructure.excel_styles import apply_status_styling
+        
         if self._instance_sheet is None:
             self._instance_sheet = self._ensure_sheet(INSTANCE_CONFIG)
             self._instance_last_server = ""
@@ -97,7 +102,7 @@ class InstanceSheetMixin(BaseSheetMixin):
             self._instance_server_start_row = current_row
             self._instance_last_server = server_name
         
-        color_main, color_light = SERVER_GROUP_COLORS[
+        _, color_light = SERVER_GROUP_COLORS[
             self._instance_server_idx % len(SERVER_GROUP_COLORS)
         ]
         
@@ -117,33 +122,41 @@ class InstanceSheetMixin(BaseSheetMixin):
             ip_display = f":{tcp_port}"  # Just port if no IP
         
         data = [
-            config_name,  # Config Name
-            server_name,  # Server (connection target)
-            instance_name or "(Default)",
-            machine_name or "",  # Machine Name
-            ip_display,  # IP Address
-            version,
-            build_info,
-            get_sql_year(version_major),
-            edition,
-            None,  # Clustered
-            None,  # HADR
-            os_info or "",
-            str(cpu_count) if cpu_count else "",
-            str(memory_gb) if memory_gb else "",
-            "",    # Notes
-            "",    # Last Revised
+            config_name,  # Col 1: Config Name
+            server_name,  # Col 2: Server (connection target)
+            instance_name or "(Default)",  # Col 3: Instance
+            machine_name or "",  # Col 4: Machine Name
+            ip_display,  # Col 5: IP Address
+            version,  # Col 6: Version
+            build_info,  # Col 7: Build
+            None,  # Col 8: Version Status (styled separately)
+            get_sql_year(version_major),  # Col 9: SQL Year
+            edition,  # Col 10: Edition
+            None,  # Col 11: Clustered (styled separately)
+            None,  # Col 12: HADR (styled separately)
+            os_info or "",  # Col 13: OS
+            str(cpu_count) if cpu_count else "",  # Col 14: CPU
+            str(memory_gb) if memory_gb else "",  # Col 15: RAM
+            "",    # Col 16: Notes
+            "",    # Col 17: Last Revised
         ]
         
         row = self._write_row(ws, INSTANCE_CONFIG, data)
         
         fill = PatternFill(start_color=color_light, end_color=color_light, fill_type="solid")
-        # All data columns except Clustered (10), HADR (11), manual columns
-        for col in [1, 2, 3, 4, 5, 6, 7, 8, 9, 12, 13, 14]:
+        # All data columns except Version Status (8), Clustered (11), HADR (12), manual columns
+        for col in [1, 2, 3, 4, 5, 6, 7, 9, 10, 13, 14, 15]:
             ws.cell(row=row, column=col).fill = fill
         
-        apply_boolean_styling(ws.cell(row=row, column=10), is_clustered)
-        apply_boolean_styling(ws.cell(row=row, column=11), is_hadr)
+        # Apply version status styling (column 8)
+        status_cell = ws.cell(row=row, column=8)
+        apply_status_styling(status_cell, version_status)
+        if version_status_note:
+            status_cell.comment = version_status_note
+        
+        # Apply boolean styling for Clustered (col 11) and HADR (col 12)
+        apply_boolean_styling(ws.cell(row=row, column=11), is_clustered)
+        apply_boolean_styling(ws.cell(row=row, column=12), is_hadr)
     
     def _merge_instance_server(self, ws) -> None:
         """Merge Server cells for current server group."""

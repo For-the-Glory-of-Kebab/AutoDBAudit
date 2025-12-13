@@ -56,6 +56,9 @@ class Colors:
     CHANGED_BG = "FCE4D6"     # Light orange
     CHANGED_TEXT = "974706"   # Dark orange
     
+    # Action needed indicator
+    ACTION_BG = "FFE6CC"      # Light orange (action needed)
+    
     # Row alternation
     SERVER_ALT_BG = "E9EFF7"  # Pale blue for server grouping
     ROW_ALT_BG = "F9F9F9"     # Very light gray for row alternation
@@ -194,6 +197,7 @@ class Fills:
     
     NEW = PatternFill(start_color=Colors.NEW_BG, end_color=Colors.NEW_BG, fill_type="solid")
     CHANGED = PatternFill(start_color=Colors.CHANGED_BG, end_color=Colors.CHANGED_BG, fill_type="solid")
+    ACTION = PatternFill(start_color=Colors.ACTION_BG, end_color=Colors.ACTION_BG, fill_type="solid")
     
     SERVER_ALT = PatternFill(start_color=Colors.SERVER_ALT_BG, end_color=Colors.SERVER_ALT_BG, fill_type="solid")
     ROW_ALT = PatternFill(start_color=Colors.ROW_ALT_BG, end_color=Colors.ROW_ALT_BG, fill_type="solid")

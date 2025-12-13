@@ -35,8 +35,12 @@ python main.py --audit --targets sql_targets.json
 **Repeatable**: Yes. Can add instances, re-run on failures. Incremental.
 
 **Output**:
-- `output/sql_audit_YYYYMMDD_HHMMSS.xlsx`
-- `output/audit_history.db` (SQLite)
+- `output/audit_history.db` (SQLite - master database)
+- `output/<audit_name>/` folder containing:
+  - `<Audit_Name>_Latest.xlsx` (human-readable report)
+  - `audit.json` (audit metadata)
+  - `sql_targets.snapshot.json` (targets used for this audit)
+  - `runs/` (historical run snapshots: run_001, run_002_sync, etc.)
 
 ---
 
@@ -54,7 +58,10 @@ python main.py --generate-remediation
   - **Manual intervention notes** (updates, backups, etc.)
 
 **Output**:
-- `output/remediation_scripts/remediate_<server>_<instance>_<timestamp>.sql`
+- `output/<audit_name>/remediation/v<NNN>/` containing:
+  - `<server>_<idx>_<instance>.sql` (remediation script)
+  - `<server>_<idx>_<instance>_ROLLBACK.sql` (rollback script)
+  - `secrets_<server>_<idx>_<instance>.txt` (generated credentials)
 
 **Script format**:
 ```sql
@@ -113,7 +120,8 @@ python main.py --sync
 **Timestamp Behavior**:
 - New fixes get **today's timestamp** when first detected
 - Previously logged fixes keep their **original timestamp**
-- This creates an accurate audit trail of when fixes occurred
+- **User date override**: If user manually edits the date column in Excel Actions sheet (e.g., detected late, ran `--sync` after the fact), the user-entered date takes precedence over system-detected timestamp
+- This creates an accurate audit trail of when fixes actually occurred
 
 **Example Action Log**:
 | Entity | Action | Date | Description |
@@ -144,18 +152,31 @@ This applies to:
 ### Phase 6: Finalize (`--finalize`)
 
 ```bash
-python main.py --finalize --excel output/sql_audit_edited.xlsx
+# Check readiness first
+python main.py --finalize-status
+
+# Finalize (blocked if unresolved issues)
+python main.py --finalize
+
+# Force finalize despite issues (not recommended)
+python main.py --finalize --force
 ```
 
+**Pre-flight Safety Checks**:
+Finalization is **BLOCKED** if there are:
+- Outstanding FAIL findings without fix or exception
+- Outstanding WARN findings without resolution
+
+Use `--force` to bypass (creates audit record with unresolved items).
+
 **What it does**:
-1. Reads all annotations from Excel (Notes, Reasons, Status Overrides)
-2. Runs final audit snapshot
-3. Computes final diff (initial → final)
-4. Persists to SQLite:
-   - **Final audit state** (all findings)
+1. Pre-flight checks for unresolved issues
+2. Reads all annotations from Excel (Notes, Reasons, Status Overrides)
+3. Persists to SQLite:
    - **Action log** (with real timestamps)
    - **Exceptions** (with justifications)
    - **All annotations** (even non-exception notes)
+4. Archives final Excel report to `finalized/` folder
 5. Marks audit run as "finalized"
 
 **Irreversible**: This is the "commit" of the audit cycle.

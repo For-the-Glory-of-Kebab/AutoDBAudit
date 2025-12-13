@@ -106,6 +106,7 @@ class Instance:
         id: Unique identifier
         server_id: Foreign key to Server
         instance_name: Instance name (empty string for default instance)
+        port: TCP port (default 1433, used to distinguish instances on same host)
         version: Full version string (e.g., "15.0.4298.1")
         version_major: Major version number (10=2008, 15=2019, 16=2022)
         edition: Edition name (e.g., "Standard Edition (64-bit)")
@@ -114,6 +115,7 @@ class Instance:
     id: int | None = None
     server_id: int | None = None
     instance_name: str = ""
+    port: int = 1433
     version: str = ""
     version_major: int = 0
     edition: str | None = None

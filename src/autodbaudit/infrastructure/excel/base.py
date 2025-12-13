@@ -19,6 +19,7 @@ from autodbaudit.infrastructure.excel_styles import (
     Fonts,
     Fills,
     Borders,
+    Icons,
     apply_header_row,
     freeze_panes,
     add_autofilter,
@@ -38,6 +39,8 @@ __all__ = [
     "get_sql_year",
     "add_dropdown_validation",
     "LAST_REVISED_COLUMN",
+    "ACTION_COLUMN",
+    "apply_action_needed_styling",
 ]
 
 
@@ -53,6 +56,29 @@ LAST_REVISED_COLUMN = ColumnDef(
     alignment=Alignments.CENTER,
     is_manual=True,
 )
+
+# Reusable "Action" indicator column - shows ⏳ for rows needing attention
+ACTION_COLUMN = ColumnDef(
+    name="⏳",
+    width=4,
+    alignment=Alignments.CENTER,
+)
+
+
+def apply_action_needed_styling(cell, needs_action: bool) -> None:
+    """
+    Apply action-needed indicator to a cell.
+    
+    Shows ⏳ icon with orange background for rows needing user attention
+    (i.e., FAIL/WARN status with no Notes/justification).
+    """
+    if needs_action:
+        cell.value = Icons.PENDING
+        cell.fill = Fills.ACTION
+        cell.font = Fonts.WARN
+        cell.alignment = Alignments.CENTER
+    else:
+        cell.value = ""
 
 
 # ============================================================================

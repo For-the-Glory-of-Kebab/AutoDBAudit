@@ -137,8 +137,10 @@ class AuditService:
         try:
             audit_config = self.config_loader.load_audit_config()
             config_org = audit_config.organization
+            expected_builds = audit_config.expected_builds
         except Exception:
             config_org = None
+            expected_builds = {}
 
         final_org = organization or config_org or "Security Audit"
         audit_name = "SQL Server Security Audit"
@@ -173,7 +175,7 @@ class AuditService:
                     continue
 
                 try:
-                    self._process_target(target, writer, store)
+                    self._process_target(target, writer, store, expected_builds)
                     success_count += 1
                 except Exception as e:
                     error_count += 1
@@ -200,7 +202,11 @@ class AuditService:
             raise RuntimeError(f"Audit failed: {e}") from e
 
     def _process_target(
-        self, target: SqlTarget, writer: EnhancedReportWriter, store: HistoryStore
+        self,
+        target: SqlTarget,
+        writer: EnhancedReportWriter,
+        store: HistoryStore,
+        expected_builds: dict[str, str] | None = None,
     ) -> None:
         """
         Process a single SQL target.
@@ -211,6 +217,7 @@ class AuditService:
             target: SQL target configuration
             writer: Excel report writer
             store: SQLite history store
+            expected_builds: Dict mapping SQL year to expected version
         """
         logger.info("Processing target: %s", target.display_name)
 
@@ -237,12 +244,16 @@ class AuditService:
         )
 
         # Store server and instance in SQLite
+        # Port is required to distinguish default instances on same host
+        # Instance name: prefer detected from SQL Server, fallback to config
+        detected_instance = version_info.instance_name or ""
         server = store.upsert_server(
             hostname=target.server, ip_address=target.ip_address
         )
         instance = store.upsert_instance(
             server=server,
-            instance_name=target.instance or "",
+            instance_name=detected_instance,  # Use SQL Server's actual instance name
+            port=target.port or 1433,
             version=version_info.version,
             version_major=version_info.version_major,
             edition=version_info.edition,
@@ -263,6 +274,7 @@ class AuditService:
             db_conn=store._get_connection(),
             audit_run_id=self._audit_run_id,
             instance_id=instance.id,
+            expected_builds=expected_builds or {},
         )
         counts = collector.collect_all(
             server_name=target.server,

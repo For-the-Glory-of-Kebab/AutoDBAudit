@@ -532,7 +532,7 @@ class RemediationService:
         if rollback_section:
             header = self._category_header(
                 "🔙 ROLLBACK",
-                "Undo Operations (Commented)\n-- Uncomment the ones you need to undo",
+                "Undo Operations - Ready to Execute",
             )
             lines.extend([header])
             lines.extend(rollback_section)
@@ -794,10 +794,10 @@ PRINT 'Rolled back: {setting} = 1';
         """Rollback: re-enable a disabled login."""
         header = self._item_header("🔙 LOGIN", f"Re-enable login {login_name}")
         return f"""
-/*{header}
+{header}
 ALTER LOGIN [{login_name}] ENABLE;
 PRINT 'Rolled back: {login_name} enabled';
-*/
+GO
 """
 
     def _rollback_create_orphan_user(self, db_name: str, user_name: str) -> str:
@@ -806,10 +806,10 @@ PRINT 'Rolled back: {login_name} enabled';
             "🔙 ORPHAN", f"Recreate user {user_name} in {db_name}"
         )
         return f"""
-/*{header}
-NOTE: This creates a basic user. You may need to:
-      1. Remap to a login if one exists
-      2. Reassign roles and permissions from the logged output
+{header}
+-- NOTE: This creates a basic user. You may need to:
+--   1. Remap to a login if one exists
+--   2. Reassign roles and permissions from the logged output
 USE [{db_name}];
 CREATE USER [{user_name}] WITHOUT LOGIN;
 PRINT 'Rolled back: Created user {user_name} (without login)';
@@ -817,46 +817,49 @@ PRINT 'Rolled back: Created user {user_name} (without login)';
 -- To add to roles (uncomment as needed):
 -- EXEC sp_addrolemember 'db_datareader', '{user_name}';
 -- EXEC sp_addrolemember 'db_datawriter', '{user_name}';
-*/
+GO
 """
 
     def _rollback_grant_guest(self, db_name: str) -> str:
         """Rollback: grant guest access back."""
         header = self._item_header("🔙 GUEST", f"Re-enable guest access in {db_name}")
         return f"""
-/*{header}
+{header}
 USE [{db_name}];
 GRANT CONNECT TO guest;
 PRINT 'Rolled back: guest access granted';
-*/
+GO
 """
 
     def _rollback_enable_trustworthy(self, db_name: str) -> str:
         """Rollback: re-enable TRUSTWORTHY."""
         header = self._item_header("🔙 DATABASE", f"Re-enable TRUSTWORTHY on {db_name}")
         return f"""
-/*{header}
+{header}
 ALTER DATABASE [{db_name}] SET TRUSTWORTHY ON;
 PRINT 'Rolled back: TRUSTWORTHY enabled';
-*/
+GO
 """
 
     def _rollback_sa(self, temp_password: str) -> str:
         """Rollback: re-enable SA account."""
         header = self._item_header("🔙 SA_ACCOUNT", "Re-enable SA account")
         return f"""
-/*{header}
-NOTE: SA was renamed to [$@] and disabled
-To restore:
-1. ALTER LOGIN [$@] ENABLE;
-2. (Optional) Rename back to 'sa':
-   ALTER LOGIN [$@] WITH NAME = [sa];
-3. Set a new strong password:
-   ALTER LOGIN [sa] WITH PASSWORD = N'NEW_STRONG_PASSWORD_HERE';
-PRINT 'Rolled back: SA account enabled';
+{header}
+-- NOTE: SA was renamed to [$@] and disabled
+-- To restore:
+-- Step 1: Enable the account
+ALTER LOGIN [$@] ENABLE;
+PRINT 'SA account enabled';
 
-Temp password that was set: {temp_password}
-*/
+-- Step 2 (Optional): Rename back to 'sa'
+-- ALTER LOGIN [$@] WITH NAME = [sa];
+
+-- Step 3: Set a new strong password
+-- ALTER LOGIN [sa] WITH PASSWORD = N'NEW_STRONG_PASSWORD_HERE';
+
+-- Temp password that was set: {temp_password}
+GO
 """
 
     # ===================================================================

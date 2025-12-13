@@ -1,6 +1,6 @@
 # TODO Tracker
 
-> **Last Updated**: 2025-12-12
+> **Last Updated**: 2025-12-13
 
 ---
 
@@ -8,7 +8,7 @@
 
 - [ ] **Manual E2E Test Execution** - User conducting "0 to 100" verification
 - [ ] 🧠 **Phase 4: Refinement & Advanced Logic**
-  - [ ] **Excel**: Add indicator for discrepancies missing Fix/Justification
+  - [x] **Excel**: Add indicator for discrepancies missing Fix/Justification ✅ (2025-12-13)
   - [ ] **Architecture**: Review Excel Lifecycle (One Working Copy vs Many Snapshots)
   - [ ] **Logic**: Handle Reversion (Pass -> Fail) in Action Log (Gray out previous fix?)
 
@@ -23,6 +23,32 @@
 ---
 
 ## ✅ Completed
+
+### 2025-12-13: Developer Experience
+- [x] **Colored Logging**: INFO=cyan, WARNING=yellow, ERROR=red, DEBUG=gray
+- [x] **Config Examples**: Added comprehensive `.example.json` files with full schema
+- [x] **Git Exclusions**: Actual config files excluded, examples preserved
+
+### 2025-12-13: Version Build Compliance Checking
+- [x] **Config**: Added `expected_builds` to audit_config.json for per-version targets
+- [x] **Instances Sheet**: Added "Version Status" column with PASS/WARN styling
+- [x] **Finding**: Version mismatches saved as WARN finding in SQLite
+- [x] **Sync Stats**: Added debug logging for "since last sync" calculation
+
+### 2025-12-13: Finalize Command Enhancement
+- [x] **--finalize**: Added comprehensive safety checks (blocks if FAIL/WARN exist without exception)
+- [x] **--force**: Added bypass flag for safety checks
+- [x] **--finalize-status**: Added preview command to check readiness
+- [x] **Archive**: Creates final Excel archive in `finalized/` folder
+- [x] **Instance Name Fix**: Fixed Actions sheet showing "DEFAULT" for all instances
+- [x] **Date Persistence**: Sync now preserves user-edited dates from existing Excel
+- [x] **Rollback Scripts**: Now uncommented by default (ready to execute)
+
+### 2025-12-13: Action Indicator Column
+- [x] **Excel**: Added ⏳ Action column to 8 sheets (SA Account, Configuration, Logins, Roles, Linked Servers, Backups, Orphaned Users)
+- [x] **Styling**: Added ACTION_BG color and ACTION Fill to excel_styles.py
+- [x] **Helper**: Added ACTION_COLUMN definition and apply_action_needed_styling() to base.py
+- [x] **Docs**: Updated excel_report_layout.md with new feature documentation
 
 ### 2025-12-12: E2E Prep & Architecture Refinement
 - [x] **Schema Fix**: Solved `run_type` and `action_log` missing/crash (Fresh Start)
@@ -56,4 +82,5 @@ Currently, `main.py` tends to overwrite `audit_report_latest.xlsx`. A decision i
 
 ---
 
-*Last Updated: 2025-12-12*
+*Last Updated: 2025-12-13*
+

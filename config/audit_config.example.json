@@ -1,21 +1,32 @@
 {
+    "_comment": "SQL Server Audit Configuration - Example File",
+    "_instructions": [
+        "Copy this file to 'audit_config.json' and customize for your environment.",
+        "The actual audit_config.json is excluded from git."
+    ],
     "organization": "Example Corporation",
     "audit_year": 2025,
-    "audit_date": "2025-12-02",
-    "output": {
-        "directory": "./output",
-        "filename_pattern": "{organization}_SQL_Audit_{date}.xlsx",
-        "include_charts": true,
-        "verbosity": "detailed"
-    },
+    "audit_date": "2025-12-01",
     "requirements": {
+        "_comment": "Security requirements for the audit",
         "minimum_sql_version": "2019",
-        "allow_sa_enabled": false,
-        "allow_default_instance": false,
-        "allowed_test_databases": [],
-        "password_complexity": true
+        "_expected_builds_comment": "Optional: Specify expected build for each SQL major version. If omitted, version is assumed current.",
+        "expected_builds": {
+            "2025": "17.0.4082.0",
+            "2022": "16.0.4165.4",
+            "2019": "15.0.4385.2",
+            "2017": "14.0.3465.1",
+            "2016": "13.0.7024.30"
+        }
+    },
+    "output": {
+        "directory": "output",
+        "filename_pattern": "{organization}_SQL_Audit_{date}.xlsx",
+        "verbosity": "detailed",
+        "include_charts": true
     },
     "remediation": {
+        "_comment": "Options for script generation",
         "generate_scripts": true,
         "script_format": "sectioned",
         "include_rollback": true

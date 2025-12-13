@@ -106,6 +106,16 @@ Examples:
         help="Baseline run ID for --finalize (first if not specified)",
     )
     parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Force finalization despite outstanding issues (use with --finalize)",
+    )
+    parser.add_argument(
+        "--finalize-status",
+        action="store_true",
+        help="Check finalization readiness without finalizing",
+    )
+    parser.add_argument(
         "--apply-remediation",
         action="store_true",
         help="Execute remediation scripts against SQL Server",
@@ -322,23 +332,83 @@ Examples:
             logger.info("Finalizing audit")
             from autodbaudit.application.finalize_service import FinalizeService
 
-            service = FinalizeService(db_path=DEFAULT_OUTPUT_DIR / "audit_history.db")
+            # Get audit context
+            manager = AuditManager(str(DEFAULT_OUTPUT_DIR))
+            audit_id = args.audit_id
+            if not audit_id:
+                latest = manager.get_latest_audit()
+                if latest:
+                    audit_id = latest["id"]
+
+            service = FinalizeService(
+                db_path=DEFAULT_OUTPUT_DIR / "audit_history.db",
+                output_dir=DEFAULT_OUTPUT_DIR
+            )
             result = service.finalize(
-                excel_path=args.excel, baseline_run_id=args.baseline_run
+                excel_path=args.excel,
+                baseline_run_id=args.baseline_run,
+                force=args.force,
+                audit_manager=manager,
+                audit_id=audit_id,
             )
 
             if "error" in result:
-                print(f"\n❌ {result['error']}")
+                # Multi-line errors for blocked finalization
+                if result.get("blocked"):
+                    print(f"\n{result['error']}")
+                else:
+                    print(f"\n❌ {result['error']}")
                 return 1
 
-            print("\n✅ Audit Finalized!")
+            # Success output
+            print("\n" + "=" * 60)
+            print("✅ AUDIT FINALIZED!")
+            print("=" * 60)
             print(f"   Run ID: #{result['baseline_run_id']}")
             print(f"   Annotations: {result['annotations_applied']}")
+            if result.get("forced"):
+                print("   ⚠️  Forced: Yes (bypassed safety checks)")
+            print("")
             if result.get("actions"):
-                print("")
                 print("   Actions:")
                 for action_type, count in result["actions"].items():
-                    print(f"      {action_type}: {count}")
+                    icon = "✅" if action_type == "fixed" else "⚠️" if action_type == "still_failing" else "🆕"
+                    print(f"      {icon} {action_type}: {count}")
+            if result.get("archive_path"):
+                print(f"\n   📁 Archive: {result['archive_path']}")
+            print("=" * 60)
+            return 0
+
+        elif args.finalize_status:
+            logger.info("Checking finalization status")
+            from autodbaudit.application.finalize_service import FinalizeService
+
+            service = FinalizeService(
+                db_path=DEFAULT_OUTPUT_DIR / "audit_history.db"
+            )
+            status = service.get_finalization_status(args.baseline_run)
+
+            if "error" in status:
+                print(f"\n❌ {status['error']}")
+                return 1
+
+            print(f"\n📋 Finalization Status for Run #{status['baseline_run_id']}")
+            print("=" * 50)
+            
+            if status["can_finalize"]:
+                print("✅ Ready to finalize - no outstanding issues")
+                print("\nRun: python main.py --finalize")
+            else:
+                print(f"❌ Outstanding FAIL findings: {status['outstanding_fails']}")
+                for f in status.get("fail_details", []):
+                    print(f"     • {f['type']}: {f['entity']}")
+                print(f"⚠️  Outstanding WARN findings: {status['outstanding_warns']}")
+                for f in status.get("warn_details", []):
+                    print(f"     • {f['type']}: {f['entity']}")
+                print("\nOptions:")
+                print("  1. Fix issues and run --sync")
+                print("  2. Add exceptions in Excel and run --apply-exceptions")
+                print("  3. Use --finalize --force (not recommended)")
             return 0
 
         elif args.apply_exceptions:

@@ -16,6 +16,8 @@ from autodbaudit.infrastructure.excel_styles import (
 from autodbaudit.infrastructure.excel.base import (
     BaseSheetMixin,
     SheetConfig,
+    ACTION_COLUMN,
+    apply_action_needed_styling,
 )
 from autodbaudit.infrastructure.excel.server_group import ServerGroupMixin
 
@@ -24,6 +26,7 @@ __all__ = ["ConfigSheetMixin", "CONFIG_CONFIG"]
 
 
 CONFIG_COLUMNS = (
+    ACTION_COLUMN,  # Column A: Action indicator
     ColumnDef("Server", 18, Alignments.LEFT),
     ColumnDef("Instance", 15, Alignments.LEFT),
     ColumnDef("Setting", 35, Alignments.LEFT),
@@ -70,6 +73,7 @@ class ConfigSheetMixin(ServerGroupMixin, BaseSheetMixin):
             self._increment_issue()
 
         data = [
+            None,  # Action indicator (column A)
             server_name,
             instance_name or "(Default)",
             setting_name,
@@ -82,17 +86,21 @@ class ConfigSheetMixin(ServerGroupMixin, BaseSheetMixin):
 
         row = self._write_row(ws, CONFIG_CONFIG, data)
 
-        # Apply row color to data columns
-        self._apply_row_color(row, row_color, data_cols=[1, 2, 3, 4, 5], ws=ws)
+        # Apply action indicator (column A) - show ⏳ for FAIL items
+        needs_action = status != "pass"
+        apply_action_needed_styling(ws.cell(row=row, column=1), needs_action)
 
-        # Apply status styling
-        apply_status_styling(ws.cell(row=row, column=6), status)
+        # Apply row color to data columns (shifted +1: Server=2, Instance=3, Setting=4, etc.)
+        self._apply_row_color(row, row_color, data_cols=[2, 3, 4, 5, 6], ws=ws)
 
-        # Highlight risk column
+        # Apply status styling (Status is now column 7, shifted +1)
+        apply_status_styling(ws.cell(row=row, column=7), status)
+
+        # Highlight risk column (Risk is now column 8, shifted +1)
         if risk_level.lower() == "critical":
-            ws.cell(row=row, column=7).fill = Fills.CRITICAL
+            ws.cell(row=row, column=8).fill = Fills.CRITICAL
         elif risk_level.lower() == "high":
-            ws.cell(row=row, column=7).fill = Fills.FAIL
+            ws.cell(row=row, column=8).fill = Fills.FAIL
 
     def _finalize_config(self) -> None:
         """Finalize config sheet - merge remaining groups."""
@@ -104,7 +112,7 @@ class ConfigSheetMixin(ServerGroupMixin, BaseSheetMixin):
         from autodbaudit.infrastructure.excel.base import add_dropdown_validation
 
         ws = self._config_sheet
-        # Status column (F) - column 6
-        add_dropdown_validation(ws, "F", ["✅ PASS", "❌ FAIL"])
-        # Risk column (G) - column 7
-        add_dropdown_validation(ws, "G", ["Critical", "High", "Medium", "Low"])
+        # Status column (G) - column 7 (shifted +1 from F)
+        add_dropdown_validation(ws, "G", ["✅ PASS", "❌ FAIL"])
+        # Risk column (H) - column 8 (shifted +1 from G)
+        add_dropdown_validation(ws, "H", ["Critical", "High", "Medium", "Low"])

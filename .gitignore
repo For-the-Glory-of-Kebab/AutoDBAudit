@@ -25,9 +25,16 @@ dist/
 output/
 hotfixes/
 
+# Config files (use *.example.json as templates)
+config/audit_config.json
+config/sql_targets.json
+!config/*.example.json
+!config/.gitkeep
+!config/README.md
 # Credentials (NEVER sync to git!)
 credentials/*.json
 credentials/*.enc
+!credentials/*.example.json
 !credentials/README.md
 
 # OS

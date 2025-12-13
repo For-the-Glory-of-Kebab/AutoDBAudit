@@ -12,9 +12,9 @@
             "name": "SQL Server 2025 (Docker)",
             "server": "localhost",
             "instance": null,
-            "port": 1444,
+            "port": 1434,
             "auth": "sql",
-            "credential_file": "credentials/sql2025.json",
+            "credential_file": "credentials/kingall.json",
             "connect_timeout": 30,
             "tags": [
                 "development",
@@ -24,13 +24,13 @@
             "_comment": "SQL Server 2025 Docker instance"
         },
         {
-            "id": "home-2022",
+            "id": "work-2022",
             "name": "SQL Server 2022 (Intheend)",
             "server": "localhost",
             "instance": "Intheend",
-            "port": 13727,
+            "port": 6234,
             "auth": "sql",
-            "credential_file": "credentials/sql2022.json",
+            "credential_file": "credentials/kingall.json",
             "connect_timeout": 30,
             "tags": [
                 "development",
@@ -40,20 +40,36 @@
             "_comment": "SQL Server 2022 instance"
         },
         {
-            "id": "home-2008",
+            "id": "work2008",
             "name": "SQL Server 2008 R2 (BigBad2008)",
             "server": "localhost",
-            "instance": "BigBad2008",
-            "port": 10525,
+            "instance": "legacy",
+            "port": 10260,
             "auth": "sql",
-            "credential_file": "credentials/sql2008.json",
+            "credential_file": "credentials/kingall.json",
             "connect_timeout": 30,
             "tags": [
                 "development",
                 "2025"
             ],
             "enabled": true,
-            "_comment": "SQL Server 2008 instance"
+            "_comment": "SQL Server 2022 default instance"
+        },
+        {
+            "id": "thing 2022",
+            "name": "SQL Server 2022 default thing",
+            "server": "localhost",
+            "instance": null,
+            "port": 1433,
+            "auth": "sql",
+            "credential_file": "credentials/kingall.json",
+            "connect_timeout": 30,
+            "tags": [
+                "development",
+                "2022"
+            ],
+            "enabled": true,
+            "_comment": "SQL Server 2022 instance"
         }
     ],
     "global_settings": {

@@ -117,8 +117,8 @@ class ServerGroupMixin:
         fill = PatternFill(start_color=color, end_color=color, fill_type="solid")
         for col in data_cols:
             ws.cell(row=row, column=col).fill = fill
-        # Always ensure Instance column (2) gets the color too
-        ws.cell(row=row, column=2).fill = fill
+        # Always ensure Instance column (3) gets the color too (shifted +1 for action column)
+        ws.cell(row=row, column=3).fill = fill
     
     def _merge_instance(self, config_name: str) -> None:
         """Merge Instance cells for current instance group."""
@@ -127,7 +127,7 @@ class ServerGroupMixin:
         if current_row > state.instance_start_row:
             merge_server_cells(
                 state.ws,
-                server_col=2,  # Instance column
+                server_col=3,  # Instance column (shifted +1 for action column)
                 start_row=state.instance_start_row,
                 end_row=current_row - 1,
                 server_name=state.last_instance,
@@ -138,7 +138,7 @@ class ServerGroupMixin:
                 state.server_idx % len(SERVER_GROUP_COLORS)
             ]
             fill_color = color_main if state.instance_alt else color_light
-            merged = state.ws.cell(row=state.instance_start_row, column=2)
+            merged = state.ws.cell(row=state.instance_start_row, column=3)
             merged.fill = PatternFill(
                 start_color=fill_color, end_color=fill_color, fill_type="solid"
             )
@@ -158,14 +158,14 @@ class ServerGroupMixin:
             ]
             merge_server_cells(
                 state.ws,
-                server_col=1,  # Server column
+                server_col=2,  # Server column (shifted +1 for action column)
                 start_row=state.server_start_row,
                 end_row=current_row - 1,
                 server_name=state.last_server,
                 is_alt=True,
             )
             # Apply main color to merged server cell
-            merged = state.ws.cell(row=state.server_start_row, column=1)
+            merged = state.ws.cell(row=state.server_start_row, column=2)
             merged.fill = PatternFill(
                 start_color=color_main, end_color=color_main, fill_type="solid"
             )

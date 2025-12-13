@@ -2,8 +2,16 @@
 
 > **⚠️ SECURITY NOTE**: This folder is in `.gitignore` and will NOT sync to Git.
 
+## Getting Started
+
+Copy the example file and customize:
+```bash
+cp credentials.example.json my_server.json
+```
+
 ## Files Here
 
+- `credentials.example.json` - Template (committed to git)
 - `*.json` - Plain text credential files (for development only)
 - `*.enc` - DPAPI-encrypted credential files (for production)
 

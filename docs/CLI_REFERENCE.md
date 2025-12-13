@@ -157,23 +157,38 @@ python main.py --sync [options]
 
 ### `--finalize`
 
-Finalize audit and persist everything.
+Finalize the audit cycle - PERMANENT commit to SQLite.
 
 ```bash
 python main.py --finalize [options]
+python main.py --finalize-status          # Preview readiness
 ```
 
 | Option | Description |
 |--------|-------------|
 | `--excel FILE` | Excel with annotations |
 | `--baseline-run N` | Baseline run ID (default: first) |
+| `--force` | Bypass safety checks (not recommended) |
+| `--finalize-status` | Check if ready to finalize without doing it |
 
-**What it does**:
-1. Reads Notes/Reasons from Excel
-2. Persists annotations to SQLite
-3. Marks run as finalized
+**Safety Checks**:
+Finalization is BLOCKED if there are:
+- Outstanding FAIL findings without fix or exception
+- Outstanding WARN findings without resolution or notes
 
----
+**What `--finalize` does**:
+1. Pre-flight safety checks
+2. Reads Notes/Reasons from Excel
+3. Persists annotations to SQLite  
+4. Archives final Excel report
+5. Marks run as permanently finalized
+
+**Output**:
+- `output/finalized/sql_audit_final_<run>_<timestamp>.xlsx` (archive)
+- `audit_runs.status = 'finalized'` in SQLite
+
+> ⚠️ **Finalization is permanent**. After finalizing, the audit cycle is complete
+> and cannot be modified. Use `--finalize-status` to preview before committing.
 
 ### `--apply-exceptions`
 

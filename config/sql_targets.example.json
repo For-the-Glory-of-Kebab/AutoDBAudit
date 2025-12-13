@@ -1,15 +1,64 @@
 {
+  "_comment": "SQL Server Audit Targets Configuration - Example File",
+  "_instructions": [
+    "Copy this file to 'sql_targets.json' and customize for your environment.",
+    "The actual sql_targets.json is excluded from git."
+  ],
   "targets": [
     {
-      "id": "example-sql1",
-      "server": "localhost",
-      "instance": "SQLEXPRESS",
+      "_comment": "Example: Windows Authentication to named instance",
+      "id": "prod-sql-main",
+      "name": "Production SQL Server",
+      "server": "sql-server.example.com",
+      "instance": "PROD",
       "port": null,
       "auth": "integrated",
       "username": null,
       "credential_file": null,
       "connect_timeout": 30,
-      "tags": ["development", "test"]
+      "tags": [
+        "production",
+        "critical"
+      ],
+      "enabled": true,
+      "ip_address": "10.0.1.50"
+    },
+    {
+      "_comment": "Example: SQL Authentication with credential file",
+      "id": "dev-sql-docker",
+      "name": "Development SQL Server (Docker)",
+      "server": "localhost",
+      "instance": null,
+      "port": 1433,
+      "auth": "sql",
+      "credential_file": "credentials/dev_sql.json",
+      "connect_timeout": 30,
+      "tags": [
+        "development",
+        "docker"
+      ],
+      "enabled": true
+    },
+    {
+      "_comment": "Example: Named instance on non-standard port",
+      "id": "staging-sql",
+      "name": "Staging Environment",
+      "server": "staging-db",
+      "instance": "STAGE",
+      "port": 14330,
+      "auth": "sql",
+      "credential_file": "credentials/staging.json",
+      "connect_timeout": 60,
+      "tags": [
+        "staging"
+      ],
+      "enabled": false
     }
-  ]
+  ],
+  "global_settings": {
+    "_comment": "Default settings applied to all targets",
+    "timeout_seconds": 30,
+    "encrypt_connection": true,
+    "trust_server_certificate": true
+  }
 }

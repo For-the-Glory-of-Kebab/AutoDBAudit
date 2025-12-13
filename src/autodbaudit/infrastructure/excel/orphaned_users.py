@@ -19,6 +19,8 @@ from autodbaudit.infrastructure.excel_styles import (
 from autodbaudit.infrastructure.excel.base import (
     BaseSheetMixin,
     SheetConfig,
+    ACTION_COLUMN,
+    apply_action_needed_styling,
 )
 from autodbaudit.infrastructure.excel.server_group import ServerGroupMixin
 
@@ -27,6 +29,7 @@ __all__ = ["OrphanedUserSheetMixin", "ORPHANED_USER_CONFIG"]
 
 
 ORPHANED_USER_COLUMNS = (
+    ACTION_COLUMN,  # Column A: Action indicator
     ColumnDef("Server", 18, Alignments.LEFT),
     ColumnDef("Instance", 15, Alignments.LEFT),
     ColumnDef("Database", 20, Alignments.LEFT),
@@ -77,6 +80,7 @@ class OrphanedUserSheetMixin(ServerGroupMixin, BaseSheetMixin):
             type_display = "🔑 SQL"
         
         data = [
+            None,  # Action indicator (column A) - all orphaned users need action
             server_name,
             instance_name or "(Default)",
             database_name,
@@ -88,11 +92,14 @@ class OrphanedUserSheetMixin(ServerGroupMixin, BaseSheetMixin):
         
         row = self._write_row(ws, ORPHANED_USER_CONFIG, data)
         
-        # Apply row color to data columns
-        self._apply_row_color(row, row_color, data_cols=[1, 2, 3, 4, 5], ws=ws)
+        # All orphaned users need action - show ⏳
+        apply_action_needed_styling(ws.cell(row=row, column=1), True)
         
-        # Style Status column (column 6) - orphaned is a warning
-        status_cell = ws.cell(row=row, column=6)
+        # Apply row color to data columns (shifted +1: Server=2, Instance=3, etc.)
+        self._apply_row_color(row, row_color, data_cols=[2, 3, 4, 5, 6], ws=ws)
+        
+        # Style Status column (column 7, shifted +1 from 6) - orphaned is a warning
+        status_cell = ws.cell(row=row, column=7)
         status_cell.value = "⚠️ Orphaned"
         status_cell.fill = Fills.WARN
         status_cell.font = Fonts.WARN
@@ -109,7 +116,8 @@ class OrphanedUserSheetMixin(ServerGroupMixin, BaseSheetMixin):
         from autodbaudit.infrastructure.excel.base import add_dropdown_validation
         
         ws = self._orphaned_user_sheet
-        # Type column (E) - column 5
-        add_dropdown_validation(ws, "E", ["🪟 Windows", "🔑 SQL"])
-        # Status column (F) - column 6
-        add_dropdown_validation(ws, "F", ["⚠️ Orphaned", "✓ Fixed", "❌ Removed"])
+        # Type column (F) - column 6 (shifted +1 from E)
+        add_dropdown_validation(ws, "F", ["🪟 Windows", "🔑 SQL"])
+        # Status column (G) - column 7 (shifted +1 from F)
+        add_dropdown_validation(ws, "G", ["⚠️ Orphaned", "✓ Fixed", "❌ Removed"])
+

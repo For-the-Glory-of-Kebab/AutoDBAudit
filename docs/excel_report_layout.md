@@ -142,6 +142,15 @@ Manual remediation tracking with assignee and due dates.
 - **Server/Instance Grouping**: Color rotation for visual distinction
 - **Conditional Formatting**: Green=PASS, Red=FAIL, Yellow=WARN
 - **Dropdowns**: All boolean/enum columns have validation
+- **⏳ Action Column**: First column on most sheets shows a ⏳ indicator for rows needing attention:
+  - **SA Account**: FAIL/WARN status rows
+  - **Configuration**: FAIL status rows
+  - **Server Logins**: Disabled logins or missing password policy
+  - **Sensitive Roles**: Sysadmin members needing justification
+  - **Linked Servers**: High-risk linked servers
+  - **Backups**: FAIL/WARN backup status
+  - **Orphaned Users**: All rows (all are warnings)
+  - Filter on column A to quickly see all items needing attention
 
 ---
 
