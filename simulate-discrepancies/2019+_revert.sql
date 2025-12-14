@@ -1,290 +1,355 @@
-/* ============================================================
-   REVERT - SQL Server 2019+ discrepancy cleanup
-   ============================================================ */
+/* ================================================================================================
+   Workspace Discrepancy Simulator - REVERT (SQL Server 2019+)
+   ------------------------------------------------------------------------------------------------
+   Goal: Remove EVERYTHING created by WS_2019_APPLY_FINAL_v2 (and siblings) so you can:
+         APPLY => test audit/fixes => REVERT => APPLY => repeat
 
-USE master;
-GO
+   What this script cleans:
+     - Databases:      LegacyTestDB_*, TestDB_*, AdventureWorks_*, Northwind_*   (tagged suffixes)
+     - Linked servers: UNAPPROVED_LINK_*, INSECURE_LINK_*
+     - Server triggers: TR_Unreviewed_Server_*
+     - Certificates:   TestCert_*
+     - Logins:         WeakPolicyAdmin_*, OverprivilegedUser_*, ComplexSecurityUser_*,
+                      RecentSecurityChange_*, UnusedLogin_*,
+                      GrantOptionLogin_*, ExcessivePermLogin_*
+     - (DB users are inside dropped DBs; but we also attempt cleanup if a DB can't be dropped)
 
-/* 1) Revert instance configuration changes */
-EXEC sp_configure 'show advanced options', 1;
-RECONFIGURE;
+   SA restore requirement:
+     - If the built-in login (SID 0x01) was renamed to "$@" by your audit fix, this script renames it
+       back to "sa" AND enables it.
+     - Also, if the SID 0x01 login is disabled for any reason, it is enabled.
 
-EXEC sp_configure 'xp_cmdshell', 0;
-RECONFIGURE;
+   Reliability rules:
+     - PRINT-only messages, no result sets required.
+     - No server-side log tables.
+     - Each major step wrapped in TRY/CATCH; failures are reported and the script continues.
 
-EXEC sp_configure 'Ad Hoc Distributed Queries', 0;
-RECONFIGURE;
+   Run as sysadmin.
 
-EXEC sp_configure 'Database Mail XPs', 0;
-RECONFIGURE;
+   ================================================================================================ */
 
-EXEC sp_configure 'remote access', 0;
-RECONFIGURE;
+USE [master];
+SET NOCOUNT ON;
 
-/* Optional: hide advanced options again */
-EXEC sp_configure 'show advanced options', 0;
-RECONFIGURE;
-GO
+DECLARE @sql nvarchar(max);
+DECLARE @name sysname;
 
-/* Login auditing registry revert (script sets AuditLevel=0). :contentReference[oaicite:7]{index=7} */
-DECLARE @AuditLevelTarget INT = 2; -- adjust to your baseline if needed
-EXEC xp_instance_regwrite
-    N'HKEY_LOCAL_MACHINE',
-    N'Software\Microsoft\MSSQLServer\MSSQLServer',
-    N'AuditLevel',
-    REG_DWORD,
-    @AuditLevelTarget;
-GO
+PRINT '=== WS REVERT 2019+ START ===';
+PRINT 'Host=' + @@SERVERNAME + '  Time=' + CONVERT(varchar(19), SYSDATETIME(), 120);
 
-/* 2) Drop linked servers created by the script */
-DECLARE @ls SYSNAME;
-
-DECLARE ls_cur CURSOR LOCAL FAST_FORWARD FOR
-SELECT name
-FROM sys.servers
-WHERE name LIKE 'UNAPPROVED[_]LINK[_]%' ESCAPE '_'
-   OR name LIKE 'INSECURE[_]LINK[_]%'   ESCAPE '_';
-
-OPEN ls_cur;
-FETCH NEXT FROM ls_cur INTO @ls;
-
-WHILE @@FETCH_STATUS = 0
-BEGIN
-    BEGIN TRY
-        EXEC sp_dropserver @server = @ls, @droplogins = 'droplogins';
-        PRINT 'Dropped linked server: ' + @ls;
-    END TRY
-    BEGIN CATCH
-        PRINT 'WARN: could not drop linked server ' + ISNULL(@ls,'(null)') + ' : ' + ERROR_MESSAGE();
-    END CATCH;
-
-    FETCH NEXT FROM ls_cur INTO @ls;
-END
-
-CLOSE ls_cur;
-DEALLOCATE ls_cur;
-GO
-
-/* 3) Drop server triggers created by the script */
-DECLARE @tr SYSNAME, @sql NVARCHAR(MAX);
-
-DECLARE tr_cur CURSOR LOCAL FAST_FORWARD FOR
-SELECT name
-FROM sys.server_triggers
-WHERE name LIKE 'TR[_]Unreviewed[_]%' ESCAPE '_';
-
-OPEN tr_cur;
-FETCH NEXT FROM tr_cur INTO @tr;
-
-WHILE @@FETCH_STATUS = 0
-BEGIN
-    BEGIN TRY
-        SET @sql = N'DROP TRIGGER [' + @tr + N'] ON ALL SERVER;';
-        EXEC sp_executesql @sql;
-        PRINT 'Dropped server trigger: ' + @tr;
-    END TRY
-    BEGIN CATCH
-        PRINT 'WARN: could not drop trigger ' + ISNULL(@tr,'(null)') + ' : ' + ERROR_MESSAGE();
-    END CATCH;
-
-    FETCH NEXT FROM tr_cur INTO @tr;
-END
-
-CLOSE tr_cur;
-DEALLOCATE tr_cur;
-GO
-
-/* 4) Drop certificates created by the script (TestCert_*) */
-DECLARE @cert SYSNAME;
-
-DECLARE cert_cur CURSOR LOCAL FAST_FORWARD FOR
-SELECT name
-FROM sys.certificates
-WHERE name LIKE 'TestCert[_]%' ESCAPE '_';
-
-OPEN cert_cur;
-FETCH NEXT FROM cert_cur INTO @cert;
-
-WHILE @@FETCH_STATUS = 0
-BEGIN
-    BEGIN TRY
-        SET @sql = N'DROP CERTIFICATE [' + @cert + N'];';
-        EXEC sp_executesql @sql;
-        PRINT 'Dropped certificate: ' + @cert;
-    END TRY
-    BEGIN CATCH
-        PRINT 'WARN: could not drop certificate ' + ISNULL(@cert,'(null)') + ' : ' + ERROR_MESSAGE();
-    END CATCH;
-
-    FETCH NEXT FROM cert_cur INTO @cert;
-END
-
-CLOSE cert_cur;
-DEALLOCATE cert_cur;
-GO
-
-/* 5) Drop server logins created by the script */
-DECLARE @login SYSNAME;
-
-DECLARE login_cur CURSOR LOCAL FAST_FORWARD FOR
-SELECT name
-FROM sys.server_principals
-WHERE type_desc = 'SQL_LOGIN'
-  AND (
-        name LIKE 'WeakPolicyAdmin[_]%'       ESCAPE '_'
-     OR name LIKE 'UnusedLogin[_]%'           ESCAPE '_'
-     OR name LIKE 'OverprivilegedUser[_]%'    ESCAPE '_'
-     OR name LIKE 'ComplexSecurityUser[_]%'   ESCAPE '_'
-     OR name LIKE 'RecentSecurityChange[_]%'  ESCAPE '_'
-  );
-
-OPEN login_cur;
-FETCH NEXT FROM login_cur INTO @login;
-
-WHILE @@FETCH_STATUS = 0
-BEGIN
-    BEGIN TRY
-        SET @sql = N'DROP LOGIN [' + @login + N'];';
-        EXEC sp_executesql @sql;
-        PRINT 'Dropped login: ' + @login;
-    END TRY
-    BEGIN CATCH
-        PRINT 'WARN: could not drop login ' + ISNULL(@login,'(null)') + ' : ' + ERROR_MESSAGE();
-    END CATCH;
-
-    FETCH NEXT FROM login_cur INTO @login;
-END
-
-CLOSE login_cur;
-DEALLOCATE login_cur;
-GO
-
-/* 6) Clean DB-level residue (users + guest connect) */
-DECLARE @db SYSNAME;
-
-DECLARE db_cur CURSOR LOCAL FAST_FORWARD FOR
-SELECT name
-FROM sys.databases
-WHERE state_desc = 'ONLINE'
-  AND name NOT IN ('master','model','msdb','tempdb');
-
-OPEN db_cur;
-FETCH NEXT FROM db_cur INTO @db;
-
-WHILE @@FETCH_STATUS = 0
-BEGIN
-    SET @sql = N'
-USE [' + @db + N'];
-
+--------------------------------------------------------------------------------
+-- STEP 0: Restore built-in sa (SID 0x01): rename to sa if needed, and ENABLE
+--------------------------------------------------------------------------------
 BEGIN TRY
-    REVOKE CONNECT FROM guest;  -- script GRANTs CONNECT TO guest :contentReference[oaicite:8]{index=8}
-END TRY
-BEGIN CATCH
-END CATCH;
+    DECLARE @Sid01Name sysname;
+    SELECT @Sid01Name = sp.name
+    FROM sys.server_principals sp
+    WHERE sp.sid = 0x01 AND sp.type_desc = 'SQL_LOGIN';
 
-DECLARE @u SYSNAME;
-DECLARE u_cur CURSOR LOCAL FAST_FORWARD FOR
-SELECT name
-FROM sys.database_principals
-WHERE (
-        name LIKE ''GrantOptionUser[_]%''   ESCAPE ''_''
-     OR name LIKE ''OrphanedUser[_]%''      ESCAPE ''_''
-     OR name LIKE ''ExcessivePermUser[_]%'' ESCAPE ''_''
-);
-
-OPEN u_cur;
-FETCH NEXT FROM u_cur INTO @u;
-
-WHILE @@FETCH_STATUS = 0
-BEGIN
-    BEGIN TRY
-        EXEC (''DROP USER ['' + @u + '']'');
-        PRINT ''Dropped user '' + @u + '' in ' + @db + ''';
-    END TRY
-    BEGIN CATCH
-        PRINT ''WARN: could not drop user '' + ISNULL(@u,''(null)'') + '' in ' + @db + ': '' + ERROR_MESSAGE();
-    END CATCH;
-
-    FETCH NEXT FROM u_cur INTO @u;
-END
-
-CLOSE u_cur;
-DEALLOCATE u_cur;
-';
-    BEGIN TRY
-        EXEC sp_executesql @sql;
-    END TRY
-    BEGIN CATCH
-        PRINT 'WARN: DB cleanup failed in ' + @db + ' : ' + ERROR_MESSAGE();
-    END CATCH;
-
-    FETCH NEXT FROM db_cur INTO @db;
-END
-
-CLOSE db_cur;
-DEALLOCATE db_cur;
-GO
-
-/* 7) Drop test databases:
-      - LegacyTestDB_XXXX is always created by script :contentReference[oaicite:9]{index=9}
-      - TestDB_% may be used/created depending on your environment
-   We only DROP if DB contains your marker users.
-*/
-DECLARE @dropdb SYSNAME;
-
-DECLARE drop_cur CURSOR LOCAL FAST_FORWARD FOR
-SELECT name
-FROM sys.databases
-WHERE name LIKE 'LegacyTestDB[_]%' ESCAPE '_'
-   OR name LIKE 'TestDB[_]%'       ESCAPE '_';
-
-OPEN drop_cur;
-FETCH NEXT FROM drop_cur INTO @dropdb;
-
-WHILE @@FETCH_STATUS = 0
-BEGIN
-    DECLARE @hasMarker INT = 0;
-
-    SET @sql = N'
-USE [' + @dropdb + N'];
-SELECT @hasMarkerOUT =
-    CASE WHEN EXISTS (
-        SELECT 1
-        FROM sys.database_principals
-        WHERE name LIKE ''GrantOptionUser[_]%''   ESCAPE ''_''
-           OR name LIKE ''OrphanedUser[_]%''      ESCAPE ''_''
-           OR name LIKE ''ExcessivePermUser[_]%'' ESCAPE ''_''
-    ) THEN 1 ELSE 0 END;
-';
-    BEGIN TRY
-        EXEC sp_executesql @sql, N'@hasMarkerOUT INT OUTPUT', @hasMarkerOUT=@hasMarker OUTPUT;
-    END TRY
-    BEGIN CATCH
-        SET @hasMarker = 0;
-    END CATCH
-
-    IF @hasMarker = 1
+    IF @Sid01Name IS NULL
     BEGIN
-        BEGIN TRY
-            EXEC('ALTER DATABASE [' + @dropdb + '] SET SINGLE_USER WITH ROLLBACK IMMEDIATE;');
-            EXEC('DROP DATABASE [' + @dropdb + '];');
-            PRINT 'Dropped test database: ' + @dropdb;
-        END TRY
-        BEGIN CATCH
-            PRINT 'WARN: could not drop database ' + @dropdb + ' : ' + ERROR_MESSAGE();
-        END CATCH
+        PRINT 'WARN: Built-in login SID 0x01 not found; cannot restore sa.';
     END
     ELSE
     BEGIN
-        PRINT 'Skipped dropping ' + @dropdb + ' (no marker users found).';
+        -- If SID 0x01 login is not called 'sa', try to rename it to 'sa'
+        IF @Sid01Name <> N'sa'
+        BEGIN
+            IF EXISTS (SELECT 1 FROM sys.server_principals WHERE name = N'sa')
+            BEGIN
+                PRINT 'WARN: Cannot rename SID 0x01 login to sa because a login named sa already exists.';
+                PRINT '      Current SID 0x01 name = ' + @Sid01Name;
+            END
+            ELSE
+            BEGIN
+                SET @sql = N'ALTER LOGIN ' + QUOTENAME(@Sid01Name) + N' WITH NAME = [sa];';
+                EXEC sys.sp_executesql @sql;
+                PRINT 'OK: Renamed SID 0x01 login from ' + @Sid01Name + ' to sa.';
+            END
+        END
+
+        -- Ensure enabled (whether it was sa already or just renamed)
+        SET @sql = N'ALTER LOGIN [sa] ENABLE;';
+        EXEC sys.sp_executesql @sql;
+
+        IF EXISTS (SELECT 1 FROM sys.sql_logins WHERE name = N'sa' AND is_disabled = 0)
+            PRINT 'OK: sa is enabled.';
+        ELSE
+            PRINT 'WARN: sa enable could not be verified.';
+    END
+END TRY
+BEGIN CATCH
+    PRINT 'WARN/ERR: sa restore step failed: ' + ERROR_MESSAGE();
+END CATCH;
+
+--------------------------------------------------------------------------------
+-- STEP 1: Drop WS-created databases (fast cleanup)
+--         Patterns only; avoids system databases by explicit filter.
+--------------------------------------------------------------------------------
+BEGIN TRY
+    PRINT '--- Dropping WS databases (if present) ---';
+
+    DECLARE db_cursor CURSOR LOCAL FAST_FORWARD FOR
+        SELECT d.name
+        FROM sys.databases d
+        WHERE d.database_id > 4
+          AND (
+                d.name LIKE N'LegacyTestDB[_]%' ESCAPE N'\'
+             OR d.name LIKE N'TestDB[_]%'     ESCAPE N'\'
+             OR d.name LIKE N'AdventureWorks[_]%' ESCAPE N'\'
+             OR d.name LIKE N'Northwind[_]%'  ESCAPE N'\'
+          );
+
+    OPEN db_cursor;
+    FETCH NEXT FROM db_cursor INTO @name;
+
+    WHILE @@FETCH_STATUS = 0
+    BEGIN
+        BEGIN TRY
+            PRINT 'Dropping database: ' + @name;
+
+            SET @sql = N'ALTER DATABASE ' + QUOTENAME(@name) + N' SET SINGLE_USER WITH ROLLBACK IMMEDIATE;';
+            EXEC sys.sp_executesql @sql;
+
+            SET @sql = N'DROP DATABASE ' + QUOTENAME(@name) + N';';
+            EXEC sys.sp_executesql @sql;
+
+            PRINT 'OK: Dropped database ' + @name;
+        END TRY
+        BEGIN CATCH
+            PRINT 'WARN/ERR: Failed to drop database ' + @name + ': ' + ERROR_MESSAGE();
+
+            -- Best-effort: if we couldn't drop, try to remove the specific WS users/triggers inside it
+            BEGIN TRY
+                SET @sql = N'
+                USE ' + QUOTENAME(@name) + N';
+                DECLARE @u sysname;
+                DECLARE @s nvarchar(max);
+
+                -- Drop WS DB trigger(s)
+                DECLARE tr CURSOR LOCAL FAST_FORWARD FOR
+                    SELECT name FROM sys.triggers WHERE parent_class_desc = ''DATABASE'' AND name LIKE N''TR_Unreviewed_DB[_]%'';
+                OPEN tr;
+                FETCH NEXT FROM tr INTO @u;
+                WHILE @@FETCH_STATUS = 0
+                BEGIN
+                    SET @s = N''DROP TRIGGER '' + QUOTENAME(@u) + N'';'';
+                    BEGIN TRY EXEC sys.sp_executesql @s; END TRY BEGIN CATCH END CATCH;
+                    FETCH NEXT FROM tr INTO @u;
+                END
+                CLOSE tr; DEALLOCATE tr;
+
+                -- Drop WS users
+                DECLARE us CURSOR LOCAL FAST_FORWARD FOR
+                    SELECT name FROM sys.database_principals
+                    WHERE type_desc IN (''SQL_USER'',''WINDOWS_USER'')
+                      AND (
+                           name LIKE N''OrphanUser[_]%''
+                        OR name LIKE N''GrantOptionUser[_]%''
+                        OR name LIKE N''ExcessivePermUser[_]%''
+                      );
+                OPEN us;
+                FETCH NEXT FROM us INTO @u;
+                WHILE @@FETCH_STATUS = 0
+                BEGIN
+                    SET @s = N''DROP USER '' + QUOTENAME(@u) + N'';'';
+                    BEGIN TRY EXEC sys.sp_executesql @s; END TRY BEGIN CATCH END CATCH;
+                    FETCH NEXT FROM us INTO @u;
+                END
+                CLOSE us; DEALLOCATE us;
+                ';
+                EXEC sys.sp_executesql @sql;
+                PRINT 'OK: Best-effort cleanup inside ' + @name + ' completed.';
+            END TRY
+            BEGIN CATCH
+                PRINT 'WARN: Best-effort internal cleanup failed for ' + @name + ': ' + ERROR_MESSAGE();
+            END CATCH;
+        END CATCH;
+
+        FETCH NEXT FROM db_cursor INTO @name;
     END
 
-    FETCH NEXT FROM drop_cur INTO @dropdb;
-END
+    CLOSE db_cursor;
+    DEALLOCATE db_cursor;
 
-CLOSE drop_cur;
-DEALLOCATE drop_cur;
-GO
+    PRINT '--- Database cleanup done ---';
+END TRY
+BEGIN CATCH
+    PRINT 'WARN/ERR: Database cleanup step failed: ' + ERROR_MESSAGE();
+END CATCH;
 
-PRINT '=== REVERT COMPLETE (2019+) ===';
-GO
+--------------------------------------------------------------------------------
+-- STEP 2: Drop WS-created server triggers
+--------------------------------------------------------------------------------
+BEGIN TRY
+    PRINT '--- Dropping WS server triggers ---';
+
+    DECLARE trg_cursor CURSOR LOCAL FAST_FORWARD FOR
+        SELECT name FROM sys.server_triggers
+        WHERE name LIKE N'TR_Unreviewed_Server[_]%' ESCAPE N'\';
+
+    OPEN trg_cursor;
+    FETCH NEXT FROM trg_cursor INTO @name;
+
+    WHILE @@FETCH_STATUS = 0
+    BEGIN
+        BEGIN TRY
+            PRINT 'Dropping server trigger: ' + @name;
+            SET @sql = N'DROP TRIGGER ' + QUOTENAME(@name) + N' ON ALL SERVER;';
+            EXEC sys.sp_executesql @sql;
+            PRINT 'OK: Dropped server trigger ' + @name;
+        END TRY
+        BEGIN CATCH
+            PRINT 'WARN/ERR: Failed to drop server trigger ' + @name + ': ' + ERROR_MESSAGE();
+        END CATCH;
+
+        FETCH NEXT FROM trg_cursor INTO @name;
+    END
+
+    CLOSE trg_cursor;
+    DEALLOCATE trg_cursor;
+
+    PRINT '--- Server trigger cleanup done ---';
+END TRY
+BEGIN CATCH
+    PRINT 'WARN/ERR: Server trigger cleanup step failed: ' + ERROR_MESSAGE();
+END CATCH;
+
+--------------------------------------------------------------------------------
+-- STEP 3: Drop WS-created linked servers
+--------------------------------------------------------------------------------
+BEGIN TRY
+    PRINT '--- Dropping WS linked servers ---';
+
+    DECLARE ls_cursor CURSOR LOCAL FAST_FORWARD FOR
+        SELECT name FROM sys.servers
+        WHERE is_linked = 1
+          AND (
+                name LIKE N'UNAPPROVED_LINK[_]%' ESCAPE N'\'
+             OR name LIKE N'INSECURE_LINK[_]%'   ESCAPE N'\'
+          );
+
+    OPEN ls_cursor;
+    FETCH NEXT FROM ls_cursor INTO @name;
+
+    WHILE @@FETCH_STATUS = 0
+    BEGIN
+        BEGIN TRY
+            PRINT 'Dropping linked server: ' + @name;
+            EXEC master.dbo.sp_dropserver @server=@name, @droplogins='droplogins';
+            PRINT 'OK: Dropped linked server ' + @name;
+        END TRY
+        BEGIN CATCH
+            PRINT 'WARN/ERR: Failed to drop linked server ' + @name + ': ' + ERROR_MESSAGE();
+        END CATCH;
+
+        FETCH NEXT FROM ls_cursor INTO @name;
+    END
+
+    CLOSE ls_cursor;
+    DEALLOCATE ls_cursor;
+
+    PRINT '--- Linked server cleanup done ---';
+END TRY
+BEGIN CATCH
+    PRINT 'WARN/ERR: Linked server cleanup step failed: ' + ERROR_MESSAGE();
+END CATCH;
+
+--------------------------------------------------------------------------------
+-- STEP 4: Drop WS-created certificates
+--------------------------------------------------------------------------------
+BEGIN TRY
+    PRINT '--- Dropping WS certificates ---';
+
+    DECLARE cert_cursor CURSOR LOCAL FAST_FORWARD FOR
+        SELECT name FROM sys.certificates
+        WHERE name LIKE N'TestCert[_]%' ESCAPE N'\';
+
+    OPEN cert_cursor;
+    FETCH NEXT FROM cert_cursor INTO @name;
+
+    WHILE @@FETCH_STATUS = 0
+    BEGIN
+        BEGIN TRY
+            PRINT 'Dropping certificate: ' + @name;
+            SET @sql = N'DROP CERTIFICATE ' + QUOTENAME(@name) + N';';
+            EXEC sys.sp_executesql @sql;
+            PRINT 'OK: Dropped certificate ' + @name;
+        END TRY
+        BEGIN CATCH
+            PRINT 'WARN/ERR: Failed to drop certificate ' + @name + ': ' + ERROR_MESSAGE();
+        END CATCH;
+
+        FETCH NEXT FROM cert_cursor INTO @name;
+    END
+
+    CLOSE cert_cursor;
+    DEALLOCATE cert_cursor;
+
+    PRINT '--- Certificate cleanup done ---';
+END TRY
+BEGIN CATCH
+    PRINT 'WARN/ERR: Certificate cleanup step failed: ' + ERROR_MESSAGE();
+END CATCH;
+
+--------------------------------------------------------------------------------
+-- STEP 5: Drop WS-created logins (created by APPLY)
+--         We intentionally do NOT touch 'sa' other than enable/rename already done.
+--------------------------------------------------------------------------------
+BEGIN TRY
+    PRINT '--- Dropping WS logins ---';
+
+    DECLARE login_cursor CURSOR LOCAL FAST_FORWARD FOR
+        SELECT sp.name
+        FROM sys.server_principals sp
+        WHERE sp.type_desc = 'SQL_LOGIN'
+          AND sp.name NOT IN (N'sa')
+          AND (
+                sp.name LIKE N'WeakPolicyAdmin[_]%' ESCAPE N'\'
+             OR sp.name LIKE N'OverprivilegedUser[_]%' ESCAPE N'\'
+             OR sp.name LIKE N'ComplexSecurityUser[_]%' ESCAPE N'\'
+             OR sp.name LIKE N'RecentSecurityChange[_]%' ESCAPE N'\'
+             OR sp.name LIKE N'UnusedLogin[_]%' ESCAPE N'\'
+             OR sp.name LIKE N'GrantOptionLogin[_]%' ESCAPE N'\'
+             OR sp.name LIKE N'ExcessivePermLogin[_]%' ESCAPE N'\'
+          );
+
+    OPEN login_cursor;
+    FETCH NEXT FROM login_cursor INTO @name;
+
+    WHILE @@FETCH_STATUS = 0
+    BEGIN
+        BEGIN TRY
+            PRINT 'Dropping login: ' + @name;
+            SET @sql = N'DROP LOGIN ' + QUOTENAME(@name) + N';';
+            EXEC sys.sp_executesql @sql;
+            PRINT 'OK: Dropped login ' + @name;
+        END TRY
+        BEGIN CATCH
+            PRINT 'WARN/ERR: Failed to drop login ' + @name + ': ' + ERROR_MESSAGE();
+        END CATCH;
+
+        FETCH NEXT FROM login_cursor INTO @name;
+    END
+
+    CLOSE login_cursor;
+    DEALLOCATE login_cursor;
+
+    PRINT '--- Login cleanup done ---';
+END TRY
+BEGIN CATCH
+    PRINT 'WARN/ERR: Login cleanup step failed: ' + ERROR_MESSAGE();
+END CATCH;
+
+--------------------------------------------------------------------------------
+-- STEP 6: Best-effort: reset advanced options visibility (optional; doesn't matter per your flow)
+--------------------------------------------------------------------------------
+BEGIN TRY
+    EXEC sp_configure 'show advanced options', 0;
+    RECONFIGURE;
+END TRY
+BEGIN CATCH
+    -- ignore
+END CATCH;
+
+PRINT '=== WS REVERT 2019+ END ===';

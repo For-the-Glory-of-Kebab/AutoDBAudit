@@ -57,9 +57,17 @@ To verify the tool detects misconfigurations (e.g., xp_cmdshell enabled, weak pa
 
 **Run the sql simulation:**
 ```powershell
-python run_simulation.py --mode apply
-```
+    # Option 1: Interactive Mode (Select targets from a list)
+    python run_simulation.py --mode apply
+
+    # Option 2: Apply to specific targets (by ID or Name)
+    python run_simulation.py --mode apply --targets 1 2
+
+    # Option 3: Apply to ALL targets
+    python run_simulation.py --mode apply --all
+    ```
 -   **Effect**: Creates "Bad" logins, configs, and objects on your SQL instances.
+-   **Note**: Scripts are version-aware (auto-detects SQL 2008 vs 2019+).
 -   **Result**: The next audit should light up with FAILs.
 
 ## Step 4: Apply Remediation (Real or Pretend)
