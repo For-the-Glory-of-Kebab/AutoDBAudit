@@ -15,6 +15,8 @@ from autodbaudit.infrastructure.excel_styles import (
 from autodbaudit.infrastructure.excel.base import (
     BaseSheetMixin,
     SheetConfig,
+    ACTION_COLUMN,
+    apply_action_needed_styling,
 )
 from autodbaudit.infrastructure.excel.server_group import ServerGroupMixin
 
@@ -23,13 +25,15 @@ __all__ = ["AuditSettingSheetMixin", "AUDIT_SETTING_CONFIG"]
 
 
 AUDIT_SETTING_COLUMNS = (
+    ACTION_COLUMN,  # Column A: Action indicator (⏳ needs attention)
     ColumnDef("Server", 18, Alignments.LEFT),
     ColumnDef("Instance", 15, Alignments.LEFT),
     ColumnDef("Setting", 35, Alignments.LEFT),
     ColumnDef("Current Value", 15, Alignments.CENTER),
     ColumnDef("Recommended", 15, Alignments.CENTER),
     ColumnDef("Status", 12, Alignments.CENTER, is_status=True),
-    ColumnDef("Notes", 45, Alignments.LEFT, is_manual=True),
+    ColumnDef("Justification", 35, Alignments.LEFT, is_manual=True),
+    ColumnDef("Notes", 30, Alignments.LEFT, is_manual=True),
 )
 
 AUDIT_SETTING_CONFIG = SheetConfig(name="Audit Settings", columns=AUDIT_SETTING_COLUMNS)
@@ -65,20 +69,31 @@ class AuditSettingSheetMixin(ServerGroupMixin, BaseSheetMixin):
         else:
             self._increment_issue()
         
+        # Determine if action needed (FAIL status)
+        needs_action = status == "fail"
+        
         data = [
+            None,  # Action indicator (column A)
             server_name,
             instance_name or "(Default)",
             setting_name,
             current_value,
             recommended_value,
             None,  # Status
+            "",    # Justification
             "",    # Notes
         ]
         
         row = self._write_row(ws, AUDIT_SETTING_CONFIG, data)
         
-        self._apply_row_color(row, row_color, data_cols=[1, 2, 3, 4, 5], ws=ws)
-        apply_status_styling(ws.cell(row=row, column=6), status)
+        # Apply action indicator (column 1)
+        apply_action_needed_styling(ws.cell(row=row, column=1), needs_action)
+        
+        # Apply row color (shifted +1 for action column)
+        self._apply_row_color(row, row_color, data_cols=[2, 3, 4, 5, 6], ws=ws)
+        
+        # Status column (column 7, shifted +1)
+        apply_status_styling(ws.cell(row=row, column=7), status)
     
     def _finalize_audit_settings(self) -> None:
         """Finalize audit settings sheet - merge remaining groups."""
@@ -90,5 +105,5 @@ class AuditSettingSheetMixin(ServerGroupMixin, BaseSheetMixin):
         from autodbaudit.infrastructure.excel.base import add_dropdown_validation
         
         ws = self._audit_setting_sheet
-        # Status column (F) - column 6
-        add_dropdown_validation(ws, "F", ["PASS", "FAIL"])
+        # Status column (G = 7, shifted +1)
+        add_dropdown_validation(ws, "G", ["PASS", "FAIL"])

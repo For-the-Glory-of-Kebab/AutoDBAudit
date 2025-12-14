@@ -37,7 +37,8 @@ SA_ACCOUNT_COLUMNS = (
     ColumnDef("Is Renamed", 12, Alignments.CENTER),
     ColumnDef("Current Name", 20, Alignments.LEFT),
     ColumnDef("Default DB", 15, Alignments.LEFT),
-    ColumnDef("Remediation Notes", 45, Alignments.LEFT, is_manual=True),
+    ColumnDef("Justification", 40, Alignments.LEFT, is_manual=True),  # FAIL + justification = exception
+    ColumnDef("Notes", 35, Alignments.LEFT, is_manual=True),
 )
 
 SA_ACCOUNT_CONFIG = SheetConfig(name="SA Account", columns=SA_ACCOUNT_COLUMNS)

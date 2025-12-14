@@ -1,33 +1,30 @@
 """
 Actions Sheet Module.
 
-Handles the Actions worksheet for remediation tracking.
-This sheet provides a centralized list of all findings that
-require action, with tracking for assignment and resolution.
+Handles the Actions worksheet for audit changelog tracking.
+This sheet provides a dated log of all detected CHANGES during
+sync operations - what was fixed, what regressed, what's new.
 
 Sheet Purpose:
-    - Track all security findings requiring remediation
-    - Assign findings to responsible parties
-    - Track resolution status and dates
-    - Document exceptions with justification
+    - Track all state transitions detected during --sync
+    - Record when changes were first detected
+    - Allow user notes to document context
+    - NOT a TODO list - it's an audit trail of changes
 
 Columns:
     - ID: Unique action item number
     - Server/Instance: Location of finding
     - Category: Type (SA Account, Configuration, Backup, etc.)
-    - Finding: Description of the issue
-    - Risk Level: Critical/High/Medium/Low
-    - Recommendation: Suggested remediation
-    - Status: Open/Closed/Exception
-    - Found Date: When the finding was discovered (auto)
-    - Assigned To: Person responsible (manual)
-    - Due Date: Target resolution date (manual)
-    - Resolution Date: When actually resolved (manual)
-    - Resolution Notes: How it was resolved (manual)
+    - Finding: Description of the change
+    - Risk Level: Severity (Low for fixes, High for regressions)
+    - Change Description: What happened (Fixed/Regressed/New)
+    - Change Type: Type icon (Closed for fixes, Open for issues)
+    - Detected Date: When the change was first discovered (editable)
+    - Notes: User commentary (synced each run)
 
 Visual Features:
-    - Risk level color coding (Critical=dark red, High=red)
-    - Status icons (Open=pending, Closed=checkmark)
+    - Risk level color coding (Low=green, High=red)
+    - Change type icons (Closed=checkmark, Open=pending)
     - Gray background for manual input columns
 """
 
@@ -53,6 +50,7 @@ from autodbaudit.infrastructure.excel.base import (
 __all__ = ["ActionSheetMixin", "ACTION_CONFIG"]
 
 
+# Changelog columns - simplified for audit trail purpose
 ACTION_COLUMNS = (
     ColumnDef("ID", 6, Alignments.CENTER),
     ColumnDef("Server", 16, Alignments.LEFT),
@@ -60,13 +58,10 @@ ACTION_COLUMNS = (
     ColumnDef("Category", 16, Alignments.LEFT),
     ColumnDef("Finding", 40, Alignments.LEFT),
     ColumnDef("Risk Level", 10, Alignments.CENTER),
-    ColumnDef("Recommendation", 45, Alignments.LEFT),
-    ColumnDef("Status", 12, Alignments.CENTER, is_status=True),
-    ColumnDef("Found Date", 12, Alignments.CENTER),  # Auto-populated
-    ColumnDef("Assigned To", 18, Alignments.LEFT, is_manual=True),
-    ColumnDef("Due Date", 12, Alignments.CENTER, is_manual=True),
-    ColumnDef("Resolution Date", 14, Alignments.CENTER, is_manual=True),
-    ColumnDef("Resolution Notes", 45, Alignments.LEFT, is_manual=True),
+    ColumnDef("Change Description", 45, Alignments.LEFT),  # What changed
+    ColumnDef("Change Type", 12, Alignments.CENTER, is_status=True),  # Fixed/Regressed/New
+    ColumnDef("Detected Date", 12, Alignments.CENTER),  # When change detected (editable)
+    ColumnDef("Notes", 45, Alignments.LEFT, is_manual=True),  # User commentary
 )
 
 ACTION_CONFIG = SheetConfig(name="Actions", columns=ACTION_COLUMNS)
@@ -76,18 +71,14 @@ class ActionSheetMixin(BaseSheetMixin):
     """
     Mixin for Actions sheet functionality.
     
-    Provides the `add_action` method to record remediation items.
-    Each action is automatically numbered and timestamped with
-    the date it was discovered.
+    Provides the `add_action` method to record changelog entries.
+    Each change is automatically numbered and timestamped with
+    the date it was detected.
     
-    Action Lifecycle:
-        1. Finding discovered during audit → "Open" status
-        2. Assigned to responsible party
-        3. Due date set for remediation
-        4. Issue resolved → "Closed" status + Resolution Date
-        
-    OR:
-        3. Exception granted → "Exception" status + justification
+    Change Types:
+        - Fixed: Issue was resolved (FAIL → PASS)
+        - Regressed: Issue came back (PASS → FAIL)
+        - New: Issue newly detected
     
     Attributes:
         _action_sheet: Reference to the Actions worksheet
@@ -104,36 +95,27 @@ class ActionSheetMixin(BaseSheetMixin):
         category: str,
         finding: str,
         risk_level: str,
-        recommendation: str,
-        status: str = "Open",
-        found_date: datetime | None = None,
-        assigned_to: str = "",
-        due_date: str = "",
-        resolution_date: str = "",
-        resolution_notes: str = "",
+        recommendation: str,  # Now used as "Change Description"
+        status: str = "Open",  # Now used as "Change Type"
+        found_date: datetime | None = None,  # Now "Detected Date"
+        resolution_notes: str = "",  # Now just "Notes"
     ) -> None:
         """
-        Add an action item row with automatic ID and date.
+        Add a changelog entry row with automatic ID and date.
         
-        Each action is auto-assigned an incremental ID and
-        the found date defaults to the current date.
+        Each entry is auto-assigned an incremental ID and
+        the detected date defaults to the current date.
         
         Args:
             server_name: Server hostname
             instance_name: SQL Server instance name
             category: Finding category for grouping
-            finding: Clear description of the issue found
-            risk_level: Severity of the finding
-            recommendation: Specific steps to remediate
-            status: Current status
-            found_date: When finding was discovered (defaults to now)
-            assigned_to: (Optional) Preserved 'Assigned To' value
-            due_date: (Optional) Preserved 'Due Date' value
-            resolution_date: (Optional) Preserved 'Resolution Date' value
-            resolution_notes: (Optional) Preserved 'Resolution Notes' value
-        
-        Example:
-            writer.add_action(..., assigned_to="DBA Team")
+            finding: Description of what changed
+            risk_level: Severity (Low=good news, High=bad news)
+            recommendation: Change description (what happened)
+            status: Change type (Closed for fixes, Open for issues)
+            found_date: When change was detected (editable, defaults to now)
+            resolution_notes: (Optional) User notes/commentary
         """
         if self._action_sheet is None:
             self._action_sheet = self._ensure_sheet(ACTION_CONFIG)
@@ -146,7 +128,7 @@ class ActionSheetMixin(BaseSheetMixin):
         if found_date is None:
             found_date = datetime.now()
         
-        # Prepare row data
+        # Prepare row data (10 columns now)
         data = [
             str(self._action_count),
             server_name,
@@ -154,18 +136,15 @@ class ActionSheetMixin(BaseSheetMixin):
             category,
             finding,
             risk_level.title(),
-            recommendation,
-            None,  # Status - styled separately
-            format_date(found_date),  # Found Date (auto)
-            assigned_to,    # Assigned To (manual/preserved)
-            due_date,       # Due Date (manual/preserved)
-            resolution_date, # Resolution Date (manual/preserved)
-            resolution_notes, # Resolution Notes (manual/preserved)
+            recommendation,       # Change Description
+            None,                 # Change Type - styled separately
+            format_date(found_date),  # Detected Date
+            resolution_notes,     # Notes (user commentary)
         ]
         
         row = self._write_row(ws, ACTION_CONFIG, data)
         
-        # Style status cell with icon
+        # Style Change Type cell (column 8)
         status_cell = ws.cell(row=row, column=8)
         status_lower = status.lower()
         if status_lower == "open":
@@ -176,17 +155,14 @@ class ActionSheetMixin(BaseSheetMixin):
             status_cell.value = f"{Icons.PASS} Closed"
             status_cell.fill = Fills.PASS
             status_cell.font = Fonts.PASS
-        elif status_lower == "exception":
-            status_cell.value = f"{Icons.EXCEPTION} Exception"
-            status_cell.fill = Fills.EXCEPTION
-            status_cell.font = Fonts.WARN
         
         # Style risk level cell with severity colors
         risk_cell = ws.cell(row=row, column=6)
         risk_lower = risk_level.lower()
-        if risk_lower == "critical":
-            risk_cell.fill = Fills.CRITICAL
-            risk_cell.font = Fonts.CRITICAL
+        if risk_lower == "low":
+            # Low risk = good news (usually fixed items)
+            risk_cell.fill = Fills.PASS
+            risk_cell.font = Fonts.PASS
         elif risk_lower == "high":
             risk_cell.fill = Fills.FAIL
             risk_cell.font = Fonts.FAIL
@@ -202,6 +178,6 @@ class ActionSheetMixin(BaseSheetMixin):
         # Category column (D) - column 4
         add_dropdown_validation(ws, "D", ["SA Account", "Configuration", "Backup", "Login", "Permissions", "Service", "Database", "Other"])
         # Risk Level column (F) - column 6
-        add_dropdown_validation(ws, "F", ["Critical", "High", "Medium", "Low"])
-        # Status column (H) - column 8
-        add_dropdown_validation(ws, "H", ["⏳ Open", "✓ Closed", "⚠️ Exception"])
+        add_dropdown_validation(ws, "F", ["Low", "Medium", "High"])
+        # Change Type column (H) - column 8
+        add_dropdown_validation(ws, "H", ["⏳ Open", "✓ Closed"])

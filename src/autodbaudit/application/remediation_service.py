@@ -200,6 +200,7 @@ class RemediationService:
         seen_db_users = set()
         has_sa_finding = False
         has_version_finding = False
+        has_audit_finding = False  # Login auditing issue detected
 
         for f in findings:
             ft = f["finding_type"]
@@ -209,6 +210,13 @@ class RemediationService:
             # === SA ACCOUNT ===
             if ft == "sa_account":
                 has_sa_finding = True
+                continue
+
+            # === AUDIT SETTINGS (Login Auditing) ===
+            if ft == "audit_settings":
+                # Check if this is a login auditing issue
+                if "login" in entity.lower() or "audit" in entity.lower():
+                    has_audit_finding = True
                 continue
 
             # === CONFIG SETTINGS ===
@@ -369,8 +377,10 @@ class RemediationService:
             rollback_section.append(self._rollback_sa(temp_password))
 
         # === ADD LOGIN AUDITING ===
-        # Only add if we have a specific finding for it (TODO: Detect AuditLevel)
-        # safe_section.append(self._script_enable_login_auditing())
+        # Only add if we detected an audit settings finding about login auditing
+        if has_audit_finding:
+            safe_section.append(self._script_enable_login_auditing())
+            rollback_section.append(self._rollback_disable_login_auditing())
 
         # === ADD VERSION/UPDATE INFO ===
         if has_version_finding:
@@ -859,6 +869,25 @@ GO
 {header}
 ALTER DATABASE [{db_name}] SET TRUSTWORTHY ON;
 PRINT 'Rolled back: TRUSTWORTHY enabled';
+GO
+"""
+
+    def _rollback_disable_login_auditing(self) -> str:
+        """Rollback: revert login auditing to previous state (None)."""
+        header = self._item_header("🔙 AUDIT", "Revert login auditing to 'None'")
+        return f"""
+{header}
+-- NOTE: This reverts login auditing to 'None' (was enabled for success+failure)
+-- Change the value based on your original setting:
+-- 0 = None, 1 = Success only, 2 = Failure only, 3 = Both
+EXEC xp_instance_regwrite 
+N'HKEY_LOCAL_MACHINE', 
+N'Software\\Microsoft\\MSSQLServer\\MSSQLServer', 
+N'AuditLevel', 
+REG_DWORD, 
+0;
+PRINT 'Rolled back: Login auditing set to None';
+PRINT 'NOTE: Restart SQL Server for this to take effect';
 GO
 """
 

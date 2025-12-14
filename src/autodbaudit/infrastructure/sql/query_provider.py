@@ -563,7 +563,14 @@ class Sql2008Provider(QueryProvider):
             dp.modify_date AS ModifyDate,
             sp.name AS MappedLogin,
             CASE WHEN sp.name IS NULL AND dp.type != 'R' AND dp.name NOT IN ('dbo', 'guest', 'INFORMATION_SCHEMA', 'sys') 
-                 THEN 1 ELSE 0 END AS IsOrphaned
+                 THEN 1 ELSE 0 END AS IsOrphaned,
+            -- Guest enabled check: guest user with CONNECT permission granted
+            CASE WHEN dp.name = 'guest' AND EXISTS (
+                SELECT 1 FROM [{database}].sys.database_permissions p 
+                WHERE p.grantee_principal_id = dp.principal_id 
+                  AND p.permission_name = 'CONNECT'
+                  AND p.state = 'G'
+            ) THEN 1 ELSE 0 END AS GuestEnabled
         FROM [{database}].sys.database_principals dp
         LEFT JOIN sys.server_principals sp ON dp.sid = sp.sid
         WHERE dp.type IN ('S', 'U', 'G', 'C', 'K')
@@ -733,12 +740,43 @@ class Sql2008Provider(QueryProvider):
         """
 
     def get_audit_settings(self) -> str:
+        # Returns audit settings in SettingName/CurrentValue format
+        # Includes login auditing which is critical for requirement #22
         return """
+        -- Create temp table for settings
+        DECLARE @AuditLevel INT;
+        EXEC master.dbo.xp_instance_regread 
+            N'HKEY_LOCAL_MACHINE', 
+            N'Software\\Microsoft\\MSSQLServer\\MSSQLServer', 
+            N'AuditLevel',
+            @AuditLevel OUTPUT;
+        
         SELECT 
-            CAST(SERVERPROPERTY('ServerName') AS NVARCHAR(256)) AS ServerName,
-            (SELECT CAST(value_in_use AS INT) FROM sys.configurations WHERE name = 'default trace enabled') AS DefaultTraceEnabled,
-            (SELECT CAST(value_in_use AS INT) FROM sys.configurations WHERE name = 'c2 audit mode') AS C2AuditMode,
-            (SELECT CAST(value_in_use AS INT) FROM sys.configurations WHERE name = 'common criteria compliance enabled') AS CommonCriteria
+            'Login Auditing' AS SettingName,
+            CASE @AuditLevel
+                WHEN 0 THEN 'None'
+                WHEN 1 THEN 'Success Only'
+                WHEN 2 THEN 'Failure Only'
+                WHEN 3 THEN 'Both'
+                ELSE 'Unknown'
+            END AS CurrentValue,
+            'Both' AS RecommendedValue,
+            CASE WHEN @AuditLevel = 3 THEN 'PASS' ELSE 'FAIL' END AS Status
+        UNION ALL
+        SELECT 
+            'Default Trace' AS SettingName,
+            CASE WHEN (SELECT CAST(value_in_use AS INT) FROM sys.configurations WHERE name = 'default trace enabled') = 1 
+                 THEN 'Enabled' ELSE 'Disabled' END AS CurrentValue,
+            'Enabled' AS RecommendedValue,
+            CASE WHEN (SELECT CAST(value_in_use AS INT) FROM sys.configurations WHERE name = 'default trace enabled') = 1 
+                 THEN 'PASS' ELSE 'FAIL' END AS Status
+        UNION ALL
+        SELECT 
+            'C2 Audit Mode' AS SettingName,
+            CASE WHEN (SELECT CAST(value_in_use AS INT) FROM sys.configurations WHERE name = 'c2 audit mode') = 1 
+                 THEN 'Enabled' ELSE 'Disabled' END AS CurrentValue,
+            'Disabled' AS RecommendedValue,  -- C2 is deprecated
+            'PASS' AS Status  -- Either is acceptable
         """
 
     def get_service_master_key(self) -> str:
@@ -1351,13 +1389,50 @@ class Sql2019PlusProvider(QueryProvider):
         """
 
     def get_audit_settings(self) -> str:
+        # Returns audit settings in SettingName/CurrentValue format
+        # Includes login auditing which is critical for requirement #22
         return """
+        -- Get login audit level from registry
+        DECLARE @AuditLevel INT;
+        EXEC master.dbo.xp_instance_regread 
+            N'HKEY_LOCAL_MACHINE', 
+            N'Software\\Microsoft\\MSSQLServer\\MSSQLServer', 
+            N'AuditLevel',
+            @AuditLevel OUTPUT;
+        
         SELECT 
-            CAST(SERVERPROPERTY('ServerName') AS NVARCHAR(256)) AS ServerName,
-            (SELECT CAST(value_in_use AS INT) FROM sys.configurations WHERE name = 'default trace enabled') AS DefaultTraceEnabled,
-            (SELECT CAST(value_in_use AS INT) FROM sys.configurations WHERE name = 'c2 audit mode') AS C2AuditMode,
-            (SELECT CAST(value_in_use AS INT) FROM sys.configurations WHERE name = 'common criteria compliance enabled') AS CommonCriteria,
-            (SELECT CAST(value_in_use AS INT) FROM sys.configurations WHERE name = 'contained database authentication') AS ContainedDbAuth
+            'Login Auditing' AS SettingName,
+            CASE @AuditLevel
+                WHEN 0 THEN 'None'
+                WHEN 1 THEN 'Success Only'
+                WHEN 2 THEN 'Failure Only'
+                WHEN 3 THEN 'Both'
+                ELSE 'Unknown'
+            END AS CurrentValue,
+            'Both' AS RecommendedValue,
+            CASE WHEN @AuditLevel = 3 THEN 'PASS' ELSE 'FAIL' END AS Status
+        UNION ALL
+        SELECT 
+            'Default Trace' AS SettingName,
+            CASE WHEN (SELECT CAST(value_in_use AS INT) FROM sys.configurations WHERE name = 'default trace enabled') = 1 
+                 THEN 'Enabled' ELSE 'Disabled' END AS CurrentValue,
+            'Enabled' AS RecommendedValue,
+            CASE WHEN (SELECT CAST(value_in_use AS INT) FROM sys.configurations WHERE name = 'default trace enabled') = 1 
+                 THEN 'PASS' ELSE 'FAIL' END AS Status
+        UNION ALL
+        SELECT 
+            'C2 Audit Mode' AS SettingName,
+            CASE WHEN (SELECT CAST(value_in_use AS INT) FROM sys.configurations WHERE name = 'c2 audit mode') = 1 
+                 THEN 'Enabled' ELSE 'Disabled' END AS CurrentValue,
+            'Disabled' AS RecommendedValue,
+            'PASS' AS Status
+        UNION ALL
+        SELECT 
+            'Common Criteria' AS SettingName,
+            CASE WHEN (SELECT CAST(value_in_use AS INT) FROM sys.configurations WHERE name = 'common criteria compliance enabled') = 1 
+                 THEN 'Enabled' ELSE 'Disabled' END AS CurrentValue,
+            'Disabled' AS RecommendedValue,
+            'PASS' AS Status
         """
 
     def get_service_master_key(self) -> str:

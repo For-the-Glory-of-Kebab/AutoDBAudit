@@ -41,7 +41,8 @@ BACKUP_COLUMNS = (
     ColumnDef("Backup Path", 40, Alignments.LEFT),
     ColumnDef("Size (MB)", 12, Alignments.RIGHT),
     ColumnDef("Status", 10, Alignments.CENTER, is_status=True),
-    ColumnDef("Notes", 35, Alignments.LEFT, is_manual=True),
+    ColumnDef("Justification", 35, Alignments.LEFT, is_manual=True),  # FAIL + justification = exception
+    ColumnDef("Notes", 25, Alignments.LEFT, is_manual=True),
 )
 
 BACKUP_CONFIG = SheetConfig(name="Backups", columns=BACKUP_COLUMNS)

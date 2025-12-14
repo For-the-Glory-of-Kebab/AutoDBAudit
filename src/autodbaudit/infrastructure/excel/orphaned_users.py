@@ -106,6 +106,47 @@ class OrphanedUserSheetMixin(ServerGroupMixin, BaseSheetMixin):
         
         self._increment_warn()
     
+    def add_orphaned_user_not_found(
+        self,
+        server_name: str,
+        instance_name: str,
+    ) -> None:
+        """Add a 'Not Found' row for instances with no orphaned users.
+        
+        This provides assurance that the instance was scanned.
+        """
+        if self._orphaned_user_sheet is None:
+            self._orphaned_user_sheet = self._ensure_sheet(ORPHANED_USER_CONFIG)
+            self._init_grouping(self._orphaned_user_sheet, ORPHANED_USER_CONFIG)
+            self._add_orphan_dropdowns()
+        
+        ws = self._orphaned_user_sheet
+        
+        # Track grouping and get row color
+        row_color = self._track_group(server_name, instance_name, ORPHANED_USER_CONFIG.name)
+        
+        data = [
+            None,  # Action indicator (column A) - no action needed
+            server_name,
+            instance_name or "(Default)",
+            "(All Databases)",  # Database
+            "— None Found —",   # User Name
+            "",                 # Type
+            None,               # Status - styled separately  
+            "",                 # Remediation
+        ]
+        
+        row = self._write_row(ws, ORPHANED_USER_CONFIG, data)
+        
+        # Apply row color to data columns
+        self._apply_row_color(row, row_color, data_cols=[2, 3, 4, 5, 6], ws=ws)
+        
+        # Style Status column as PASS (no orphans = good)
+        status_cell = ws.cell(row=row, column=7)
+        status_cell.value = "✅ None Found"
+        status_cell.fill = Fills.PASS
+        status_cell.font = Fonts.PASS
+    
     def _finalize_orphaned_users(self) -> None:
         """Finalize orphaned users sheet - merge remaining groups."""
         if self._orphaned_user_sheet:

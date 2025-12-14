@@ -341,15 +341,11 @@ Examples:
                     audit_id = latest["id"]
 
             service = FinalizeService(
-                db_path=DEFAULT_OUTPUT_DIR / "audit_history.db",
                 output_dir=DEFAULT_OUTPUT_DIR
             )
             result = service.finalize(
-                excel_path=args.excel,
-                baseline_run_id=args.baseline_run,
+                run_id=args.baseline_run,  # baseline_run maps to run_id in service
                 force=args.force,
-                audit_manager=manager,
-                audit_id=audit_id,
             )
 
             if "error" in result:
@@ -384,7 +380,7 @@ Examples:
             from autodbaudit.application.finalize_service import FinalizeService
 
             service = FinalizeService(
-                db_path=DEFAULT_OUTPUT_DIR / "audit_history.db"
+                output_dir=DEFAULT_OUTPUT_DIR
             )
             status = service.get_finalization_status(args.baseline_run)
 

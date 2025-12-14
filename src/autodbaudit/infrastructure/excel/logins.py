@@ -41,7 +41,8 @@ LOGIN_COLUMNS = (
     ColumnDef("Enabled", 10, Alignments.CENTER),
     ColumnDef("Password Policy", 14, Alignments.CENTER),
     ColumnDef("Default Database", 18, Alignments.LEFT),
-    ColumnDef("Notes", 30, Alignments.LEFT, is_manual=True),
+    ColumnDef("Justification", 35, Alignments.LEFT, is_manual=True),  # FAIL + justification = exception
+    ColumnDef("Notes", 25, Alignments.LEFT, is_manual=True),
     LAST_REVISED_COLUMN,
 )
 

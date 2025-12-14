@@ -23,6 +23,10 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Colors for CLI output
+RED = "\033[91m"
+RESET = "\033[0m"
+
 
 class SyncService:
     """
@@ -100,6 +104,20 @@ class SyncService:
         if initial_run_id is None:
             logger.error("No baseline audit found. Run --audit first.")
             return {"error": "No baseline audit found"}
+
+        # ---------------------------------------------------------------------
+        # Pre-flight Check: Finalized State
+        # ---------------------------------------------------------------------
+        conn = sqlite3.connect(self.db_path)
+        row = conn.execute("SELECT status FROM audit_runs WHERE id = ?", (initial_run_id,)).fetchone()
+        conn.close()
+        
+        if row and row[0] == 'finalized':
+            msg = f"Audit Run #{initial_run_id} is FINALIZED. Sync is blocked to preserve state."
+            logger.error(msg)
+            print(f"\n{RED}⛔ ERROR: {msg}{RESET}")
+            print(f"To modify this audit, you must start a NEW baseline run.{RESET}\n")
+            return {"error": "Audit is finalized"}
 
         # ---------------------------------------------------------------------
         # Pre-flight Check: File Locking
@@ -287,27 +305,37 @@ class SyncService:
 
         # 1. Update DB Action Log
         result = self._update_action_log(conn, initial_run_id, current_run_id)
+        
+        # CRITICAL: Commit action_log changes before get_actions reads them
+        conn.commit()
+        logger.debug("Committed %d action_log entries to database", 
+                     result["fixed"] + result["still_failing"] + result["regression"] + result["new"])
 
         # Merge drift count into results
         result["fixed"] += drift_count
 
-        # 2. Add Actions to Excel Writer
-        # Get all actions for this sync cycle (which we just updated)
-        # We filter by last_sync_run_id = current_run_id to show relevant updates,
-        # or maybe all actions? User wants "fixes".
-        # Refactored: List ALL current Open findings + ALL Fixed items from history.
-        # List actions from the action_log history (Audit Trail).
-        # This shows fixed items and regressions over time.
+        # 2. Preserve ALL User Annotations (Not just Actions sheet)
+        # Use AnnotationSyncService to read from ALL sheets
+        from autodbaudit.application.annotation_sync import AnnotationSyncService
+        annotation_sync = AnnotationSyncService(db_path=self.db_path)
         
-        # Read existing annotations from previous Excel (if any) to preserve user edits
+        # Read all annotations from existing Excel (all sheets)
+        all_annotations = annotation_sync.read_all_from_excel(path_latest)
+        logger.info("Preserved %d annotations from existing Excel", len(all_annotations))
+        
+        # Also read action-specific annotations for backward compatibility
         preserved_annotations = self._read_existing_action_annotations(path_latest)
         
+        # 3. Add Actions to Excel Writer
         actions = self.get_actions(initial_run_id)
         valid_actions_count = 0
         
         for action in actions:
-            # We list all actions in the log as they represent the audit trail of changes
-            # (Fixed, Regression, New, etc.)
+            # Skip still_failing - these are not changes, shouldn't appear in changelog
+            if action["action_type"] == "still_failing":
+                continue
+            
+            # We list all actual CHANGES in the log (Fixed, Regression, New)
             
             # Parse entity key (format: server|instance|finding_type|entity_name)
             entity = action["entity_key"]
@@ -317,29 +345,35 @@ class SyncService:
             instance = parts[1] if len(parts) > 1 and parts[1] else "(Default)"
             
             # Get finding description for key matching
-            finding_desc = action["action_description"] or f"{action['action_type']}: {action['finding_type']}"
+            finding_desc = action["action_description"] or f"{action['action_type'].title()}: {action['finding_type']}"
             
             # Build lookup key to find preserved annotations
             inst_normalized = "" if instance == "(Default)" else instance
             lookup_key = f"{server}|{inst_normalized}|{finding_desc}"
 
-            # Default values for required columns
-            risk = "High" if action["action_type"] == "regression" else "Medium"
-            rec = (
-                "Remediated via sync."
-                if action["action_type"] == "fixed"
-                else "Investigate regression."
-            )
-            status_map = {
-                "fixed": "Closed",
-                "regression": "Open",
-                "new": "Open",
-            }
-            status = status_map.get(action["action_type"], "Open")
+            # Map action type to display values
+            # Actions sheet is a CHANGELOG - show what changed, not recommendations
+            action_type = action["action_type"]
+            
+            if action_type == "fixed":
+                risk = "Low"  # Fixed items are good news
+                change_desc = f"✅ Fixed: {action['finding_type']}"
+                status = "Closed"
+            elif action_type == "regression":
+                risk = "High"  # Regressions are bad
+                change_desc = f"⚠️ Regressed: {action['finding_type']}"
+                status = "Open"
+            elif action_type == "new":
+                risk = "Medium"  # New issues need attention
+                change_desc = f"🆕 New Issue: {action['finding_type']}"
+                status = "Open"
+            else:
+                risk = "Medium"
+                change_desc = f"{action_type}: {action['finding_type']}"
+                status = "Open"
 
             # Initialize manual fields
             assigned_to = ""
-            due_date = ""
             notes = ""
 
             # Parse timestamp - prefer user's date if they edited it in Excel
@@ -347,7 +381,6 @@ class SyncService:
             if lookup_key in preserved_annotations:
                 ann = preserved_annotations[lookup_key]
                 assigned_to = ann.get("assigned_to", "")
-                due_date = ann.get("due_date", "")
                 notes = ann.get("resolution_notes", "")
                 
                 user_date = ann.get("found_date")
@@ -361,7 +394,7 @@ class SyncService:
                         except (ValueError, TypeError):
                             pass
             
-            # Fall back to DB date (Action Log Date - strict First Detected)
+            # Fall back to DB date (Action Log Date - when change was first detected)
             if not f_date and action["action_date"]:
                 try:
                     f_date = datetime.fromisoformat(action["action_date"])
@@ -374,19 +407,18 @@ class SyncService:
                 category=action["finding_type"] or "General",
                 finding=finding_desc,
                 risk_level=risk,
-                recommendation=rec,
+                recommendation=change_desc,  # Using recommendation column for change description
                 status=status,
                 found_date=f_date,
                 assigned_to=assigned_to,
-                due_date=due_date,
                 resolution_notes=notes,
             )
             valid_actions_count += 1
             
         if valid_actions_count == 0:
-            logger.info("No actions in history log to report.")
+            logger.info("No changes detected for Actions changelog.")
         else:
-            logger.info("Injected %d actions into Excel report", valid_actions_count)
+            logger.info("Added %d change entries to Actions changelog", valid_actions_count)
 
         # -------------------------------------------------------------------------
         # 3. Calculate Dual Stats (Baseline vs Current AND Previous vs Current)
@@ -436,6 +468,10 @@ class SyncService:
             # If prev_run == initial_run, recent stats == baseline stats (expected)
             if prev_run_id == initial_run_id:
                 logger.info("First sync detected: 'Since Last Run' == 'Since Baseline'")
+                # Force equality to avoid confusing discrepancies from minor diff logic differences
+                recent_stats["fixed"] = result["fixed"]
+                recent_stats["regression"] = result["regression"]
+                recent_stats["new"] = result["new"]
         else:
             logger.warning("No previous run found for recent stats calculation")
 
@@ -476,6 +512,33 @@ class SyncService:
             print(
                 f"⚠️  Warning: Could not update {path_latest.name} (File is open). Close it to see updates."
             )
+
+        # C. Restore user annotations to fresh reports
+        if all_annotations:
+            try:
+                cells_updated = annotation_sync.write_all_to_excel(path_latest, all_annotations)
+                if cells_updated > 0:
+                    logger.info("Restored %d annotation cells to %s", cells_updated, path_latest.name)
+                    print(f"📝 Restored {cells_updated} user annotations from previous report")
+            except Exception as e:
+                logger.warning("Failed to restore annotations: %s", e)
+        
+        # D. Detect and log exception changes (justification added/changed)
+        # Load previous annotations from DB to compare
+        db_annotations = annotation_sync.load_from_db()
+        exception_changes = annotation_sync.detect_exception_changes(db_annotations, all_annotations)
+        
+        if exception_changes:
+            print(f"📋 {len(exception_changes)} exception(s) documented")
+            for exc in exception_changes:
+                # Log each exception as an action
+                self._log_exception_action(
+                    conn=conn,
+                    initial_run_id=initial_run_id,
+                    current_run_id=current_run_id,
+                    exc=exc,
+                )
+            conn.commit()
 
         result["report_path"] = str(path_archive)
         result["initial_run_id"] = initial_run_id
@@ -582,19 +645,11 @@ class SyncService:
                     "FAIL",
                     "WARN",
                 ):
-                    # STILL FAILING (potential exception)
-                    self._upsert_action(
-                        conn,
-                        initial_run_id,
-                        key,
-                        initial["finding_type"],
-                        "still_failing",
-                        now,
-                        existing_actions,
-                        None,  # No action description for still failing
-                        current_run_id,
-                    )
+                    # STILL FAILING - NOT A CHANGE, don't log to action sheet
+                    # The Actions sheet is a CHANGELOG - only record actual state transitions
+                    # still_failing means: was bad, still bad = no change occurred
                     counts["still_failing"] += 1
+                    # Do NOT upsert - this is not a change event
 
                 elif initial["status"] == "PASS" and current["status"] in (
                     "FAIL",
@@ -745,6 +800,64 @@ class SyncService:
                     current_run_id,
                 ),
             )
+
+    def _log_exception_action(
+        self,
+        conn,
+        initial_run_id: int,
+        current_run_id: int,
+        exc: dict,
+    ) -> None:
+        """
+        Log a documented exception as an action in the action_log.
+        
+        This creates an append-only record when a user adds justification
+        to a FAIL/WARN item, marking it as a documented exception.
+        
+        Args:
+            conn: Database connection
+            initial_run_id: The baseline run ID
+            current_run_id: Current sync run ID
+            exc: Exception dict from detect_exception_changes
+        """
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        # Build action description with justification preview
+        justification_preview = exc["justification"][:60]
+        if len(exc["justification"]) > 60:
+            justification_preview += "..."
+        
+        # Create entity key in format: entity_type|entity_key|exception
+        entity_key = f"{exc['entity_type']}|{exc['entity_key']}|exception"
+        
+        # Determine finding type from entity type
+        entity_type_display = exc["entity_type"].replace("_", " ").title()
+        
+        action_type = "exception_documented"
+        action_description = f"Exception Documented: {entity_type_display} - {justification_preview}"
+        
+        # Always INSERT (append-only for exceptions)
+        # Don't update existing - each justification change is a new log entry
+        conn.execute(
+            """
+            INSERT INTO action_log
+            (initial_run_id, entity_key, finding_type, action_type, 
+             action_date, action_description, captured_at, last_sync_run_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+            (
+                initial_run_id,
+                entity_key,
+                f"Exception: {entity_type_display}",
+                action_type,
+                now,
+                action_description,
+                now,
+                current_run_id,
+            ),
+        )
+        
+        logger.info("Logged exception action: %s", entity_key[:50])
 
     def _read_existing_action_annotations(
         self, excel_path: Path

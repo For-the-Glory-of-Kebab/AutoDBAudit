@@ -13,10 +13,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Literal
 
 from openpyxl.styles import (
-    Font, PatternFill, Alignment, Border, Side, NamedStyle
+    Font, PatternFill, Alignment, Border, Side
 )
 from openpyxl.worksheet.worksheet import Worksheet
 from openpyxl.utils import get_column_letter
@@ -172,6 +171,7 @@ class Fonts:
     FAIL = Font(name="Calibri", size=10, bold=True, color=Colors.FAIL_TEXT)
     WARN = Font(name="Calibri", size=10, bold=True, color=Colors.WARN_TEXT)
     CRITICAL = Font(name="Calibri", size=10, bold=True, color=Colors.CRITICAL_TEXT)
+    INFO = Font(name="Calibri", size=10, bold=True, color=Colors.INFO_TEXT)  # Documented exception
     NEW = Font(name="Calibri", size=10, bold=True, color=Colors.NEW_TEXT)
 
 

@@ -41,6 +41,7 @@ __all__ = [
     "LAST_REVISED_COLUMN",
     "ACTION_COLUMN",
     "apply_action_needed_styling",
+    "apply_exception_documented_styling",
 ]
 
 
@@ -79,6 +80,20 @@ def apply_action_needed_styling(cell, needs_action: bool) -> None:
         cell.alignment = Alignments.CENTER
     else:
         cell.value = ""
+
+
+def apply_exception_documented_styling(cell) -> None:
+    """
+    Apply documented-exception indicator to a cell.
+    
+    Shows ✅ icon with blue/info background for rows where a FAIL/WARN
+    has been documented with a justification. Indicates "addressed but
+    not fixed" - an acceptable deviation from policy.
+    """
+    cell.value = Icons.PASS  # ✅
+    cell.fill = Fills.INFO   # Blue background
+    cell.font = Fonts.INFO
+    cell.alignment = Alignments.CENTER
 
 
 # ============================================================================

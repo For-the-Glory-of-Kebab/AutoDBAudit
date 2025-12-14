@@ -629,6 +629,7 @@ class AuditDataCollector:
     def _collect_db_users(self, sn: str, inst: str, user_dbs: list[dict]) -> int:
         """Collect database users from all user databases."""
         count = 0
+        orphan_count = 0  # Track orphaned users for this instance
         for db in user_dbs:
             db_name = db.get("DatabaseName", "")
             if db.get("State", "ONLINE") != "ONLINE":
@@ -691,6 +692,7 @@ class AuditDataCollector:
 
                     # Orphaned user finding
                     if is_orphaned:
+                        orphan_count += 1
                         self.writer.add_orphaned_user(
                             server_name=sn,
                             instance_name=inst,
@@ -719,11 +721,23 @@ class AuditDataCollector:
                         )
             except Exception:
                 pass
+        
+        # Add "Not Found" row if no orphaned users were found for this instance
+        if orphan_count == 0 and count > 0:
+            self.writer.add_orphaned_user_not_found(
+                server_name=sn,
+                instance_name=inst,
+            )
+        
         return count
 
     def _collect_db_roles(self, sn: str, inst: str, user_dbs: list[dict]) -> int:
         """Collect database role memberships."""
         count = 0
+        # Track seen role memberships to prevent duplicates
+        # Key: (database, role, member)
+        seen_memberships: set[tuple[str, str, str]] = set()
+        
         for db in user_dbs:
             db_name = db.get("DatabaseName", "")
             if db.get("State", "ONLINE") != "ONLINE":
@@ -733,16 +747,22 @@ class AuditDataCollector:
                     self.prov.get_database_role_members(db_name)
                 )
 
-                # Aggregate for Matrix View (User -> [Roles])
-                # Key: (MemberName, MemberType) -> List[RoleName]
-                user_matrix: dict[tuple[str, str], list[str]] = {}
+                # Aggregate for Matrix View per DATABASE
+                # Key: (MemberName, MemberType) -> Set[RoleName]
+                user_matrix: dict[tuple[str, str], set[str]] = {}
 
                 for r in roles:
                     role_name = r.get("RoleName", "")
                     member_name = r.get("MemberName", "")
                     member_type = r.get("MemberType", "")
+                    
+                    # Skip duplicates (same db + role + member)
+                    membership_key = (db_name, role_name, member_name)
+                    if membership_key in seen_memberships:
+                        continue
+                    seen_memberships.add(membership_key)
 
-                    # Add to standard sheet
+                    # Add to standard Database Roles sheet
                     self.writer.add_db_role_member(
                         server_name=sn,
                         instance_name=inst,
@@ -752,11 +772,11 @@ class AuditDataCollector:
                         member_type=member_type,
                     )
 
-                    # Add to aggregation
+                    # Add to per-database matrix aggregation
                     key = (member_name, member_type)
                     if key not in user_matrix:
-                        user_matrix[key] = []
-                    user_matrix[key].append(role_name)
+                        user_matrix[key] = set()
+                    user_matrix[key].add(role_name)
 
                     # Persist to SQLite
                     if self._db_conn and self._instance_id:
@@ -778,20 +798,27 @@ class AuditDataCollector:
                             pass
 
                     count += 1
-
-                # Write Matrix Rows
+                
+                # Write Matrix Rows for this DATABASE
+                # Deduplicate by member name (case-insensitive) within this DB
+                seen_in_db: set[str] = set()
                 for (m_name, m_type), m_roles in user_matrix.items():
+                    if m_name.lower() in seen_in_db:
+                        continue
+                    seen_in_db.add(m_name.lower())
+                    
                     self.writer.add_role_matrix_row(
                         server_name=sn,
                         instance_name=inst,
                         database_name=db_name,
                         principal_name=m_name,
                         principal_type=m_type,
-                        roles=m_roles,
+                        roles=list(m_roles),
                     )
 
             except Exception:
                 pass
+        
         return count
 
     def _collect_linked_servers(self, sn: str, inst: str) -> int:
@@ -994,17 +1021,34 @@ class AuditDataCollector:
             return 0
 
     def _collect_audit_settings(self, sn: str, inst: str) -> int:
-        """Collect audit settings."""
+        """Collect audit settings including login auditing (Requirement #22)."""
         try:
             audit = self.conn.execute_query(self.prov.get_audit_settings())
             for a in audit:
+                setting_name = a.get("SettingName", "Unknown Setting")
+                current_value = a.get("CurrentValue", "")
+                recommended = a.get("RecommendedValue", current_value)
+                status = a.get("Status", "PASS")
+                
                 self.writer.add_audit_setting(
                     server_name=sn,
                     instance_name=inst,
-                    setting_name=a.get("SettingName", "Login Auditing"),
-                    current_value=a.get("CurrentValue", ""),
-                    recommended_value="All",
+                    setting_name=setting_name,
+                    current_value=current_value,
+                    recommended_value=recommended,
                 )
+                
+                # Save finding for FAIL status (especially Login Auditing)
+                if status == "FAIL":
+                    self._save_finding(
+                        finding_type="audit_settings",
+                        entity_name=setting_name,
+                        status="FAIL",
+                        risk_level="high" if "Login" in setting_name else "medium",
+                        description=f"{setting_name} is '{current_value}', should be '{recommended}'",
+                        recommendation=f"Enable {setting_name} to '{recommended}'",
+                    )
+                    
             return len(audit)
         except Exception as e:
             logger.warning("Audit settings failed: %s", e)

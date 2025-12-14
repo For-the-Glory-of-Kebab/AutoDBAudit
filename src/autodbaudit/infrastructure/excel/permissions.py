@@ -19,6 +19,8 @@ from autodbaudit.infrastructure.excel_styles import (
 from autodbaudit.infrastructure.excel.base import (
     BaseSheetMixin,
     SheetConfig,
+    ACTION_COLUMN,
+    apply_action_needed_styling,
 )
 from autodbaudit.infrastructure.excel.server_group import ServerGroupMixin
 
@@ -27,17 +29,19 @@ __all__ = ["PermissionSheetMixin", "PERMISSION_CONFIG"]
 
 
 PERMISSION_COLUMNS = (
+    ACTION_COLUMN,  # Column A: Action indicator (⏳ needs attention)
     ColumnDef("Server", 18, Alignments.LEFT),
     ColumnDef("Instance", 15, Alignments.LEFT),
-    ColumnDef("Scope", 10, Alignments.CENTER),  # SERVER / DATABASE
+    ColumnDef("Scope", 10, Alignments.CENTER),
     ColumnDef("Database", 20, Alignments.LEFT),
     ColumnDef("Grantee", 25, Alignments.LEFT),
     ColumnDef("Permission", 25, Alignments.LEFT),
-    ColumnDef("State", 15, Alignments.CENTER),  # GRANT / DENY / WITH GRANT
+    ColumnDef("State", 15, Alignments.CENTER),
     ColumnDef("Entity Type", 15, Alignments.CENTER),
     ColumnDef("Entity Name", 35, Alignments.LEFT),
     ColumnDef("Risk", 12, Alignments.CENTER),
-    ColumnDef("Notes", 40, Alignments.LEFT, is_manual=True),
+    ColumnDef("Justification", 35, Alignments.LEFT, is_manual=True),
+    ColumnDef("Notes", 30, Alignments.LEFT, is_manual=True),
 )
 
 PERMISSION_CONFIG = SheetConfig(name="Permission Grants", columns=PERMISSION_COLUMNS)
@@ -158,8 +162,12 @@ class PermissionSheetMixin(ServerGroupMixin, BaseSheetMixin):
 
         # Format Scope
         scope_display = scope.upper()
+        
+        # Determine if action needed (high risk or deny)
+        needs_action = risk_level == "high"
 
         data = [
+            None,  # Action indicator (column A)
             server_name,
             instance_name or "(Default)",
             scope_display,
@@ -170,16 +178,20 @@ class PermissionSheetMixin(ServerGroupMixin, BaseSheetMixin):
             class_desc or "",
             entity_name,
             None,  # Risk - styled below
-            "",  # Notes
+            "",    # Justification
+            "",    # Notes
         ]
 
         row = self._write_row(ws, PERMISSION_CONFIG, data)
+        
+        # Apply action indicator (column 1)
+        apply_action_needed_styling(ws.cell(row=row, column=1), needs_action)
 
-        # Apply row color to data columns
-        self._apply_row_color(row, row_color, data_cols=[1, 2, 3, 4, 5, 7, 8], ws=ws)
+        # Apply row color to data columns (shifted +1)
+        self._apply_row_color(row, row_color, data_cols=[2, 3, 4, 5, 6, 8, 9], ws=ws)
 
-        # Style State Column (Col 7)
-        state_cell = ws.cell(row=row, column=7)
+        # Style State Column (Col 8, shifted +1)
+        state_cell = ws.cell(row=row, column=8)
         if state_upper == "DENY":
             state_cell.fill = Fills.FAIL
             state_cell.font = Fonts.FAIL
@@ -187,8 +199,8 @@ class PermissionSheetMixin(ServerGroupMixin, BaseSheetMixin):
             state_cell.fill = Fills.WARN
             state_cell.font = Fonts.WARN
 
-        # Style Risk Column (Col 10)
-        risk_cell = ws.cell(row=row, column=10)
+        # Style Risk Column (Col 11, shifted +1)
+        risk_cell = ws.cell(row=row, column=11)
         if risk_level == "high":
             risk_cell.value = "🔴 Risk"
             risk_cell.fill = Fills.FAIL

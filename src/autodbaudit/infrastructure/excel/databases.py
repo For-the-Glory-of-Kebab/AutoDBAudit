@@ -23,6 +23,8 @@ from autodbaudit.infrastructure.excel.base import (
     BaseSheetMixin,
     SheetConfig,
     format_size_mb,
+    ACTION_COLUMN,
+    apply_action_needed_styling,
 )
 from autodbaudit.infrastructure.excel.server_group import ServerGroupMixin
 
@@ -31,6 +33,7 @@ __all__ = ["DatabaseSheetMixin", "DATABASE_CONFIG"]
 
 
 DATABASE_COLUMNS = (
+    ACTION_COLUMN,  # Column A: Action indicator (⏳ needs attention)
     ColumnDef("Server", 18, Alignments.LEFT),
     ColumnDef("Instance", 15, Alignments.LEFT),
     ColumnDef("Database", 25, Alignments.LEFT),
@@ -40,7 +43,8 @@ DATABASE_COLUMNS = (
     ColumnDef("Data (MB)", 12, Alignments.RIGHT),
     ColumnDef("Log (MB)", 12, Alignments.RIGHT),
     ColumnDef("Trustworthy", 12, Alignments.CENTER),
-    ColumnDef("Notes", 40, Alignments.LEFT, is_manual=True),
+    ColumnDef("Justification", 35, Alignments.LEFT, is_manual=True),
+    ColumnDef("Notes", 30, Alignments.LEFT, is_manual=True),
 )
 
 DATABASE_CONFIG = SheetConfig(name="Databases", columns=DATABASE_COLUMNS)
@@ -74,7 +78,13 @@ class DatabaseSheetMixin(ServerGroupMixin, BaseSheetMixin):
         # Track grouping and get row color
         row_color = self._track_group(server_name, instance_name, DATABASE_CONFIG.name)
         
+        # Determine if action needed (TRUSTWORTHY ON for user DBs)
+        system_dbs = {"master", "msdb", "model", "tempdb"}
+        is_system_db = database_name.lower() in system_dbs
+        needs_action = is_trustworthy and not is_system_db
+        
         data = [
+            None,  # Action indicator (column A)
             server_name,
             instance_name or "(Default)",
             database_name,
@@ -84,16 +94,20 @@ class DatabaseSheetMixin(ServerGroupMixin, BaseSheetMixin):
             format_size_mb(data_size_mb),
             format_size_mb(log_size_mb),
             None,  # Trustworthy
+            "",    # Justification
             "",    # Notes
         ]
         
         row = self._write_row(ws, DATABASE_CONFIG, data)
         
-        # Apply row color to data columns (except styled ones)
-        self._apply_row_color(row, row_color, data_cols=[1, 2, 3, 4, 7, 8], ws=ws)
+        # Apply action indicator (column 1)
+        apply_action_needed_styling(ws.cell(row=row, column=1), needs_action)
         
-        # Style Recovery Model column (column 5)
-        recovery_cell = ws.cell(row=row, column=5)
+        # Apply row color to data columns (shifted +1 for action column)
+        self._apply_row_color(row, row_color, data_cols=[2, 3, 4, 5, 8, 9], ws=ws)
+        
+        # Style Recovery Model column (column 6, shifted +1)
+        recovery_cell = ws.cell(row=row, column=6)
         recovery_lower = (recovery_model or "").lower()
         if "full" in recovery_lower:
             recovery_cell.value = "🛡️ Full"
@@ -107,8 +121,8 @@ class DatabaseSheetMixin(ServerGroupMixin, BaseSheetMixin):
         else:
             recovery_cell.value = recovery_model or ""
         
-        # Style State column (column 6)
-        state_cell = ws.cell(row=row, column=6)
+        # Style State column (column 7, shifted +1)
+        state_cell = ws.cell(row=row, column=7)
         state_lower = (state or "").lower()
         if "online" in state_lower:
             state_cell.value = "✓ Online"
@@ -135,12 +149,9 @@ class DatabaseSheetMixin(ServerGroupMixin, BaseSheetMixin):
         else:
             state_cell.value = state or ""
         
-        # Trustworthy ON is a security concern for user databases (column 9)
-        # But for system databases (msdb, master), TRUSTWORTHY ON is expected
-        system_dbs = {"master", "msdb", "model", "tempdb"}
-        is_system_db = database_name.lower() in system_dbs
-        
-        trustworthy_cell = ws.cell(row=row, column=9)
+        # Trustworthy column (column 10, shifted +1)
+        # is_system_db already calculated above for needs_action
+        trustworthy_cell = ws.cell(row=row, column=10)
         if is_system_db:
             # System DB - show value but don't mark as pass/fail
             trustworthy_cell.value = "✓ ON" if is_trustworthy else "✗ OFF"

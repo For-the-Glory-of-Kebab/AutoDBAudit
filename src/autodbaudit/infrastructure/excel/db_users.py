@@ -23,6 +23,8 @@ from autodbaudit.infrastructure.excel_styles import (
 from autodbaudit.infrastructure.excel.base import (
     BaseSheetMixin,
     SheetConfig,
+    ACTION_COLUMN,
+    apply_action_needed_styling,
 )
 from autodbaudit.infrastructure.excel.server_group import ServerGroupMixin
 
@@ -42,15 +44,17 @@ SYSTEM_USERS = frozenset({
 
 
 DB_USER_COLUMNS = (
+    ACTION_COLUMN,  # Column A: Action indicator (⏳ needs attention)
     ColumnDef("Server", 18, Alignments.LEFT),
     ColumnDef("Instance", 14, Alignments.LEFT),
     ColumnDef("Database", 18, Alignments.LEFT),
     ColumnDef("User Name", 22, Alignments.LEFT),
     ColumnDef("Type", 16, Alignments.LEFT),
     ColumnDef("Mapped Login", 22, Alignments.LEFT),
-    ColumnDef("Login Status", 14, Alignments.CENTER),  # Renamed from "Orphaned"
+    ColumnDef("Login Status", 14, Alignments.CENTER),
     ColumnDef("Compliant", 10, Alignments.CENTER),
-    ColumnDef("Notes", 35, Alignments.LEFT, is_manual=True),
+    ColumnDef("Justification", 35, Alignments.LEFT, is_manual=True),  # FAIL + justification = exception
+    ColumnDef("Notes", 25, Alignments.LEFT, is_manual=True),
 )
 
 DB_USER_CONFIG = SheetConfig(name="Database Users", columns=DB_USER_COLUMNS)
@@ -120,7 +124,11 @@ class DBUserSheetMixin(ServerGroupMixin, BaseSheetMixin):
         else:
             self._increment_pass()
         
+        # Determine if this row needs action (for ⏳ indicator)
+        needs_action = (is_guest and has_connect) or (is_orphaned and not is_system_user)
+        
         data = [
+            None,  # Action indicator (column A)
             server_name,
             instance_name or "(Default)",
             database_name,
@@ -129,16 +137,20 @@ class DBUserSheetMixin(ServerGroupMixin, BaseSheetMixin):
             mapped_login or ("(system)" if is_system_user else "(none)"),
             None,  # Login Status - styled separately
             None,  # Compliant - styled separately
+            "",    # Justification
             "",    # Notes
         ]
         
         row = self._write_row(ws, DB_USER_CONFIG, data)
         
-        # Apply row color to data columns
-        self._apply_row_color(row, row_color, data_cols=[1, 2, 3, 4, 5, 6], ws=ws)
+        # Apply action indicator (column 1)
+        apply_action_needed_styling(ws.cell(row=row, column=1), needs_action)
         
-        # Style Login Status column (column 7)
-        status_cell = ws.cell(row=row, column=7)
+        # Apply row color to data columns (shifted +1 for action column)
+        self._apply_row_color(row, row_color, data_cols=[2, 3, 4, 5, 6, 7], ws=ws)
+        
+        # Style Login Status column (column 8, shifted +1)
+        status_cell = ws.cell(row=row, column=8)
         status_cell.value = login_status
         status_cell.fill = login_color
         if "Orphaned" in login_status:
@@ -146,8 +158,8 @@ class DBUserSheetMixin(ServerGroupMixin, BaseSheetMixin):
         elif "Mapped" in login_status:
             status_cell.font = Fonts.PASS
         
-        # Style Compliant column (column 8)
-        compliant_cell = ws.cell(row=row, column=8)
+        # Style Compliant column (column 9, shifted +1)
+        compliant_cell = ws.cell(row=row, column=9)
         if is_guest and has_connect:
             compliant_cell.value = "❌ GUEST"
             compliant_cell.fill = Fills.FAIL

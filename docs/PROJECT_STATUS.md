@@ -1,6 +1,6 @@
 # Project Status
 
-> **Last Updated**: 2025-12-12 (Gap Analysis Complete)
+> **Last Updated**: 2025-12-14 (Health Audit)
 
 ## Overview
 
@@ -44,7 +44,8 @@ The Action Sheet is strictly a **Diff Log**.
 | `--audit` | ✅ **Working** | Continues latest audit |
 | `--generate-remediation` | ✅ **Working** | Generates scripts with Icons & Headers |
 | `--sync` | ✅ **Working** | Progress tracking, Timestamps, & Version Drift Detection |
-| `--finalize` | ✅ **Ready for Test** | Persists final state |
+| `--finalize` | ✅ **Implemented** (Dec 14) | Archives report, locks state, syncs annotations |
+| `--finalize-status` | ✅ **Implemented** | Pre-flight checks |
 | `--apply-exceptions` | ✅ **Working** | Reads Excel notes to SQLite |
 | `--status` | ✅ **Working** | Dashboard |
 
@@ -52,55 +53,75 @@ The Action Sheet is strictly a **Diff Log**.
 
 | Command | Status | Notes |
 |---------|--------|-------|
-| `--deploy-hotfixes` | ⏳ **Stub only** | NotImplementedError |
+| `--deploy-hotfixes` | ⏳ **Stub only** | NotImplementedError (entire module) |
 | `Inventory Population`| ⏳ **Planned** | Populating `logins`, `server_info` tables |
 
 ---
 
-## E2E Testing Workflow
+## 🔴 Known Dead Code
 
-We have defined a "0 to 100" Manual E2E Test (See `docs/E2E_TESTING_GUIDE.md`):
-1.  **Baseline Audit**: Establish initial state (`ids 1-100`).
-2.  **Simulate Updates**: Downgrade DB version record to test "Upgrade Detection".
-3.  **Remediate**: Apply fixes (Simulated or Real).
-4.  **Sync**: Verify fixes and version changes.
-5.  **Finalize**: Close the loop.
+> **Action Required**: Archive or delete before production
 
----
-
-## Directory Structure & Key Files
-
-```
-AutoDBAudit/
-├── main.py                          # Entry point
-├── config/                          # Configuration
-│   └── sql_targets.json             # Target instances
-├── output/                          # Generated outputs
-│   ├── audit_report_latest.xlsx     # ✅ The "Working Copy" for Excel Notes
-│   ├── audit_history.db             # ✅ SQLite Source of Truth
-│   └── remediation_scripts/         # Generated TSQL
-├── src/autodbaudit/
-│   ├── infrastructure/sqlite/
-│   │   ├── schema.py                # Schema V2 (Inventory + Findings)
-│   │   └── store.py                 # Schema V1 (Core Tables)
-│   └── application/
-│       ├── sync_service.py          # Diffing Logic
-│       └── remediation_service.py   # Script Generation
-└── docs/
-    ├── PROJECT_STATUS.md            # This file
-    ├── E2E_TESTING_GUIDE.md         # 🧪 Manual Testing Cheatsheet
-    └── ...
-```
+| File/Module | Lines | Status | Notes |
+|-------------|-------|--------|-------|
+| `application/history_service.py` | 175 | 100% DEAD | All methods `NotImplementedError` |
+| `hotfix/` (5 files) | ~400 | 100% STUB | Designed but never implemented |
 
 ---
 
-## Known Issues / Tasks (Phase 4)
+## Completed Phases
 
-1.  **Excel Lifecycle**: Need to clarify if we keep one "Working Copy" vs snapshotting every Sync. currently overrides `audit_report_latest.xlsx`.
-2.  **Unjustified Items**: Excel needs better highlighting for items with NO Fix and NO Note.
-3.  **Reversion Logic**: Handling cases where a Fixed item breaks again (Pass -> Fail).
+### Phase 18: Exception Logic & Role Matrix Fix (Dec 14)
+-   ✅ **Database Roles Deduplication**: `seen_memberships` set prevents duplicate entries
+-   ✅ **Exception Logic Refinement**: Only log exceptions for FAIL items (⏳ indicator)
+-   ✅ **Role Matrix Per-Database**: Reverted to per-database design for audit compliance
+-   ✅ **Actions Sheet Cleanup**: Removed unnecessary "Assigned To" column
 
-## Completed Phases (Session 8)
+### Phase 17: Remediation Script Audit Settings Fix (Dec 14)
+-   ✅ **Login Auditing Fix**: Script was commented out - now generates properly
+-   ✅ **has_audit_finding Flag**: Detects audit_settings findings
+-   ✅ **Rollback Method**: Added `_rollback_disable_login_auditing()`
+
+### Phase 16: Exception Logging & Visual Indicators (Dec 14)
+-   ✅ **ACTION_COLUMN**: Added ⏳ indicator to all discrepancy sheets
+-   ✅ **Exception-to-Action Logging**: Justifications logged as "Exception Documented"
+-   ✅ **Visual Indicator Change**: ⏳→✅ when justification added during sync
+-   ✅ **Fonts.INFO**: Added blue info styling for documented exceptions
+
+### Phase 15: Actions Sheet as Changelog (Dec 14)
+-   ✅ **Change Tracking**: Actions sheet now tracks CHANGES (Fixed/Regressed/New)
+-   ✅ **Date Persistence**: Detected Date preserved across syncs
+
+### Phase 14: Sheet Column Standardization (Dec 14)
+-   ✅ **Discrepancy Sheets**: Justification + Notes columns
+-   ✅ **Info-Only Sheets**: Notes column only
+
+### Phase 13: Annotation Sync (Dec 14)
+-   ✅ **Bidirectional Sync**: Excel ↔ SQLite annotations
+-   ✅ **Stable Entity Keys**: Reliable round-trip syncing
+
+### Phase 12: Finalization & Sync Hardening (Dec 14)
+-   ✅ **FinalizeService**: Created robust finalize workflow
+-   ✅ **Sync Hardening**: Blocks sync on finalized runs
+-   ✅ **--finalize-status**: Pre-flight readiness check
+-   ✅ **--force**: Bypass flag for open findings
+-   ✅ **Annotation Sync**: Finalize imports Excel annotations to DB
+
+### Phase 11: E2E Validation (Dec 14)
+-   ✅ **Simulation Runner**: `run_simulation.py` with apply/revert modes
+-   ✅ **Version Detection**: Auto-selects 2008 vs 2019+ scripts
+-   ✅ **Interactive Mode**: Target selection with formatted display
+
+### Phase 10: Precision & Audit Trail (Dec 13)
+-   ✅ **Instance Identification**: Resolved "Default Instance" ambiguity using explicit Port targeting (e.g., `(Default:1434)`).
+-   ✅ **Late Arrival**: Sync now correctly identifies and logs servers that come online after the baseline.
+-   ✅ **Action Sheet Logic**: Refactored to "Audit Trail" mode (History-based, Manual Edit Preservation).
+-   ✅ **Config Remediation**: Fixed "Remote Access" script to properly cleanly toggle configurations.
+
+### Phase 9: Debugging & Stabilization
+-   ✅ **Fix**: SA Account Remediation missing on SQL 2008 (Fixed via `principal_id` check)
+-   ✅ **Verified**: "DEFAULT" Instance Names confirmed correct in DB/Config
+-   ✅ **Hotfix**: SQL 2008 Transaction Errors (Enabled `autocommit`)
 
 ### Phase 8: User Requests (Refinement)
 -   ✅ **Feature**: Implemented `--aggressiveness` levels for remediation Scripts
@@ -110,17 +131,8 @@ AutoDBAudit/
 -   ✅ **CLI**: Added `--aggressiveness` flag
 -   ✅ **Safety**: Implemented Universal Lockout Prevention for connecting user
 
-### Phase 9: Debugging & Stabilization
--   ✅ **Fix**: SA Account Remediation missing on SQL 2008 (Fixed via `principal_id` check)
--   ✅ **Verified**: "DEFAULT" Instance Names confirmed correct in DB/Config
--   ✅ **Hotfix**: SQL 2008 Transaction Errors (Enabled `autocommit`)
-
-### Phase 10: Precision & Audit Trail (Dec 13)
--   ✅ **Instance Identification**: Resolved "Default Instance" ambiguity using explicit Port targeting (e.g., `(Default:1434)`).
--   ✅ **Late Arrival**: Sync now correctly identifies and logs servers that come online after the baseline.
--   ✅ **Action Sheet Logic**: Refactored to "Audit Trail" mode (History-based, Manual Edit Preservation).
--   ✅ **Config Remediation**: Fixed "Remote Access" script to properly cleanly toggle configurations.
-
 ---
 
-*Document Version: 2.1 | E2E Phase Update*
+*Document Version: 4.0 | Phases 16-18 Update*
+
+
