@@ -3,6 +3,10 @@ Services Sheet Module.
 
 Handles the Services worksheet for SQL Server services audit.
 Groups by Server with color rotation.
+
+Discrepancy Logic:
+- Essential services (Database Engine, SQL Agent): Only check account compliance
+- Non-essential services (Browser, Integration, Analysis, etc.): Need justification
 """
 
 from __future__ import annotations
@@ -21,6 +25,8 @@ from autodbaudit.infrastructure.excel_styles import (
 from autodbaudit.infrastructure.excel.base import (
     BaseSheetMixin,
     SheetConfig,
+    ACTION_COLUMN,
+    apply_action_needed_styling,
 )
 
 
@@ -28,6 +34,7 @@ __all__ = ["ServiceSheetMixin", "SERVICE_CONFIG"]
 
 
 SERVICE_COLUMNS = (
+    ACTION_COLUMN,  # Column A: Action indicator
     ColumnDef("Server", 16, Alignments.LEFT),
     ColumnDef("Instance", 14, Alignments.LEFT),
     ColumnDef("Service Name", 40, Alignments.LEFT),
@@ -36,10 +43,35 @@ SERVICE_COLUMNS = (
     ColumnDef("Startup", 12, Alignments.CENTER),
     ColumnDef("Service Account", 35, Alignments.LEFT),
     ColumnDef("Compliant", 10, Alignments.CENTER),
-    ColumnDef("Notes", 35, Alignments.LEFT, is_manual=True),
+    ColumnDef("Justification", 40, Alignments.LEFT, is_manual=True),
 )
 
 SERVICE_CONFIG = SheetConfig(name="Services", columns=SERVICE_COLUMNS)
+
+# Essential services that are expected on a SQL Server (no justification needed)
+ESSENTIAL_SERVICE_TYPES = frozenset({
+    "database engine",
+    "sql agent",
+    "sql server",
+    "agent",
+})
+
+# Non-essential services that need justification if enabled
+# These are not strictly required for core SQL Server functionality
+NON_ESSENTIAL_SERVICE_TYPES = frozenset({
+    "sql browser",
+    "full-text search",
+    "analysis services",
+    "reporting services",
+    "integration services",
+    "launchpad",
+    "launchpad (ml)",
+    "vss writer",
+    "ceip telemetry",
+    "polybase",
+    "other",
+    "other sql service",
+})
 
 # Virtual/built-in accounts that are non-compliant per requirements
 NON_COMPLIANT_ACCOUNTS = frozenset({
@@ -115,19 +147,38 @@ class ServiceSheetMixin(BaseSheetMixin):
         ]
         row_color = color_main if self._svc_instance_alt else color_light
         
-        # Check compliance - service account should not be virtual
-        is_compliant = True
+        # Check account compliance - service account should not be virtual
+        account_compliant = True
         if service_account:
             acct_lower = service_account.lower().strip()
             if acct_lower in NON_COMPLIANT_ACCOUNTS:
-                is_compliant = False
+                account_compliant = False
         
-        if is_compliant:
-            self._increment_pass()
-        else:
+        # Check if this is a non-essential service that needs justification
+        service_type_lower = (service_type or "").lower().strip()
+        is_essential = any(s in service_type_lower for s in ESSENTIAL_SERVICE_TYPES)
+        is_non_essential = any(s in service_type_lower for s in NON_ESSENTIAL_SERVICE_TYPES) or not is_essential
+        
+        # Service is running and enabled? Non-essential services need justification
+        is_running = "running" in (status or "").lower()
+        is_auto = "auto" in (startup_type or "").lower()
+        
+        # Needs action if:
+        # 1. Account is non-compliant (for any service), OR
+        # 2. Non-essential service is running/enabled (needs justification)
+        needs_action = not account_compliant or (is_non_essential and is_running and is_auto)
+        
+        # For display purposes, "compliant" means account compliance
+        # But needs_action reflects the full discrepancy
+        is_compliant = account_compliant
+        
+        if needs_action:
             self._increment_warn()
+        else:
+            self._increment_pass()
         
         data = [
+            None,  # Action indicator (column A)
             server_name,
             inst_display,
             service_name,
@@ -136,18 +187,21 @@ class ServiceSheetMixin(BaseSheetMixin):
             None,  # Startup - styled separately
             service_account,
             None,  # Compliant
-            "",    # Notes
+            "",    # Justification
         ]
         
         row = self._write_row(ws, SERVICE_CONFIG, data)
         
-        # Apply color to data columns
+        # Apply action indicator (column 1)
+        apply_action_needed_styling(ws.cell(row=row, column=1), needs_action)
+        
+        # Apply color to data columns (shifted +1 for action column)
         fill = PatternFill(start_color=row_color, end_color=row_color, fill_type="solid")
-        for col in [1, 2, 3, 4, 7]:
+        for col in [2, 3, 4, 5, 8]:
             ws.cell(row=row, column=col).fill = fill
         
-        # Style status column (column 5)
-        status_cell = ws.cell(row=row, column=5)
+        # Style status column (column 6)
+        status_cell = ws.cell(row=row, column=6)
         status_lower = (status or "").lower()
         if "running" in status_lower:
             status_cell.value = "✓ Running"
@@ -160,8 +214,8 @@ class ServiceSheetMixin(BaseSheetMixin):
         else:
             status_cell.value = status or "Unknown"
         
-        # Style startup type column (column 6)
-        startup_cell = ws.cell(row=row, column=6)
+        # Style startup type column (column 7)
+        startup_cell = ws.cell(row=row, column=7)
         startup_lower = (startup_type or "").lower()
         if "auto" in startup_lower:
             startup_cell.value = "⚡ Auto"
@@ -175,7 +229,8 @@ class ServiceSheetMixin(BaseSheetMixin):
         else:
             startup_cell.value = startup_type or ""
         
-        apply_boolean_styling(ws.cell(row=row, column=8), is_compliant)
+        # Style Compliant column (column 9)
+        apply_boolean_styling(ws.cell(row=row, column=9), is_compliant)
     
     def _merge_svc_instance(self, ws) -> None:
         """Merge Instance cells for current instance group."""
@@ -183,7 +238,7 @@ class ServiceSheetMixin(BaseSheetMixin):
         if current_row > self._svc_instance_start_row:
             merge_server_cells(
                 ws,
-                server_col=2,
+                server_col=3,  # Instance column (shifted +1 for action column)
                 start_row=self._svc_instance_start_row,
                 end_row=current_row - 1,
                 server_name=self._svc_last_instance,
@@ -200,13 +255,13 @@ class ServiceSheetMixin(BaseSheetMixin):
             ]
             merge_server_cells(
                 ws,
-                server_col=1,
+                server_col=2,  # Server column (shifted +1 for action column)
                 start_row=self._svc_server_start_row,
                 end_row=current_row - 1,
                 server_name=self._svc_last_server,
                 is_alt=True,
             )
-            merged = ws.cell(row=self._svc_server_start_row, column=1)
+            merged = ws.cell(row=self._svc_server_start_row, column=2)
             merged.fill = PatternFill(
                 start_color=color_main, end_color=color_main, fill_type="solid"
             )

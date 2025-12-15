@@ -88,6 +88,10 @@ class QueryProvider(ABC):
     def get_sql_services(self) -> str:
         """Get SQL Server services (requires xp_regread or WMI)."""
 
+    @abstractmethod
+    def get_client_protocols(self) -> str:
+        """Get client network protocols from registry (Shared Memory, TCP/IP, Named Pipes, VIA)."""
+
     # ========================================================================
     # Configuration
     # ========================================================================
@@ -396,6 +400,49 @@ class Sql2008Provider(QueryProvider):
             EXEC sp_configure 'show advanced options', 0;
         IF @adv_was_on = 0
             RECONFIGURE WITH OVERRIDE;
+        
+        SET NOCOUNT OFF;
+        """
+
+    def get_client_protocols(self) -> str:
+        # SQL 2008: Check protocol status via sys.dm_server_registry (if available)
+        # or return static common protocol list
+        # Note: Registry access may not work on all configurations
+        return """
+        SET NOCOUNT ON;
+        
+        -- Return basic protocol info from connection properties
+        -- Full registry reading requires special permissions
+        SELECT 
+            'TCP/IP' AS ProtocolName,
+            1 AS IsEnabled,
+            CONVERT(INT, CONNECTIONPROPERTY('local_tcp_port')) AS DefaultPort,
+            'Network connections' AS Notes
+        WHERE CONNECTIONPROPERTY('local_tcp_port') IS NOT NULL
+        
+        UNION ALL
+        
+        SELECT 
+            'Shared Memory' AS ProtocolName,
+            CASE WHEN CONNECTIONPROPERTY('net_transport') = 'Shared memory' THEN 1 ELSE 0 END AS IsEnabled,
+            NULL AS DefaultPort,
+            'Local connections only' AS Notes
+        
+        UNION ALL
+        
+        SELECT 
+            'Named Pipes' AS ProtocolName,
+            CASE WHEN CONNECTIONPROPERTY('net_transport') = 'Named pipe' THEN 1 ELSE 0 END AS IsEnabled,
+            NULL AS DefaultPort,
+            'Legacy protocol' AS Notes
+        
+        UNION ALL
+        
+        SELECT 
+            'VIA' AS ProtocolName,
+            0 AS IsEnabled,
+            NULL AS DefaultPort,
+            'Deprecated protocol (removed in SQL 2012+)' AS Notes;
         
         SET NOCOUNT OFF;
         """
@@ -1006,6 +1053,47 @@ class Sql2019PlusProvider(QueryProvider):
                 ELSE 99
             END,
             servicename
+        """
+
+    def get_client_protocols(self) -> str:
+        # SQL 2019+: Use connection properties to detect protocols
+        # Registry access requires special permissions and doesn't work on Linux
+        return """
+        SET NOCOUNT ON;
+        
+        -- Return basic protocol info from connection properties
+        SELECT 
+            'TCP/IP' AS ProtocolName,
+            1 AS IsEnabled,
+            CONVERT(INT, CONNECTIONPROPERTY('local_tcp_port')) AS DefaultPort,
+            'Network connections' AS Notes
+        WHERE CONNECTIONPROPERTY('local_tcp_port') IS NOT NULL
+        
+        UNION ALL
+        
+        SELECT 
+            'Shared Memory' AS ProtocolName,
+            CASE WHEN CONNECTIONPROPERTY('net_transport') = 'Shared memory' THEN 1 ELSE 0 END AS IsEnabled,
+            NULL AS DefaultPort,
+            'Local connections only' AS Notes
+        
+        UNION ALL
+        
+        SELECT 
+            'Named Pipes' AS ProtocolName,
+            CASE WHEN CONNECTIONPROPERTY('net_transport') = 'Named pipe' THEN 1 ELSE 0 END AS IsEnabled,
+            NULL AS DefaultPort,
+            'Legacy protocol' AS Notes
+        
+        UNION ALL
+        
+        SELECT 
+            'VIA' AS ProtocolName,
+            0 AS IsEnabled,
+            NULL AS DefaultPort,
+            'Deprecated protocol (removed in SQL 2012+)' AS Notes;
+        
+        SET NOCOUNT OFF;
         """
 
     def get_sp_configure(self) -> str:

@@ -20,6 +20,7 @@ from autodbaudit.infrastructure.excel.base import (
     BaseSheetMixin,
     SheetConfig,
     ACTION_COLUMN,
+    LAST_REVISED_COLUMN,
     apply_action_needed_styling,
 )
 from autodbaudit.infrastructure.excel.server_group import ServerGroupMixin
@@ -36,7 +37,8 @@ ORPHANED_USER_COLUMNS = (
     ColumnDef("User Name", 25, Alignments.LEFT),
     ColumnDef("Type", 16, Alignments.CENTER),
     ColumnDef("Status", 14, Alignments.CENTER),
-    ColumnDef("Remediation", 50, Alignments.LEFT, is_manual=True),
+    ColumnDef("Justification", 45, Alignments.LEFT, is_manual=True),  # Renamed from Remediation
+    LAST_REVISED_COLUMN,
 )
 
 ORPHANED_USER_CONFIG = SheetConfig(name="Orphaned Users", columns=ORPHANED_USER_COLUMNS)
@@ -87,7 +89,8 @@ class OrphanedUserSheetMixin(ServerGroupMixin, BaseSheetMixin):
             user_name,
             type_display,
             None,  # Status - styled separately  
-            "",    # Remediation
+            "",    # Justification
+            "",    # Last Revised
         ]
         
         row = self._write_row(ws, ORPHANED_USER_CONFIG, data)
@@ -133,7 +136,8 @@ class OrphanedUserSheetMixin(ServerGroupMixin, BaseSheetMixin):
             "— None Found —",   # User Name
             "",                 # Type
             None,               # Status - styled separately  
-            "",                 # Remediation
+            "",                 # Justification
+            "",                 # Last Revised
         ]
         
         row = self._write_row(ws, ORPHANED_USER_CONFIG, data)

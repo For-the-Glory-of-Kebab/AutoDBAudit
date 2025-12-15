@@ -216,7 +216,23 @@ END TRY
 BEGIN CATCH
     PRINT 'WARN/ERR: Server trigger cleanup step failed: ' + ERROR_MESSAGE();
 END CATCH;
+--------------------------------------------------------------------------------
+-- step 2.5
+-- Optional baseline restore: Login auditing BOTH successful and failed (AuditLevel=3)
+--------------------------------------------------------------------------------
+BEGIN TRY
+    EXEC xp_instance_regwrite
+        N'HKEY_LOCAL_MACHINE',
+        N'Software\Microsoft\MSSQLServer\MSSQLServer',
+        N'AuditLevel',
+        REG_DWORD,
+        3;
 
+    PRINT 'OK: Restored login auditing to BOTH (AuditLevel=3).';
+END TRY
+BEGIN CATCH
+    PRINT 'WARN: Could not restore login auditing (registry blocked): ' + ERROR_MESSAGE();
+END CATCH;
 --------------------------------------------------------------------------------
 -- STEP 3: Drop WS-created linked servers
 --------------------------------------------------------------------------------

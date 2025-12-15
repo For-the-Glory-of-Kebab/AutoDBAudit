@@ -219,7 +219,10 @@ class AuditDataCollector:
         # 6. Services
         counts["services"] = self._collect_services(sn, inst)
 
-        # 7. Databases
+        # 7. Client Protocols
+        counts["protocols"] = self._collect_client_protocols(sn, inst)
+
+        # 8. Databases
         all_dbs, user_dbs = self._collect_databases(sn, inst)
         counts["databases"] = len(all_dbs)
 
@@ -564,6 +567,24 @@ class AuditDataCollector:
             return len(services)
         except Exception as e:
             logger.warning("Services failed: %s", e)
+            return 0
+
+    def _collect_client_protocols(self, sn: str, inst: str) -> int:
+        """Collect client network protocol configuration."""
+        try:
+            protocols = self.conn.execute_query(self.prov.get_client_protocols())
+            for proto in protocols:
+                self.writer.add_client_protocol(
+                    server_name=sn,
+                    instance_name=inst,
+                    protocol_name=proto.get("ProtocolName", ""),
+                    is_enabled=bool(proto.get("IsEnabled", 0)),
+                    port=proto.get("DefaultPort"),
+                    notes=proto.get("Notes", ""),
+                )
+            return len(protocols)
+        except Exception as e:
+            logger.warning("Client protocols failed: %s", e)
             return 0
 
     def _collect_databases(self, sn: str, inst: str) -> tuple[list[dict], list[dict]]:

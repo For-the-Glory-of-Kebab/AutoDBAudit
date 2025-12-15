@@ -1,6 +1,6 @@
 # TODO Tracker
 
-> **Last Updated**: 2025-12-13
+> **Last Updated**: 2025-12-15
 
 ---
 
@@ -11,6 +11,7 @@
   - [x] **Excel**: Add indicator for discrepancies missing Fix/Justification ✅ (2025-12-13)
   - [ ] **Architecture**: Review Excel Lifecycle (One Working Copy vs Many Snapshots)
   - [x] **Logic**: Handle Reversion (Pass -> Fail) in Action Log (Gray out previous fix?)
+  - [x] **Phase 19**: Services, Client Protocols, Roles sheets - column alignment fixes ✅ (2025-12-15)
 
 ---
 
@@ -85,5 +86,5 @@ Currently, `main.py` tends to overwrite `audit_report_latest.xlsx`. A decision i
 
 ---
 
-*Last Updated: 2025-12-13*
+*Last Updated: 2025-12-15*
 

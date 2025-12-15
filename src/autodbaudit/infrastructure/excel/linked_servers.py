@@ -40,6 +40,7 @@ LINKED_SERVER_COLUMNS = (
     ColumnDef("Impersonate", 12, Alignments.CENTER),
     ColumnDef("Risk", 12, Alignments.CENTER),
     ColumnDef("Purpose", 30, Alignments.LEFT, is_manual=True),
+    ColumnDef("Justification", 40, Alignments.LEFT, is_manual=True),
     LAST_REVISED_COLUMN,
 )
 

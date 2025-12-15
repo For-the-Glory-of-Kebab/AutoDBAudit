@@ -92,7 +92,28 @@ END TRY
 BEGIN CATCH
     PRINT 'WARN/ERR: config step failed: ' + ERROR_MESSAGE();
 END CATCH;
+--------------------------------------------------------------------------------
+-- step 2.5: 
+-- Discrepancy: Login auditing not set to BOTH (AuditLevel=3)
+-- Randomize to: 0 (none), 1 (success only), or 2 (failure only)
+--------------------------------------------------------------------------------
+BEGIN TRY
+    DECLARE @AuditLevelTarget int;
+    SET @AuditLevelTarget = ABS(CHECKSUM(NEWID())) % 3;  -- 0..2
 
+    EXEC xp_instance_regwrite
+        N'HKEY_LOCAL_MACHINE',
+        N'Software\Microsoft\MSSQLServer\MSSQLServer',
+        N'AuditLevel',
+        REG_DWORD,
+        @AuditLevelTarget;
+
+    PRINT 'OK: Set login auditing discrepancy. AuditLevel=' + CAST(@AuditLevelTarget AS varchar(10))
+        + ' (0=None, 1=Success, 2=Failure).';
+END TRY
+BEGIN CATCH
+    PRINT 'WARN: Could not set login auditing discrepancy (registry blocked): ' + ERROR_MESSAGE();
+END CATCH;
 --------------------------------------------------------------------------------
 -- STEP 3: Discrepancy - disable login auditing (AuditLevel=0) (WARN-only if blocked)
 --------------------------------------------------------------------------------

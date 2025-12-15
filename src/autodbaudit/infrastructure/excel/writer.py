@@ -127,6 +127,10 @@ from autodbaudit.infrastructure.excel.role_matrix import (
     RoleMatrixSheetMixin,
     ROLE_MATRIX_CONFIG,
 )
+from autodbaudit.infrastructure.excel.client_protocols import (
+    ClientProtocolSheetMixin,
+    CLIENT_PROTOCOL_CONFIG,
+)
 from autodbaudit.infrastructure.excel.actions import ActionSheetMixin, ACTION_CONFIG
 
 
@@ -147,7 +151,8 @@ SHEET_ORDER: tuple[SheetConfig, ...] = (
     ROLE_CONFIG,  # 5. Sensitive Roles
     CONFIG_CONFIG,  # 6. Configuration
     SERVICE_CONFIG,  # 7. Services
-    DATABASE_CONFIG,  # 8. Databases
+    CLIENT_PROTOCOL_CONFIG,  # 8. Client Protocols (NEW)
+    DATABASE_CONFIG,  # 9. Databases
     DB_USER_CONFIG,  # 9. Database Users
     DB_ROLE_CONFIG,  # 10. Database Roles
     ROLE_MATRIX_CONFIG,  # 11. Role Matrix (NEW)
@@ -179,6 +184,7 @@ class EnhancedReportWriter(
     # Configuration sheets
     ConfigSheetMixin,  # add_config_setting
     ServiceSheetMixin,  # add_service
+    ClientProtocolSheetMixin,  # add_client_protocol (NEW)
     # Database-level sheets
     DatabaseSheetMixin,  # add_database
     DBUserSheetMixin,  # add_db_user

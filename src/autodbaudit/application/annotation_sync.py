@@ -64,9 +64,9 @@ SHEET_ANNOTATION_CONFIG = {
     },
     "Services": {
         "entity_type": "service",
-        "key_cols": ["Server", "Service Name"],
+        "key_cols": ["Server", "Instance", "Service Name"],
         "editable_cols": {
-            "Notes": "notes",
+            "Justification": "justification",
         },
     },
     "Databases": {
@@ -104,7 +104,7 @@ SHEET_ANNOTATION_CONFIG = {
         "entity_type": "orphaned_user",
         "key_cols": ["Server", "Instance", "Database", "User Name"],
         "editable_cols": {
-            "Remediation": "remediation_notes",
+            "Justification": "justification",
         },
     },
     "Linked Servers": {
@@ -112,6 +112,7 @@ SHEET_ANNOTATION_CONFIG = {
         "key_cols": ["Server", "Instance", "Linked Server"],
         "editable_cols": {
             "Purpose": "purpose",  # Info-only, not discrepancy
+            "Justification": "justification",  # Discrepancy reason
         },
     },
     "Triggers": {

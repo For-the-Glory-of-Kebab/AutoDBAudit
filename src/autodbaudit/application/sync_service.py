@@ -373,14 +373,12 @@ class SyncService:
                 status = "Open"
 
             # Initialize manual fields
-            assigned_to = ""
             notes = ""
 
             # Parse timestamp - prefer user's date if they edited it in Excel
             f_date = None
             if lookup_key in preserved_annotations:
                 ann = preserved_annotations[lookup_key]
-                assigned_to = ann.get("assigned_to", "")
                 notes = ann.get("resolution_notes", "")
                 
                 user_date = ann.get("found_date")
@@ -410,7 +408,6 @@ class SyncService:
                 recommendation=change_desc,  # Using recommendation column for change description
                 status=status,
                 found_date=f_date,
-                assigned_to=assigned_to,
                 resolution_notes=notes,
             )
             valid_actions_count += 1
@@ -530,19 +527,22 @@ class SyncService:
         
         if exception_changes:
             print(f"📋 {len(exception_changes)} exception(s) documented")
-            for exc in exception_changes:
-                # Log each exception as an action
-                self._log_exception_action(
-                    conn=conn,
-                    initial_run_id=initial_run_id,
-                    current_run_id=current_run_id,
-                    exc=exc,
-                )
-            conn.commit()
+            # Open fresh connection for exception logging (original conn was closed earlier)
+            with sqlite3.connect(self.db_path) as exc_conn:
+                for exc in exception_changes:
+                    # Log each exception as an action
+                    self._log_exception_action(
+                        conn=exc_conn,
+                        initial_run_id=initial_run_id,
+                        current_run_id=current_run_id,
+                        exc=exc,
+                    )
+                exc_conn.commit()
 
         result["report_path"] = str(path_archive)
         result["initial_run_id"] = initial_run_id
         result["current_run_id"] = current_run_id
+        result["exceptions_documented"] = len(exception_changes) if exception_changes else 0
 
         # -------------------------------------------------------------------------
         # 5. Console Output
@@ -564,6 +564,11 @@ class SyncService:
             f"{'Regression':<20} | {recent_stats['regression']:<15} | {result['regression']:<15}"
         )
         print(f"{'New Findings':<20} | {recent_stats['new']:<15} | {result['new']:<15}")
+        
+        # Add documented exceptions count (counts as positive progress)
+        if result["exceptions_documented"] > 0:
+            print(f"{'Exceptions Documented':<20} | {result['exceptions_documented']:<15} | {'↑ Audit Trail':<15}")
+        
         print("-" * 56)
         print(f"Total Outstanding: {result['still_failing']} (Baseline Deficits)")
         print("-" * 56)

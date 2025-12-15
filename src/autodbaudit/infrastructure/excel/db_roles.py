@@ -19,6 +19,8 @@ from autodbaudit.infrastructure.excel_styles import (
 from autodbaudit.infrastructure.excel.base import (
     BaseSheetMixin,
     SheetConfig,
+    ACTION_COLUMN,
+    apply_action_needed_styling,
 )
 from autodbaudit.infrastructure.excel.server_group import ServerGroupMixin
 
@@ -27,6 +29,7 @@ __all__ = ["DBRoleSheetMixin", "DB_ROLE_CONFIG"]
 
 
 DB_ROLE_COLUMNS = (
+    ACTION_COLUMN,  # Column A: Action indicator
     ColumnDef("Server", 18, Alignments.LEFT),
     ColumnDef("Instance", 15, Alignments.LEFT),
     ColumnDef("Database", 20, Alignments.LEFT),
@@ -117,7 +120,11 @@ class DBRoleSheetMixin(ServerGroupMixin, BaseSheetMixin):
         elif "role" in type_lower:
             type_display = "📦 Role"
         
+        # Needs action if high risk (db_owner for non-dbo)
+        needs_action = risk_level == "high"
+        
         data = [
+            None,  # Action indicator (column A)
             server_name,
             instance_name or "(Default)",
             database_name,
@@ -130,11 +137,14 @@ class DBRoleSheetMixin(ServerGroupMixin, BaseSheetMixin):
         
         row = self._write_row(ws, DB_ROLE_CONFIG, data)
         
-        # Apply row color to data columns
-        self._apply_row_color(row, row_color, data_cols=[1, 2, 3, 5, 6], ws=ws)
+        # Apply action indicator (column 1)
+        apply_action_needed_styling(ws.cell(row=row, column=1), needs_action)
         
-        # Style Role column (column 4) based on risk
-        role_cell = ws.cell(row=row, column=4)
+        # Apply row color to data columns (shifted +1 for action column)
+        self._apply_row_color(row, row_color, data_cols=[2, 3, 4, 6, 7], ws=ws)
+        
+        # Style Role column (column 5) based on risk
+        role_cell = ws.cell(row=row, column=5)
         if risk_level == "high":
             role_cell.fill = Fills.FAIL
             role_cell.font = Fonts.FAIL
@@ -143,8 +153,8 @@ class DBRoleSheetMixin(ServerGroupMixin, BaseSheetMixin):
             role_cell.fill = Fills.WARN
             role_cell.font = Fonts.WARN
         
-        # Style Risk column (column 7)
-        risk_cell = ws.cell(row=row, column=7)
+        # Style Risk column (column 8)
+        risk_cell = ws.cell(row=row, column=8)
         if risk_level == "high":
             risk_cell.value = "🔴 High"
             risk_cell.fill = Fills.FAIL
