@@ -11,6 +11,7 @@ from pathlib import Path
 
 from autodbaudit.application.audit_service import AuditService
 from autodbaudit.application.audit_manager import AuditManager
+from autodbaudit.application.remediation.service import RemediationService
 from autodbaudit.infrastructure.config_loader import ConfigLoader
 from autodbaudit.infrastructure.logging_config import setup_logging
 from autodbaudit.infrastructure.odbc_check import check_odbc_drivers
@@ -241,7 +242,8 @@ Examples:
             )
             print(f"   Version: v{version}")
 
-            from autodbaudit.application.remediation_service import RemediationService
+            # from autodbaudit.application.remediation_service import RemediationService
+            # Already imported at top level
 
             # Get config snapshot to check for connecting users (SA lockout prevention)
             snapshot = manager.get_config_snapshot(audit_id)
@@ -340,9 +342,7 @@ Examples:
                 if latest:
                     audit_id = latest["id"]
 
-            service = FinalizeService(
-                output_dir=DEFAULT_OUTPUT_DIR
-            )
+            service = FinalizeService(output_dir=DEFAULT_OUTPUT_DIR)
             result = service.finalize(
                 run_id=args.baseline_run,  # baseline_run maps to run_id in service
                 force=args.force,
@@ -368,7 +368,11 @@ Examples:
             if result.get("actions"):
                 print("   Actions:")
                 for action_type, count in result["actions"].items():
-                    icon = "✅" if action_type == "fixed" else "⚠️" if action_type == "still_failing" else "🆕"
+                    icon = (
+                        "✅"
+                        if action_type == "fixed"
+                        else "⚠️" if action_type == "still_failing" else "🆕"
+                    )
                     print(f"      {icon} {action_type}: {count}")
             if result.get("archive_path"):
                 print(f"\n   📁 Archive: {result['archive_path']}")
@@ -379,9 +383,7 @@ Examples:
             logger.info("Checking finalization status")
             from autodbaudit.application.finalize_service import FinalizeService
 
-            service = FinalizeService(
-                output_dir=DEFAULT_OUTPUT_DIR
-            )
+            service = FinalizeService(output_dir=DEFAULT_OUTPUT_DIR)
             status = service.get_finalization_status(args.baseline_run)
 
             if "error" in status:
@@ -390,7 +392,7 @@ Examples:
 
             print(f"\n📋 Finalization Status for Run #{status['baseline_run_id']}")
             print("=" * 50)
-            
+
             if status["can_finalize"]:
                 print("✅ Ready to finalize - no outstanding issues")
                 print("\nRun: python main.py --finalize")

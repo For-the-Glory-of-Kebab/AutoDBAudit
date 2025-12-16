@@ -1,6 +1,6 @@
 # Project Status
 
-> **Last Updated**: 2025-12-15 (Phase 19 Complete)
+> **Last Updated**: 2025-12-16 (Phase 21 - Modular Refactoring)
 
 ## Overview
 
@@ -35,6 +35,25 @@ The Action Sheet is strictly a **Diff Log**.
 ---
 
 ## Implementation State
+
+### Phase 21: Modular Refactoring (Completed Dec 16)
+- **Goal**: Decompose monolithic `data_collector.py` and `remediation_service.py` into maintainable, testable components.
+- **Architectural Changes**:
+    - **`collectors/`**: Specialized collectors for each domain (Access, Config, Infra, etc.).
+    - **`remediation/`**: Handler-based architecture for script generation.
+    - **Facades**: Original monolithic logic removed; `orchestrator.py` handles backward compatibility if needed, but CLI now uses modular services directly where possible.
+    - **Service Layer**: Refactored `SyncService`, `FinalizeService`, and `ExceptionService` to eliminate raw SQL usage and enforce `HistoryStore` abstraction.
+    - **Build System**: Robust PyInstaller build with `modules/` structure.
+    - **Build System**: Robust PyInstaller build with `modules/` structure.
+    - **Verification**: E2E Audit and Remediation Generation verified.
+
+### Phase 22: E2E Regression Fixes (Completed Dec 16)
+- **Goal**: Resolve all empty sheet regressions found during final E2E testing.
+- **Scope**:
+    - **Fixed**: Linked Servers, Backups, Triggers, Encryption, Role Matrix, Permission Grants.
+    - **Docs**: Created `docs/EXCEL_COLUMNS.md` strict schema.
+    - **Validation**: Confirmed population of all 20+ report sheets.
+- **Configuration Security**: `.example.json` strategy enforced.
 
 ### ✅ Fully Working Commands
 

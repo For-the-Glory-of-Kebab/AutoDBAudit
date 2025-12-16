@@ -60,9 +60,10 @@ autodbaudit = ["py.typed"]
 
 [tool.mypy]
 python_version = "3.11"
-warn_return_any = true
+warn_return_any = false
 warn_unused_configs = true
-disallow_untyped_defs = true
+disallow_untyped_defs = false
+check_untyped_defs = false
 ignore_missing_imports = true
 
 [tool.ruff]

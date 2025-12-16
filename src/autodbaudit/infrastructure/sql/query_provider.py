@@ -208,6 +208,10 @@ class QueryProvider(ABC):
     def get_encryption_certificates(self) -> str:
         """Get certificates used for encryption."""
 
+    @abstractmethod
+    def get_encryption_keys(self) -> str:
+        """Get all encryption keys (SMK, DMK, Generic)."""
+
 
 class Sql2008Provider(QueryProvider):
     """
@@ -934,6 +938,39 @@ class Sql2008Provider(QueryProvider):
         ORDER BY name
         """
 
+    def get_encryption_keys(self) -> str:
+        # SQL 2008 compatible combined encryption keys query
+        return """
+        SELECT 
+            'master' AS DatabaseName,
+            name AS KeyName,
+            'Service Master Key' AS KeyType,
+            algorithm_desc AS Algorithm,
+            key_length AS KeyLength
+        FROM master.sys.symmetric_keys WHERE name = '##MS_ServiceMasterKey##'
+        
+        UNION ALL
+        
+        SELECT 
+            DB_NAME() AS DatabaseName,
+            name AS KeyName,
+            'Database Master Key' AS KeyType,
+            algorithm_desc AS Algorithm,
+            key_length AS KeyLength
+        FROM sys.symmetric_keys WHERE name = '##MS_DatabaseMasterKey##'
+        
+        UNION ALL
+        
+        SELECT 
+            DB_NAME() AS DatabaseName,
+            name AS KeyName,
+            'Symmetric Key' AS KeyType,
+            algorithm_desc AS Algorithm,
+            key_length AS KeyLength
+        FROM sys.symmetric_keys 
+        WHERE name NOT LIKE '##MS_%'
+        """
+
 
 class Sql2019PlusProvider(QueryProvider):
     """
@@ -1646,6 +1683,39 @@ class Sql2019PlusProvider(QueryProvider):
         FROM master.sys.certificates
         WHERE name NOT LIKE '##MS_%'
         ORDER BY name
+        """
+
+    def get_encryption_keys(self) -> str:
+        # 2012+ compatible
+        return """
+        SELECT 
+            'master' AS DatabaseName,
+            name AS KeyName,
+            'Service Master Key' AS KeyType,
+            algorithm_desc AS Algorithm,
+            key_length AS KeyLength
+        FROM master.sys.symmetric_keys WHERE name = '##MS_ServiceMasterKey##'
+        
+        UNION ALL
+        
+        SELECT 
+            DB_NAME() AS DatabaseName,
+            name AS KeyName,
+            'Database Master Key' AS KeyType,
+            algorithm_desc AS Algorithm,
+            key_length AS KeyLength
+        FROM sys.symmetric_keys WHERE name = '##MS_DatabaseMasterKey##'
+        
+        UNION ALL
+        
+        SELECT 
+            DB_NAME() AS DatabaseName,
+            name AS KeyName,
+            'Symmetric Key' AS KeyType,
+            algorithm_desc AS Algorithm,
+            key_length AS KeyLength
+        FROM sys.symmetric_keys 
+        WHERE name NOT LIKE '##MS_%'
         """
 
 

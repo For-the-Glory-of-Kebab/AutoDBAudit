@@ -1,0 +1,80 @@
+{
+    "_comment": "SQL Server Audit Targets Configuration",
+    "_instructions": [
+        "Add your SQL Server targets below.",
+        "Each target needs: id, server, and authentication details.",
+        "Use 'auth': 'integrated' for Windows authentication,",
+        "or 'auth': 'sql' with credential_file pointing to credentials/*.json"
+    ],
+    "targets": [
+        {
+            "id": "home-2025-docker",
+            "name": "SQL Server 2025 (Docker)",
+            "server": "localhost",
+            "instance": null,
+            "port": 1434,
+            "auth": "sql",
+            "credential_file": "credentials/kingall.json",
+            "connect_timeout": 30,
+            "tags": [
+                "development",
+                "docker"
+            ],
+            "enabled": true,
+            "_comment": "SQL Server 2025 Docker instance"
+        },
+        {
+            "id": "work-2022",
+            "name": "SQL Server 2022 (Intheend)",
+            "server": "localhost",
+            "instance": "Intheend",
+            "port": 6234,
+            "auth": "sql",
+            "credential_file": "credentials/kingall.json",
+            "connect_timeout": 30,
+            "tags": [
+                "development",
+                "2022"
+            ],
+            "enabled": true,
+            "_comment": "SQL Server 2022 instance"
+        },
+        {
+            "id": "work2008",
+            "name": "SQL Server 2008 R2 (BigBad2008)",
+            "server": "localhost",
+            "instance": "legacy",
+            "port": 10260,
+            "auth": "sql",
+            "credential_file": "credentials/kingall.json",
+            "connect_timeout": 30,
+            "tags": [
+                "development",
+                "2025"
+            ],
+            "enabled": true,
+            "_comment": "SQL Server 2022 default instance"
+        },
+        {
+            "id": "thing 2022",
+            "name": "SQL Server 2022 default thing",
+            "server": "localhost",
+            "instance": null,
+            "port": 1433,
+            "auth": "sql",
+            "credential_file": "credentials/kingall.json",
+            "connect_timeout": 30,
+            "tags": [
+                "development",
+                "2022"
+            ],
+            "enabled": true,
+            "_comment": "SQL Server 2022 instance"
+        }
+    ],
+    "global_settings": {
+        "timeout_seconds": 30,
+        "encrypt_connection": true,
+        "trust_server_certificate": true
+    }
+}

@@ -18,7 +18,7 @@ from autodbaudit.infrastructure.sql.query_provider import get_query_provider
 from autodbaudit.infrastructure.excel import EnhancedReportWriter
 from autodbaudit.infrastructure.sqlite import HistoryStore
 from autodbaudit.infrastructure.sqlite.schema import initialize_schema_v2
-from autodbaudit.application.data_collector import AuditDataCollector
+from autodbaudit.application.collectors.orchestrator import AuditDataCollector
 
 if TYPE_CHECKING:
     pass

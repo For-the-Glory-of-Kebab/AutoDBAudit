@@ -18,7 +18,7 @@ hidden_imports = [
 ]
 
 a = Analysis(
-    [os.path.join(PROJECT_ROOT, 'main.py')],
+    [os.path.join(SRC_PATH, 'main.py')],
     pathex=[SRC_PATH],
     binaries=[],
     datas=[

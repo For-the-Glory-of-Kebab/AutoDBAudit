@@ -15,10 +15,8 @@ Usage:
 
 from __future__ import annotations
 
-import json
 import logging
 import re
-from datetime import datetime
 from pathlib import Path
 from dataclasses import dataclass, field
 from autodbaudit.infrastructure.config_loader import ConfigLoader, SqlTarget
@@ -169,7 +167,7 @@ class ScriptExecutor:
             h = t.server.lower()
             if h in aliases:
                 return t
-        
+
         return None
 
     def _get_connection_for_script(
@@ -189,7 +187,7 @@ class ScriptExecutor:
 
         server = server_match.group(1).strip() if server_match else ""
         instance = instance_match.group(1).strip() if instance_match else ""
-        
+
         port: int | None = None
         if port_match:
             try:
@@ -202,7 +200,7 @@ class ScriptExecutor:
         # but we also want the cleaned version for the connection string later.
         # Actually, _find_target expects the REAL instance name ("" or "SQLEXPRESS").
         # So we should clean it, but extract port first.
-        
+
         cleaned_instance = instance
         if instance.startswith("(Default"):
             # Try to extract port from instance label if not in header
@@ -214,10 +212,10 @@ class ScriptExecutor:
                     port = int(p_str)
                 except (ValueError, IndexError):
                     pass
-            
+
             # Default instance name is empty string
             cleaned_instance = ""
-        
+
         # Find matching target with port AND instance awareness
         target = self._find_target(server, port, cleaned_instance)
         connection_login = None
@@ -227,13 +225,12 @@ class ScriptExecutor:
                 connection_login = "WINDOWS_AUTH"
             else:
                 connection_login = target.username or "sa"
-                
+
             # If we didn't have a port from script but found a target, use target's port
             if not port:
                 port = target.port or 1433
 
         return server, cleaned_instance, connection_login, port
-
 
     def _parse_batches(self, content: str) -> list[str]:
         """Split script content into GO-separated batches."""
@@ -518,7 +515,10 @@ class ScriptExecutor:
         if not target:
             # Fallback if no target found but we have explicit info?
             # For safety, require target config
-            raise ValueError(f"No target found for server: {server}" + (f" port {port}" if port else ""))
+            raise ValueError(
+                f"No target found for server: {server}"
+                + (f" port {port}" if port else "")
+            )
 
         # Build connection string
         host = target.server

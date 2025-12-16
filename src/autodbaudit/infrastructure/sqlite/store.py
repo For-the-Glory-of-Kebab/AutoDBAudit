@@ -159,6 +159,25 @@ class HistoryStore:
         """
         )
 
+        # Action Log table (for remediation tracking)
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS action_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                initial_run_id INTEGER NOT NULL,
+                entity_key TEXT NOT NULL,
+                action_type TEXT NOT NULL,
+                status TEXT NOT NULL,
+                action_date TEXT NOT NULL,
+                description TEXT,
+                sync_run_id INTEGER,
+                FOREIGN KEY (initial_run_id) REFERENCES audit_runs(id),
+                FOREIGN KEY (sync_run_id) REFERENCES audit_runs(id),
+                UNIQUE(initial_run_id, entity_key, action_type)
+            )
+        """
+        )
+
         # Store schema version
         conn.execute(
             """
@@ -313,6 +332,22 @@ class HistoryStore:
         server = Server(id=cursor.lastrowid, hostname=hostname, ip_address=ip_address)
         logger.debug("Created server: %s (id=%d)", hostname, server.id)
         return server
+
+    def get_server(self, server_id: int) -> Server | None:
+        """Get a server by ID."""
+        conn = self._get_connection()
+        row = conn.execute(
+            "SELECT id, hostname, ip_address FROM servers WHERE id = ?",
+            (server_id,),
+        ).fetchone()
+
+        if row:
+            return Server(
+                id=row["id"],
+                hostname=row["hostname"],
+                ip_address=row["ip_address"],
+            )
+        return None
 
     # ========================================================================
     # Instance Operations
@@ -519,3 +554,176 @@ class HistoryStore:
             results.append((server, instance))
 
         return results
+
+    def get_all_instances(self) -> list[Instance]:
+        """Get all instances in the database."""
+        conn = self._get_connection()
+        rows = conn.execute(
+            "SELECT id, server_id, instance_name, port, version, version_major, edition, product_level FROM instances"
+        ).fetchall()
+
+        return [
+            Instance(
+                id=r["id"],
+                server_id=r["server_id"],
+                instance_name=r["instance_name"],
+                port=r["port"],
+                version=r["version"],
+                version_major=r["version_major"],
+                edition=r["edition"],
+                product_level=r["product_level"],
+            )
+            for r in rows
+        ]
+
+    def get_initial_baseline_id(self) -> int | None:
+        """Get the ID of the first 'audit' type run (baseline)."""
+        conn = self._get_connection()
+        row = conn.execute(
+            "SELECT id FROM audit_runs WHERE run_type = 'audit' ORDER BY started_at ASC LIMIT 1"
+        ).fetchone()
+        return row["id"] if row else None
+
+    def get_latest_run_id(self) -> int | None:
+        """Get the most recent audit run ID."""
+        conn = self._get_connection()
+        row = conn.execute(
+            "SELECT id FROM audit_runs ORDER BY started_at DESC LIMIT 1"
+        ).fetchone()
+        return row["id"] if row else None
+
+    def mark_run_as_sync(self, run_id: int) -> None:
+        """Update a run's type to 'sync'."""
+        conn = self._get_connection()
+        conn.execute("UPDATE audit_runs SET run_type = 'sync' WHERE id = ?", (run_id,))
+        conn.commit()
+
+    # ========================================================================
+    # Action Log Operations
+    # ========================================================================
+
+    def get_actions_for_run(self, initial_run_id: int) -> list[dict]:
+        """
+        Get all actions associated with a baseline run.
+
+        Returns:
+            List of dicts with keys: entity_key, action_type, action_date, status, etc.
+        """
+        conn = self._get_connection()
+        rows = conn.execute(
+            """
+            SELECT entity_key, action_type, action_date, status, description, sync_run_id
+            FROM action_log 
+            WHERE initial_run_id = ?
+            """,
+            (initial_run_id,),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def upsert_action(
+        self,
+        initial_run_id: int,
+        entity_key: str,
+        action_type: str,
+        status: str,
+        action_date: str,
+        description: str,
+        sync_run_id: int,
+    ) -> None:
+        """
+        Insert or update an action in the log.
+        """
+        conn = self._get_connection()
+
+        # Check simple existence for update vs insert logic to preserve dates if needed?
+        # The logic in SyncService was specific: preserve date if status/type matches.
+        # We will implement a standard upsert here.
+
+        conn.execute(
+            """
+            INSERT INTO action_log (
+                initial_run_id, entity_key, action_type, status,
+                action_date, description, sync_run_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(initial_run_id, entity_key, action_type) DO UPDATE SET
+                status = excluded.status,
+                description = excluded.description,
+                sync_run_id = excluded.sync_run_id,
+                action_date = excluded.action_date
+            """,
+            (
+                initial_run_id,
+                entity_key,
+                action_type,
+                status,
+                action_date,
+                description,
+                sync_run_id,
+            ),
+        )
+        conn.commit()
+
+    def get_findings(self, run_id: int) -> list[dict]:
+        """Get all findings for a specific run."""
+        from autodbaudit.infrastructure.sqlite.schema import get_findings_for_run
+
+        return get_findings_for_run(self._get_connection(), run_id)
+
+    # ========================================================================
+    # Annotation Operations
+    # ========================================================================
+
+    def upsert_annotation(
+        self,
+        entity_type: str,
+        entity_key: str,
+        field_name: str,
+        field_value: str | None,
+        status_override: str | None = None,
+        modified_by: str = "system",
+        audit_run_id: int | None = None,
+    ) -> None:
+        """
+        Upsert an annotation.
+        """
+        from autodbaudit.infrastructure.sqlite.schema import upsert_annotation
+
+        conn = self._get_connection()
+        upsert_annotation(
+            connection=conn,
+            entity_type=entity_type,
+            entity_key=entity_key,
+            field_name=field_name,
+            field_value=field_value,
+            status_override=status_override,
+            modified_by=modified_by,
+            audit_run_id=audit_run_id,
+        )
+        # Note: If schema function doesn't commit, we should here.
+        # But schema.save_login commits. Let's assume upsert_annotation commits too
+        # or it takes connection and we commit.
+        conn.commit()
+
+    def get_annotations_for_entity(self, entity_key: str) -> dict:
+        """Get annotations for a specific entity."""
+        from autodbaudit.infrastructure.sqlite.schema import get_annotations_for_entity
+
+        return get_annotations_for_entity(self._get_connection(), entity_key)
+
+    def get_all_annotations(self, only_overrides: bool = False) -> list[dict]:
+        """
+        Get all annotations, optionally filtering for status overrides.
+        """
+        conn = self._get_connection()
+        query = """
+            SELECT entity_type, entity_key, field_name, field_value, 
+                   status_override, created_at, modified_by
+            FROM annotations
+        """
+        if only_overrides:
+            query += " WHERE status_override IS NOT NULL"
+
+        query += " ORDER BY entity_type, entity_key"
+
+        rows = conn.execute(query).fetchall()
+        return [dict(row) for row in rows]
