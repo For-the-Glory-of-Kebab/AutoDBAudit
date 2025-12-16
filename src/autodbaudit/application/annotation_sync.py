@@ -36,7 +36,9 @@ SHEET_ANNOTATION_CONFIG = {
         "entity_type": "sa_account",
         "key_cols": ["Server", "Instance"],
         "editable_cols": {
+            "Status": "review_status",  # Review Status dropdown (⏳ Needs Review / ✓ Exception)
             "Justification": "justification",  # FAIL + justification = exception
+            "Last Reviewed": "last_reviewed",  # Date when auditor reviewed
             "Notes": "notes",
         },
     },
@@ -44,7 +46,9 @@ SHEET_ANNOTATION_CONFIG = {
         "entity_type": "login",
         "key_cols": ["Server", "Instance", "Login Name"],
         "editable_cols": {
+            "Status": "review_status",
             "Justification": "justification",
+            "Last Revised": "last_reviewed",
             "Notes": "notes",
         },
     },
@@ -52,28 +56,36 @@ SHEET_ANNOTATION_CONFIG = {
         "entity_type": "role_member",
         "key_cols": ["Server", "Instance", "Role", "Member"],
         "editable_cols": {
+            "Status": "review_status",
             "Justification": "justification",
+            "Last Revised": "last_reviewed",
         },
     },
     "Configuration": {
         "entity_type": "config",
         "key_cols": ["Server", "Instance", "Setting"],
         "editable_cols": {
-            "Exception Reason": "justification",  # Original column name
+            "Status": "review_status",
+            "Exception Reason": "justification",
+            "Last Reviewed": "last_reviewed",
         },
     },
     "Services": {
         "entity_type": "service",
         "key_cols": ["Server", "Instance", "Service Name"],
         "editable_cols": {
+            "Status": "review_status",
             "Justification": "justification",
+            "Last Reviewed": "last_reviewed",
         },
     },
     "Databases": {
         "entity_type": "database",
         "key_cols": ["Server", "Instance", "Database"],
         "editable_cols": {
+            "Status": "review_status",
             "Justification": "justification",
+            "Last Reviewed": "last_reviewed",
             "Notes": "notes",
         },
     },
@@ -81,7 +93,9 @@ SHEET_ANNOTATION_CONFIG = {
         "entity_type": "db_user",
         "key_cols": ["Server", "Instance", "Database", "User Name"],
         "editable_cols": {
+            "Status": "review_status",
             "Justification": "justification",
+            "Last Reviewed": "last_reviewed",
             "Notes": "notes",
         },
     },
@@ -89,14 +103,18 @@ SHEET_ANNOTATION_CONFIG = {
         "entity_type": "db_role",
         "key_cols": ["Server", "Instance", "Database", "Role", "Member"],
         "editable_cols": {
+            "Status": "review_status",
             "Justification": "justification",
+            "Last Reviewed": "last_reviewed",
         },
     },
     "Permission Grants": {
         "entity_type": "permission",
         "key_cols": ["Server", "Instance", "Scope", "Grantee", "Permission"],
         "editable_cols": {
+            "Status": "review_status",
             "Justification": "justification",
+            "Last Reviewed": "last_reviewed",
             "Notes": "notes",
         },
     },
@@ -104,15 +122,19 @@ SHEET_ANNOTATION_CONFIG = {
         "entity_type": "orphaned_user",
         "key_cols": ["Server", "Instance", "Database", "User Name"],
         "editable_cols": {
+            "Status": "review_status",
             "Justification": "justification",
+            "Last Revised": "last_reviewed",
         },
     },
     "Linked Servers": {
         "entity_type": "linked_server",
         "key_cols": ["Server", "Instance", "Linked Server"],
         "editable_cols": {
-            "Purpose": "purpose",  # Info-only, not discrepancy
-            "Justification": "justification",  # Discrepancy reason
+            "Status": "review_status",
+            "Purpose": "purpose",
+            "Justification": "justification",
+            "Last Revised": "last_reviewed",
         },
     },
     "Triggers": {
@@ -122,11 +144,21 @@ SHEET_ANNOTATION_CONFIG = {
             "Purpose": "purpose",
         },
     },
+    "Client Protocols": {
+        "entity_type": "protocol",
+        "key_cols": ["Server", "Instance", "Protocol"],
+        "editable_cols": {
+            "Justification": "justification",
+            "Notes": "notes",
+        },
+    },
     "Backups": {
         "entity_type": "backup",
         "key_cols": ["Server", "Instance", "Database"],
         "editable_cols": {
+            "Status": "review_status",
             "Justification": "justification",
+            "Last Reviewed": "last_reviewed",
             "Notes": "notes",
         },
     },
@@ -134,7 +166,9 @@ SHEET_ANNOTATION_CONFIG = {
         "entity_type": "audit_settings",
         "key_cols": ["Server", "Instance", "Setting"],
         "editable_cols": {
+            "Status": "review_status",
             "Justification": "justification",
+            "Last Reviewed": "last_reviewed",
             "Notes": "notes",
         },
     },
@@ -228,6 +262,7 @@ class AnnotationSyncService:
         Read annotations from a single worksheet.
         
         Uses header row to find column positions dynamically.
+        Handles merged cells by tracking last non-empty values for key columns.
         """
         annotations: dict[str, dict] = {}
         
@@ -282,22 +317,40 @@ class AnnotationSyncService:
                 action_col_idx = idx
                 break
         
+        # Track last non-empty values for key columns (handles merged cells)
+        # When cells are merged, only first row has value, rest are None
+        last_key_values = [""] * len(key_indices)
+        
         # Read data rows
         for row in ws.iter_rows(min_row=2, values_only=True):
             if not row or all(v is None for v in row):
                 continue
             
             # Build entity key from key columns
+            # Use last non-empty value if current is None (merged cell)
             key_parts = []
-            for idx in key_indices:
+            for i, idx in enumerate(key_indices):
                 val = row[idx] if idx < len(row) else None
-                # Normalize: "(Default)" -> ""
-                if val == "(Default)" or val is None:
-                    key_parts.append("")
+                
+                # If value is None, use last known value (merged cell case)
+                if val is None:
+                    val = last_key_values[i]
                 else:
-                    key_parts.append(str(val))
+                    # Normalize: "(Default)" -> ""
+                    if val == "(Default)":
+                        val = ""
+                    else:
+                        val = str(val)
+                    # Update last known value
+                    last_key_values[i] = val
+                
+                key_parts.append(val)
             
             entity_key = "|".join(key_parts)
+            
+            # Skip if we couldn't build a valid key
+            if not any(key_parts):
+                continue
             
             # Extract editable fields
             fields = {}
@@ -429,18 +482,33 @@ class AnnotationSyncService:
         # Check if this sheet has a justification field
         has_justification = "justification" in config["editable_cols"].values()
         
+        # Track last non-empty values for key columns (handles merged cells)
+        last_key_values = [""] * len(key_indices)
+        
         # Iterate through data rows and update matching cells
         for row_num in range(2, ws.max_row + 1):
             # Build entity key from key columns
+            # Handle merged cells by using last non-empty value
             key_parts = []
-            for col_idx in key_indices:
+            for i, col_idx in enumerate(key_indices):
                 cell_val = ws.cell(row=row_num, column=col_idx).value
-                if cell_val == "(Default)" or cell_val is None:
+                
+                if cell_val is None:
+                    # Merged cell - use last known value
+                    key_parts.append(last_key_values[i])
+                elif cell_val == "(Default)":
                     key_parts.append("")
+                    last_key_values[i] = ""
                 else:
-                    key_parts.append(str(cell_val))
+                    val = str(cell_val)
+                    key_parts.append(val)
+                    last_key_values[i] = val
             
             entity_key = "|".join(key_parts)
+            
+            # Skip if we couldn't build a valid key
+            if not any(key_parts):
+                continue
             
             # Check if we have annotations for this row
             if entity_key in annotations:

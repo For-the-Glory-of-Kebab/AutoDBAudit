@@ -18,8 +18,6 @@ from autodbaudit.infrastructure.excel_styles import (
 from autodbaudit.infrastructure.excel.base import (
     BaseSheetMixin,
     SheetConfig,
-    ACTION_COLUMN,
-    apply_action_needed_styling,
 )
 from autodbaudit.infrastructure.excel.server_group import ServerGroupMixin
 
@@ -41,9 +39,9 @@ FIXED_ROLES = [
 ]
 
 # Column Definitions
-# Action, Server, Instance, Database, Principal, Type, [Fixed Roles...], Other Roles, Risk
+# Server, Instance, Database, Principal, Type, [Fixed Roles...], Other Roles, Risk
+# NOTE: Role Matrix is info-only (Q3 decision). Justifications go in Database Roles sheet.
 ROLE_MATRIX_COLUMNS = [
-    ACTION_COLUMN,  # Column A: Action indicator
     ColumnDef("Server", 18, Alignments.LEFT),
     ColumnDef("Instance", 15, Alignments.LEFT),
     ColumnDef("Database", 20, Alignments.LEFT),
@@ -119,7 +117,6 @@ class RoleMatrixSheetMixin(ServerGroupMixin, BaseSheetMixin):
             type_display = principal_type
 
         row_data = [
-            None,  # Action indicator (column A)
             server_name,
             instance_name or "(Default)",
             database_name,
@@ -150,13 +147,10 @@ class RoleMatrixSheetMixin(ServerGroupMixin, BaseSheetMixin):
             row_data.append("—")
 
         row = self._write_row(ws, ROLE_MATRIX_CONFIG, row_data)
-        
-        # Apply action indicator (column 1)
-        apply_action_needed_styling(ws.cell(row=row, column=1), has_high_risk)
 
-        # Apply row color (shifted +1 for action column)
-        # Meta columns: 2=Server, 3=Instance, 4=Database, 5=Principal, 6=Type, last=Risk
-        meta_cols = [2, 3, 4, 5, 6, len(ROLE_MATRIX_COLUMNS)]  # Server...Type + Risk
+        # Apply row color (no action column now, Server is column 1)
+        # Meta columns: 1=Server, 2=Instance, 3=Database, 4=Principal, 5=Type, last=Risk
+        meta_cols = [1, 2, 3, 4, 5, len(ROLE_MATRIX_COLUMNS)]  # Server...Type + Risk
         self._apply_row_color(row, row_color, data_cols=meta_cols, ws=ws)
 
         # Style Matrix Cells (if checked)

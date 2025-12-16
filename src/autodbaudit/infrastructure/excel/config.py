@@ -17,6 +17,8 @@ from autodbaudit.infrastructure.excel.base import (
     BaseSheetMixin,
     SheetConfig,
     ACTION_COLUMN,
+    STATUS_COLUMN,
+    LAST_REVIEWED_COLUMN,
     apply_action_needed_styling,
 )
 from autodbaudit.infrastructure.excel.server_group import ServerGroupMixin
@@ -34,7 +36,9 @@ CONFIG_COLUMNS = (
     ColumnDef("Required", 12, Alignments.CENTER),
     ColumnDef("Status", 12, Alignments.CENTER, is_status=True),
     ColumnDef("Risk", 10, Alignments.CENTER),
+    STATUS_COLUMN,  # Review Status dropdown
     ColumnDef("Exception Reason", 45, Alignments.LEFT, is_manual=True),
+    LAST_REVIEWED_COLUMN,
 )
 
 CONFIG_CONFIG = SheetConfig(name="Configuration", columns=CONFIG_COLUMNS)

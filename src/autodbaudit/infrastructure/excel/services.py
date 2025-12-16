@@ -26,6 +26,8 @@ from autodbaudit.infrastructure.excel.base import (
     BaseSheetMixin,
     SheetConfig,
     ACTION_COLUMN,
+    STATUS_COLUMN,
+    LAST_REVIEWED_COLUMN,
     apply_action_needed_styling,
 )
 
@@ -43,7 +45,9 @@ SERVICE_COLUMNS = (
     ColumnDef("Startup", 12, Alignments.CENTER),
     ColumnDef("Service Account", 35, Alignments.LEFT),
     ColumnDef("Compliant", 10, Alignments.CENTER),
+    STATUS_COLUMN,  # Review Status dropdown
     ColumnDef("Justification", 40, Alignments.LEFT, is_manual=True),
+    LAST_REVIEWED_COLUMN,
 )
 
 SERVICE_CONFIG = SheetConfig(name="Services", columns=SERVICE_COLUMNS)

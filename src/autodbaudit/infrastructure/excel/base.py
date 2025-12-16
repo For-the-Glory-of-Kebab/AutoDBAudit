@@ -7,6 +7,8 @@ for all sheet modules.
 
 from __future__ import annotations
 
+import logging
+import re
 from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
@@ -29,6 +31,9 @@ if TYPE_CHECKING:
     from openpyxl import Workbook
 
 
+logger = logging.getLogger(__name__)
+
+
 __all__ = [
     "ColumnDef",
     "Alignments",
@@ -39,21 +44,67 @@ __all__ = [
     "get_sql_year",
     "add_dropdown_validation",
     "LAST_REVISED_COLUMN",
+    "LAST_REVIEWED_COLUMN",
+    "STATUS_COLUMN",
     "ACTION_COLUMN",
     "apply_action_needed_styling",
     "apply_exception_documented_styling",
+    "parse_datetime_flexible",
+    "STATUS_VALUES",
 ]
+
+
+# ============================================================================
+# Status Column Values (Dropdown Options)
+# ============================================================================
+
+class StatusValues:
+    """Valid values for the Status dropdown column."""
+    NEEDS_REVIEW = "⏳ Needs Review"
+    EXCEPTION = "✓ Exception"
+    REVIEWED = "✓ Reviewed"
+    
+    @classmethod
+    def all(cls) -> list[str]:
+        """Return all valid status values for dropdown."""
+        return [cls.NEEDS_REVIEW, cls.EXCEPTION, cls.REVIEWED]
+    
+    @classmethod
+    def is_documented(cls, value: str | None) -> bool:
+        """Check if a status value indicates documented/reviewed."""
+        if not value:
+            return False
+        value_clean = str(value).strip()
+        return value_clean in (cls.EXCEPTION, cls.REVIEWED)
+
+
+STATUS_VALUES = StatusValues
 
 
 # ============================================================================
 # Standard Column Definitions
 # ============================================================================
 
-# Reusable "Last Revised" column for sheets with manual annotations
-# This tracks when an auditor last reviewed/updated the row
+# Reusable "Last Revised" column (legacy name kept for compatibility)
 LAST_REVISED_COLUMN = ColumnDef(
     name="Last Revised",
     width=12,
+    alignment=Alignments.CENTER,
+    is_manual=True,
+)
+
+# Reusable "Last Reviewed" column - when auditor last reviewed this row
+LAST_REVIEWED_COLUMN = ColumnDef(
+    name="Last Reviewed",
+    width=14,
+    alignment=Alignments.CENTER,
+    is_manual=True,
+)
+
+# Reusable "Status" column - dropdown for exception/review status
+STATUS_COLUMN = ColumnDef(
+    name="Status",
+    width=16,
     alignment=Alignments.CENTER,
     is_manual=True,
 )
@@ -108,6 +159,116 @@ def format_date(value: Any) -> str:
         return value.strftime("%Y-%m-%d")
     s = str(value)
     return s[:10] if len(s) >= 10 else s
+
+
+def parse_datetime_flexible(
+    value: Any,
+    log_errors: bool = True,
+    context: str = "",
+) -> datetime | None:
+    """
+    Parse a datetime value from Excel with robust handling of multiple formats.
+    
+    Handles:
+    - Excel numeric dates (float/int representing days since 1900)
+    - datetime objects (passthrough)
+    - String formats: MM/DD/YYYY, YYYY-MM-DD, DD/MM/YYYY, with optional time
+    - Extra whitespace (trimmed)
+    - Various separators (/, -, .)
+    
+    Args:
+        value: The cell value to parse (can be datetime, float, int, str, None)
+        log_errors: If True, log parse failures (don't fail silently)
+        context: Optional context string for logging (e.g., "Server Logins row 5")
+    
+    Returns:
+        datetime object if parsed successfully, None otherwise
+    
+    Examples:
+        >>> parse_datetime_flexible("12/16/2025")
+        datetime(2025, 12, 16, 0, 0)
+        >>> parse_datetime_flexible("2025-12-16 10:30")
+        datetime(2025, 12, 16, 10, 30)
+        >>> parse_datetime_flexible(45678.5)  # Excel date number
+        datetime(2025, 1, 15, 12, 0)
+    """
+    if value is None or value == "":
+        return None
+    
+    # Already a datetime
+    if isinstance(value, datetime):
+        return value
+    
+    # Excel numeric date (days since 1899-12-30, with fractional days as time)
+    if isinstance(value, (int, float)):
+        try:
+            # Excel epoch is 1899-12-30 (with the famous 1900 leap year bug)
+            from datetime import timedelta
+            excel_epoch = datetime(1899, 12, 30)
+            return excel_epoch + timedelta(days=float(value))
+        except (ValueError, OverflowError) as e:
+            if log_errors:
+                logger.debug(
+                    "DateTime parse: Excel numeric %s failed: %s %s",
+                    value, e, f"[{context}]" if context else ""
+                )
+            return None
+    
+    # String parsing
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        
+        # Normalize separators and whitespace
+        # Replace multiple spaces with single space
+        text = re.sub(r'\s+', ' ', text)
+        
+        # Try various formats (most common first for performance)
+        formats = [
+            # ISO formats
+            "%Y-%m-%d %H:%M:%S",
+            "%Y-%m-%d %H:%M",
+            "%Y-%m-%d",
+            # US formats (MM/DD/YYYY)
+            "%m/%d/%Y %H:%M:%S",
+            "%m/%d/%Y %H:%M",
+            "%m/%d/%Y",
+            # European formats (DD/MM/YYYY) - try after US
+            "%d/%m/%Y %H:%M:%S",
+            "%d/%m/%Y %H:%M",
+            "%d/%m/%Y",
+            # With dots (common in some locales)
+            "%Y.%m.%d",
+            "%d.%m.%Y",
+            # With dashes in different order
+            "%d-%m-%Y %H:%M:%S",
+            "%d-%m-%Y %H:%M",
+            "%d-%m-%Y",
+        ]
+        
+        for fmt in formats:
+            try:
+                return datetime.strptime(text, fmt)
+            except ValueError:
+                continue
+        
+        # If all formats fail, log it
+        if log_errors:
+            logger.warning(
+                "DateTime parse failed for value '%s' %s - tried %d formats",
+                text[:50], f"[{context}]" if context else "", len(formats)
+            )
+        return None
+    
+    # Unknown type
+    if log_errors:
+        logger.debug(
+            "DateTime parse: unknown type %s for value %s %s",
+            type(value).__name__, repr(value)[:50],
+            f"[{context}]" if context else ""
+        )
+    return None
 
 
 def format_size_mb(value: Any) -> str:

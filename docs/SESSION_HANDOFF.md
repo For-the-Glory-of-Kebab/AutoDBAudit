@@ -1,106 +1,57 @@
-# Session Handoff: Phase 19 Complete
-> **Date**: 2025-12-15 (Afternoon)
+# Session Handoff: Phase 20A Complete
+> **Date**: 2025-12-16
 > **Status**: ✅ READY FOR COMMIT
-> **Next Action**: `git commit` then continue E2E testing
+> **Next**: Phase 20B (Action Log) or E2E testing
 
 ---
 
-## 🎯 Quick Context for AI
+## 🎯 Quick Context
 
-**You are continuing AutoDBAudit development.** Phase 19 is COMPLETE. All sheet column fixes done. E2E test was run successfully. User wants to commit and continue testing.
+**Phase 20A COMPLETE:** Foundation work done. All discrepancy sheets have Status dropdown + Last Reviewed columns. Key design decisions (Q1, Q3) implemented.
 
-### Commit Message Ready:
+### Commit Message:
 ```
-feat(phase-19): Comprehensive sheet fixes and Client Protocols sheet
+feat(phase-20a): Foundation work - Status columns and ##...## exclusion
 
-- Add ACTION_COLUMN to Services, DB Roles, Role Matrix sheets
-- Create new Client Protocols sheet with discrepancy logic
-- Fix column alignment (+1 shift for ACTION_COLUMN)
-- Rename Remediation→Justification on Orphaned Users
-- Add Justification columns to Linked Servers, Orphaned Users
-- Add LAST_REVISED_COLUMN to Orphaned Users
-- Add exception_documented count to CLI sync stats
-- Update annotation_sync configs for all modified sheets
-```
-
----
-
-## 📋 Phase 19 Summary (COMPLETED)
-
-| Issue | Status | Details |
-|-------|--------|---------|
-| Services Sheet | ✅ | ACTION_COLUMN + essential/non-essential discrepancy |
-| Client Protocols | ✅ NEW | TCP/IP, Shared Memory, Named Pipes, VIA |
-| Database Roles | ✅ | Column indices shifted +1 |
-| Role Matrix | ✅ | Column indices shifted +1, Fonts.PASS fix |
-| Orphaned Users | ✅ | Remediation→Justification, LAST_REVISED added |
-| Linked Servers | ✅ | Justification column added |
-| Databases | ✅ | Already had proper discrepancy logic |
-| Exception Stats | ✅ | Shows in CLI sync output |
-
----
-
-## 📁 Files Modified in Phase 19
-
-### Sheet Modules
-| File | Changes |
-|------|---------|
-| `services.py` | ACTION_COLUMN, ESSENTIAL/NON_ESSENTIAL constants, discrepancy logic |
-| `client_protocols.py` | **NEW** - Complete sheet with TCP/IP, Shared Memory, Named Pipes, VIA |
-| `db_roles.py` | ACTION_COLUMN, column indices +1 |
-| `role_matrix.py` | ACTION_COLUMN, matrix start_col=7, Fonts.PASS |
-| `orphaned_users.py` | Justification + LAST_REVISED columns |
-| `linked_servers.py` | Justification column |
-
-### Infrastructure
-| File | Changes |
-|------|---------|
-| `query_provider.py` | `get_client_protocols()` in both 2008 and 2019+ providers |
-| `writer.py` | ClientProtocolSheetMixin integration |
-
-### Application
-| File | Changes |
-|------|---------|
-| `data_collector.py` | `_collect_client_protocols()` method |
-| `annotation_sync.py` | Updated Services, Orphaned Users, Linked Servers configs |
-| `sync_service.py` | `exceptions_documented` in CLI stats |
-
----
-
-## 🛑 Architecture Rules (DO NOT BREAK)
-
-1. **ACTION_COLUMN = Column A** on all discrepancy sheets
-2. **Column indices shift +1** when ACTION_COLUMN exists (Server=2, Instance=3)
-3. **Justification column** for user-editable exception notes
-4. **LAST_REVISED_COLUMN** for date tracking where applicable
-5. **Client Protocols Discrepancy**: Named Pipes, VIA = needs justification if enabled
-
----
-
-## 🧪 E2E Test Commands
-
-```bash
-# Full audit
-python main.py --audit -c config/audit_config.json
-
-# Sync (detects changes)
-python main.py --sync
-
-# Generate remediation
-python main.py --generate-remediation
-
-# Finalize
-python main.py --finalize
+- Add STATUS_COLUMN and LAST_REVIEWED_COLUMN to all 14 discrepancy sheets
+- Create parse_datetime_flexible() for robust date handling
+- Fix merged cell handling in annotation sync (justification detection)
+- Implement Q1: ##...## system logins excluded from discrepancy
+- Implement Q3: Role Matrix now info-only (no ACTION_COLUMN)
+- Add StatusValues class with dropdown options
+- Update all 18 annotation_sync sheet configurations
 ```
 
 ---
 
-## ⚠️ Known Non-Blocking Issues
+## 📋 Phase 20A Summary
 
-- **Pylint "too general Exception"** warnings in data_collector.py (intentional resilience)
-- **Unused 'product' arg** in linked_servers.py (cosmetic)
-- **Client Protocols on Linux**: VIA always shows disabled (correct behavior)
+| Item | Status |
+|------|--------|
+| DateTime parser | ✅ `parse_datetime_flexible()` |
+| Merged cell fix | ✅ Both read/write |
+| Q1: ##...## exclusion | ✅ In `logins.py` |
+| Q3: Role Matrix info-only | ✅ ACTION_COLUMN removed |
+| STATUS_COLUMN | ✅ All 14 sheets |
+| LAST_REVIEWED_COLUMN | ✅ All 14 sheets |
+| Annotation configs | ✅ All 18 sheets |
 
 ---
 
-*Document Version: 2.0 | Phase 19 Handoff | 2025-12-15*
+## 📁 Files Modified
+
+### Core
+- `base.py` - DateTime parser, StatusValues, column defs
+- `annotation_sync.py` - Merged cell fix, all 18 configs
+
+### Sheet Modules (14 updated)
+SA Account, Server Logins, Backups, Linked Servers, Sensitive Roles, 
+Configuration, Services, Databases, Database Users, Database Roles, 
+Orphaned Users, Permissions, Client Protocols, Audit Settings, Role Matrix
+
+---
+
+## Next Steps
+1. Phase 20B: Action Log redesign
+2. Q2: SQL Agent off = WARNING
+3. E2E testing (at the end)

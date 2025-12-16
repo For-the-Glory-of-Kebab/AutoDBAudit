@@ -20,6 +20,8 @@ from autodbaudit.infrastructure.excel.base import (
     BaseSheetMixin,
     SheetConfig,
     ACTION_COLUMN,
+    STATUS_COLUMN,
+    LAST_REVIEWED_COLUMN,
     apply_action_needed_styling,
 )
 from autodbaudit.infrastructure.excel.server_group import ServerGroupMixin
@@ -40,7 +42,9 @@ PERMISSION_COLUMNS = (
     ColumnDef("Entity Type", 15, Alignments.CENTER),
     ColumnDef("Entity Name", 35, Alignments.LEFT),
     ColumnDef("Risk", 12, Alignments.CENTER),
+    STATUS_COLUMN,  # Review Status dropdown
     ColumnDef("Justification", 35, Alignments.LEFT, is_manual=True),
+    LAST_REVIEWED_COLUMN,
     ColumnDef("Notes", 30, Alignments.LEFT, is_manual=True),
 )
 

@@ -22,6 +22,7 @@ from autodbaudit.infrastructure.excel.base import (
     BaseSheetMixin,
     SheetConfig,
     LAST_REVISED_COLUMN,
+    STATUS_COLUMN,
     ACTION_COLUMN,
     apply_action_needed_styling,
 )
@@ -37,7 +38,8 @@ ROLE_COLUMNS = (
     ColumnDef("Role", 20, Alignments.LEFT),
     ColumnDef("Member", 28, Alignments.LEFT),
     ColumnDef("Member Type", 18, Alignments.LEFT),
-    ColumnDef("Enabled", 10, Alignments.CENTER),  # Changed from Disabled
+    ColumnDef("Enabled", 10, Alignments.CENTER),
+    STATUS_COLUMN,  # Review Status dropdown
     ColumnDef("Justification", 40, Alignments.LEFT, is_manual=True),
     LAST_REVISED_COLUMN,
 )

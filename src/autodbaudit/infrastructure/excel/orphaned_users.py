@@ -20,6 +20,7 @@ from autodbaudit.infrastructure.excel.base import (
     BaseSheetMixin,
     SheetConfig,
     ACTION_COLUMN,
+    STATUS_COLUMN,
     LAST_REVISED_COLUMN,
     apply_action_needed_styling,
 )
@@ -37,7 +38,8 @@ ORPHANED_USER_COLUMNS = (
     ColumnDef("User Name", 25, Alignments.LEFT),
     ColumnDef("Type", 16, Alignments.CENTER),
     ColumnDef("Status", 14, Alignments.CENTER),
-    ColumnDef("Justification", 45, Alignments.LEFT, is_manual=True),  # Renamed from Remediation
+    STATUS_COLUMN,  # Review Status dropdown
+    ColumnDef("Justification", 45, Alignments.LEFT, is_manual=True),
     LAST_REVISED_COLUMN,
 )
 

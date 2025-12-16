@@ -24,6 +24,7 @@ from autodbaudit.infrastructure.excel.base import (
     BaseSheetMixin,
     SheetConfig,
     LAST_REVISED_COLUMN,
+    STATUS_COLUMN,
     ACTION_COLUMN,
     apply_action_needed_styling,
 )
@@ -41,9 +42,10 @@ LOGIN_COLUMNS = (
     ColumnDef("Enabled", 10, Alignments.CENTER),
     ColumnDef("Password Policy", 14, Alignments.CENTER),
     ColumnDef("Default Database", 18, Alignments.LEFT),
-    ColumnDef("Justification", 35, Alignments.LEFT, is_manual=True),  # FAIL + justification = exception
+    STATUS_COLUMN,  # Review Status dropdown
+    ColumnDef("Justification", 35, Alignments.LEFT, is_manual=True),
+    LAST_REVISED_COLUMN,  # Last Reviewed (was Last Revised)
     ColumnDef("Notes", 25, Alignments.LEFT, is_manual=True),
-    LAST_REVISED_COLUMN,
 )
 
 LOGIN_CONFIG = SheetConfig(name="Server Logins", columns=LOGIN_COLUMNS)
@@ -132,13 +134,26 @@ class LoginSheetMixin(BaseSheetMixin):
         
         row = self._write_row(ws, LOGIN_CONFIG, data)
         
+        # Determine if this is a system/internal login (Q1 decision)
+        # ##...## pattern logins are SQL Server internal accounts - exclude from discrepancy
+        is_system_login = (
+            login_name.startswith("##") and login_name.endswith("##")
+        ) or login_name.lower() in {
+            "sa", "nt authority\\system", "nt service\\mssqlserver",
+            "nt service\\sqlserveragent"
+        }
+        
         # Determine if action is needed:
+        # - System logins: never discrepant (Q1 decision)
         # - Disabled logins (potential unused accounts)
         # - SQL logins without password policy (except N/A for Windows logins)
-        needs_action = is_disabled or (pwd_policy is False)
+        if is_system_login:
+            needs_action = False
+        else:
+            needs_action = is_disabled or (pwd_policy is False)
         apply_action_needed_styling(ws.cell(row=row, column=1), needs_action)
         
-        # Apply shade to informational columns (not status) - shifted +1
+        # Apply shade to informational columns (not status)
         fill = PatternFill(start_color=row_color, end_color=row_color, fill_type="solid")
         for col in [2, 3, 4, 5, 8]:  # Server=2, Instance=3, Name=4, Type=5, DefaultDB=8
             ws.cell(row=row, column=col).fill = fill

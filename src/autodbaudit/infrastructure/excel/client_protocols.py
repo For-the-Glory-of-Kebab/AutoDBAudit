@@ -23,6 +23,7 @@ from autodbaudit.infrastructure.excel.base import (
     BaseSheetMixin,
     SheetConfig,
     ACTION_COLUMN,
+    STATUS_COLUMN,
     LAST_REVISED_COLUMN,
     apply_action_needed_styling,
 )
@@ -54,6 +55,7 @@ CLIENT_PROTOCOL_COLUMNS = (
     ColumnDef("Port", 10, Alignments.CENTER),
     ColumnDef("Status", 14, Alignments.CENTER),
     ColumnDef("Notes", 30, Alignments.LEFT),
+    STATUS_COLUMN,  # Review Status dropdown
     ColumnDef("Justification", 40, Alignments.LEFT, is_manual=True),
     LAST_REVISED_COLUMN,
 )

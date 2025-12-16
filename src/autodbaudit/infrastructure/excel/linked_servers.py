@@ -18,6 +18,7 @@ from autodbaudit.infrastructure.excel.base import (
     BaseSheetMixin,
     SheetConfig,
     LAST_REVISED_COLUMN,
+    STATUS_COLUMN,
     ACTION_COLUMN,
     apply_action_needed_styling,
 )
@@ -39,6 +40,7 @@ LINKED_SERVER_COLUMNS = (
     ColumnDef("Remote Login", 16, Alignments.LEFT),
     ColumnDef("Impersonate", 12, Alignments.CENTER),
     ColumnDef("Risk", 12, Alignments.CENTER),
+    STATUS_COLUMN,  # Review Status dropdown
     ColumnDef("Purpose", 30, Alignments.LEFT, is_manual=True),
     ColumnDef("Justification", 40, Alignments.LEFT, is_manual=True),
     LAST_REVISED_COLUMN,

@@ -20,6 +20,8 @@ from autodbaudit.infrastructure.excel.base import (
     BaseSheetMixin,
     SheetConfig,
     ACTION_COLUMN,
+    STATUS_COLUMN,
+    LAST_REVIEWED_COLUMN,
     apply_action_needed_styling,
 )
 from autodbaudit.infrastructure.excel.server_group import ServerGroupMixin
@@ -37,7 +39,9 @@ DB_ROLE_COLUMNS = (
     ColumnDef("Member", 25, Alignments.LEFT),
     ColumnDef("Member Type", 18, Alignments.CENTER),
     ColumnDef("Risk", 12, Alignments.CENTER),
+    STATUS_COLUMN,  # Review Status dropdown
     ColumnDef("Justification", 45, Alignments.LEFT, is_manual=True),
+    LAST_REVIEWED_COLUMN,
 )
 
 DB_ROLE_CONFIG = SheetConfig(name="Database Roles", columns=DB_ROLE_COLUMNS)

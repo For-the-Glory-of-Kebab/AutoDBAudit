@@ -22,6 +22,8 @@ from autodbaudit.infrastructure.excel.base import (
     format_date,
     format_size_mb,
     ACTION_COLUMN,
+    STATUS_COLUMN,
+    LAST_REVIEWED_COLUMN,
     apply_action_needed_styling,
 )
 from autodbaudit.infrastructure.excel.server_group import ServerGroupMixin
@@ -41,7 +43,9 @@ BACKUP_COLUMNS = (
     ColumnDef("Backup Path", 40, Alignments.LEFT),
     ColumnDef("Size (MB)", 12, Alignments.RIGHT),
     ColumnDef("Status", 10, Alignments.CENTER, is_status=True),
-    ColumnDef("Justification", 35, Alignments.LEFT, is_manual=True),  # FAIL + justification = exception
+    STATUS_COLUMN,  # Review Status dropdown
+    ColumnDef("Justification", 35, Alignments.LEFT, is_manual=True),
+    LAST_REVIEWED_COLUMN,
     ColumnDef("Notes", 25, Alignments.LEFT, is_manual=True),
 )
 

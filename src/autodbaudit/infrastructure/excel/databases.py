@@ -24,6 +24,8 @@ from autodbaudit.infrastructure.excel.base import (
     SheetConfig,
     format_size_mb,
     ACTION_COLUMN,
+    STATUS_COLUMN,
+    LAST_REVIEWED_COLUMN,
     apply_action_needed_styling,
 )
 from autodbaudit.infrastructure.excel.server_group import ServerGroupMixin
@@ -43,7 +45,9 @@ DATABASE_COLUMNS = (
     ColumnDef("Data (MB)", 12, Alignments.RIGHT),
     ColumnDef("Log (MB)", 12, Alignments.RIGHT),
     ColumnDef("Trustworthy", 12, Alignments.CENTER),
+    STATUS_COLUMN,  # Review Status dropdown
     ColumnDef("Justification", 35, Alignments.LEFT, is_manual=True),
+    LAST_REVIEWED_COLUMN,
     ColumnDef("Notes", 30, Alignments.LEFT, is_manual=True),
 )
 

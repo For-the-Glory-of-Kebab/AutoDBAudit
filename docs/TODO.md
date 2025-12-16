@@ -1,17 +1,20 @@
 # TODO Tracker
 
-> **Last Updated**: 2025-12-15
+> **Last Updated**: 2025-12-16
 
 ---
 
 ## 🔴 High Priority (Current Sprint)
 
+- [ ] **Phase 20B**: Action Log schema redesign
+- [ ] **Phase 20C**: Q2 - SQL Agent off = WARNING logic
 - [ ] **Manual E2E Test Execution** - User conducting "0 to 100" verification
-- [ ] 🧠 **Phase 4: Refinement & Advanced Logic**
-  - [x] **Excel**: Add indicator for discrepancies missing Fix/Justification ✅ (2025-12-13)
-  - [ ] **Architecture**: Review Excel Lifecycle (One Working Copy vs Many Snapshots)
-  - [x] **Logic**: Handle Reversion (Pass -> Fail) in Action Log (Gray out previous fix?)
-  - [x] **Phase 19**: Services, Client Protocols, Roles sheets - column alignment fixes ✅ (2025-12-15)
+- [x] **Phase 20A**: Foundation - Status columns, ##...## exclusion ✅ (2025-12-16)
+  - [x] `parse_datetime_flexible()` for robust date handling
+  - [x] Merged cell fix in annotation sync
+  - [x] Q1: ##...## system logins excluded
+  - [x] Q3: Role Matrix info-only
+  - [x] STATUS_COLUMN + LAST_REVIEWED_COLUMN on all 14 sheets
 
 ---
 

@@ -21,6 +21,8 @@ from autodbaudit.infrastructure.excel.base import (
     BaseSheetMixin,
     SheetConfig,
     ACTION_COLUMN,
+    STATUS_COLUMN,
+    LAST_REVIEWED_COLUMN,
     apply_action_needed_styling,
 )
 
@@ -29,15 +31,17 @@ __all__ = ["SAAccountSheetMixin", "SA_ACCOUNT_CONFIG"]
 
 
 SA_ACCOUNT_COLUMNS = (
-    ACTION_COLUMN,  # Column A: Action indicator
+    ACTION_COLUMN,  # Column A: Action indicator (⏳/✅)
     ColumnDef("Server", 18, Alignments.LEFT),
     ColumnDef("Instance", 15, Alignments.LEFT),
-    ColumnDef("Status", 12, Alignments.CENTER, is_status=True),
+    ColumnDef("Status", 12, Alignments.CENTER, is_status=True),  # PASS/FAIL/WARN
     ColumnDef("Is Disabled", 12, Alignments.CENTER),
     ColumnDef("Is Renamed", 12, Alignments.CENTER),
     ColumnDef("Current Name", 20, Alignments.LEFT),
     ColumnDef("Default DB", 15, Alignments.LEFT),
-    ColumnDef("Justification", 40, Alignments.LEFT, is_manual=True),  # FAIL + justification = exception
+    STATUS_COLUMN,  # Review Status dropdown (⏳ Needs Review / ✓ Exception)
+    ColumnDef("Justification", 40, Alignments.LEFT, is_manual=True),
+    LAST_REVIEWED_COLUMN,  # Date when auditor reviewed this row
     ColumnDef("Notes", 35, Alignments.LEFT, is_manual=True),
 )
 
@@ -98,16 +102,20 @@ class SAAccountSheetMixin(BaseSheetMixin):
             self._increment_issue()
         
         # Action indicator will be set after write
+        # Columns: Action, Server, Instance, Status, IsDisabled, IsRenamed, CurrentName, DefaultDB, ReviewStatus, Justification, LastReviewed, Notes
         data = [
             None,  # Action indicator (column A)
             server_name,
             instance_name or "(Default)",
-            None,  # Status
+            None,  # Status (PASS/FAIL/WARN)
             None,  # Is Disabled
             None,  # Is Renamed
             current_name,
             default_db or "",
-            "",    # Remediation Notes
+            "",    # Review Status (dropdown - empty default)
+            "",    # Justification
+            "",    # Last Reviewed
+            "",    # Notes
         ]
         
         row = self._write_row(ws, SA_ACCOUNT_CONFIG, data)
@@ -116,15 +124,15 @@ class SAAccountSheetMixin(BaseSheetMixin):
         needs_action = status != "pass"
         apply_action_needed_styling(ws.cell(row=row, column=1), needs_action)
         
-        # Apply light color to Server, Instance, Current Name, Default DB (shifted +1)
+        # Apply light color to Server, Instance, Current Name, Default DB
         fill = PatternFill(start_color=color_light, end_color=color_light, fill_type="solid")
         for col in [2, 3, 7, 8]:  # Server=2, Instance=3, CurrentName=7, DefaultDB=8
             ws.cell(row=row, column=col).fill = fill
         
-        # Apply status styling (shifted +1)
-        apply_status_styling(ws.cell(row=row, column=4), status)  # Status is now col 4
-        apply_boolean_styling(ws.cell(row=row, column=5), is_disabled)  # Is Disabled is now col 5
-        apply_boolean_styling(ws.cell(row=row, column=6), is_renamed)  # Is Renamed is now col 6
+        # Apply status styling
+        apply_status_styling(ws.cell(row=row, column=4), status)  # Status is col 4
+        apply_boolean_styling(ws.cell(row=row, column=5), is_disabled)  # Is Disabled is col 5
+        apply_boolean_styling(ws.cell(row=row, column=6), is_renamed)  # Is Renamed is col 6
     
     def _merge_sa_server(self, ws) -> None:
         """Merge Server cells for current server group."""
@@ -153,12 +161,14 @@ class SAAccountSheetMixin(BaseSheetMixin):
     
     def _add_sa_dropdowns(self) -> None:
         """Add dropdown validations for status columns."""
-        from autodbaudit.infrastructure.excel.base import add_dropdown_validation
+        from autodbaudit.infrastructure.excel.base import add_dropdown_validation, STATUS_VALUES
         
         ws = self._sa_account_sheet
-        # Status column (D) - column 4 (shifted +1 from C)
+        # Status column (D) - PASS/FAIL/WARN
         add_dropdown_validation(ws, "D", ["PASS", "FAIL", "WARN"])
-        # Is Disabled column (E) - column 5 (shifted +1 from D)
+        # Is Disabled column (E)
         add_dropdown_validation(ws, "E", ["✓", "✗"])
-        # Is Renamed column (F) - column 6 (shifted +1 from E)
+        # Is Renamed column (F)
         add_dropdown_validation(ws, "F", ["✓", "✗"])
+        # Review Status column (I) - our new dropdown
+        add_dropdown_validation(ws, "I", STATUS_VALUES.all())
