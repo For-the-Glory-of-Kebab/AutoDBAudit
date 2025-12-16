@@ -57,6 +57,15 @@
 - [x] **SQL Fixes**: Patched 2019+.sql for SQL 2008 R2 compatibility (THROW -> RAISERROR)
 - [x] **Instance ID**: Fixed multiple default instances via port detection
 
+### 2025-12-16: E2E Regression Fixes (Phase 22)
+- [x] **Linked Servers**: Fixed signature mismatch
+- [x] **Backups**: Fixed `add_backup_history`
+- [x] **Triggers**: Fixed signature and enabled/disabled logic
+- [x] **Encryption**: Implemented missing keys collection
+- [x] **Role Matrix**: Implemented `add_role_matrix_row` aggregation
+- [x] **Permission Grants**: Fixed server/database permission collection
+- [x] **Documentation**: Created `EXCEL_COLUMNS.md`
+
 ### 2025-12-12: E2E Prep & Architecture Refinement
 - [x] **Schema Fix**: Solved `run_type` and `action_log` missing/crash (Fresh Start)
 - [x] **Docs**: Created `E2E_TESTING_GUIDE.md` and updated `PROJECT_STATUS.md`

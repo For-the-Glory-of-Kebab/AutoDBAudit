@@ -156,3 +156,13 @@ SQL Server Security Hierarchy:
     - Track additions/removals of logins, users, role memberships over time
     - Highlight new high-privilege grants (sysadmin, db_owner, etc.)
     - Compare current state vs previous audit for drift detection
+
+---
+
+## Architectural Note: Results-Based Persistence
+
+> **Important**: The system follows a "Results-Based Persistence" strategy.
+> - The application primarily populates the `findings` table in the SQLite database to track compliance status (PASS/FAIL/WARN).
+> - Raw inventory tables (`logins`, `server_info`) exist in the schema (V2) but are currently **not populated** by default.
+> - This is an intentional design choice to focus on actionable compliance data for the current phase.
+

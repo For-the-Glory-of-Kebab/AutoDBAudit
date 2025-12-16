@@ -71,13 +71,14 @@ cd c:\Users\sickp\source\SQLAuditProject\AutoDBAudit
 
 | Component | Status |
 |-----------|--------|
-| **Audit + Excel** | ✅ Working - 17 sheets with formatting |
+| **Audit + Excel** | ✅ Working - 20+ sheets (inc. Role Matrix, Permissions) |
+| **Modular Collectors** | ✅ Working - Refactored into `application/collectors/` |
+| **Modular Remediation** | ✅ Working - Refactored into `application/remediation/` |
 | **SQLite Storage** | ✅ Working - findings, annotations, action_log |
 | **Remediation Scripts** | ✅ Working - 4-category + rollback + Aggressiveness Levels |
 | **Script Executor** | ✅ Working - with dry-run, credential protection |
-| **Sync/Finalize** | ⚠️ Partial - basic implementation |
+| **Sync/Finalize** | ✅ Working - Full E2E verification |
 | **Hotfix Deployment** | ⏳ Stubs only - NotImplementedError |
-| **Permission Grants** | ✅ Working - Sheet implemented |
 
 ---
 
@@ -85,32 +86,27 @@ cd c:\Users\sickp\source\SQLAuditProject\AutoDBAudit
 
 | File | Purpose |
 |------|---------|
-| [`docs/SESSION_HANDOFF_DEV_SWITCH.md`](../docs/SESSION_HANDOFF_DEV_SWITCH.md) | **START HERE** - Context for Dec 13 Switch |
+| [`docs/SESSION_HANDOFF_DEV_SWITCH.md`](../docs/SESSION_HANDOFF_DEV_SWITCH.md) | **START HERE** - Machine Handoff Context |
 | [`docs/PROJECT_STATUS.md`](../docs/PROJECT_STATUS.md) | **Comprehensive** current state |
+| [`docs/EXCEL_COLUMNS.md`](../docs/EXCEL_COLUMNS.md) | **Strict Schema** for all reports |
 | [`docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md) | Codebase architecture with diagrams |
-| [`docs/AUDIT_WORKFLOW.md`](../docs/AUDIT_WORKFLOW.md) | Audit lifecycle design |
-| [`docs/TODO.md`](../docs/TODO.md) | Task tracker |
 | [`db-requirements.md`](../db-requirements.md) | 28 audit requirements |
-| [`src/autodbaudit/infrastructure/sqlite/schema.py`](../src/autodbaudit/infrastructure/sqlite/schema.py) | **Canonical** SQLite schema |
 
 ---
 
 ## What's Working Now
 
-- ✅ **CLI** - All commands wired in `cli.py`
-- ✅ **Excel Package** - 22 modular files in `infrastructure/excel/`
-- ✅ **17 Sheets** - All with headers, conditional formatting, dropdowns
-- ✅ **Query Provider** - SQL 2008-2025+ compatible (SA Fix Applied)
-- ✅ **SqlConnector** - Version detection, auth handling
-- ✅ **Remediation Scripts** - 4-category + rollback + Aggressiveness
-- ✅ **Script Executor** - GO batch isolation, credential protection
+- ✅ **CLI** - All commands wired in `cli.py` and `src/main.py`.
+- ✅ **Excel Package** - Modular logic in `infrastructure/excel/`.
+- ✅ **20+ Sheets** - All populated, including Matrix and Permissions.
+- ✅ **Query Provider** - SQL 2008-2025+ compatible.
+- ✅ **Refactoring** - Full modularization of Collectors and Remediation completed.
 
 ## What's Still Pending
 
 - ⏳ `--deploy-hotfixes` (stubs exist, raises NotImplementedError)
-- ⏳ `config/hotfix_mapping.json` (does not exist yet)
-- ⚠️ `--finalize` workflow needs end-to-end testing
+- ⏳ `Inventory Population` (raw tables `logins`, `server_info` etc. are empty by design; using `findings`)
 
 ---
 
-*Last updated: 2025-12-13*
+*Last updated: 2025-12-16*

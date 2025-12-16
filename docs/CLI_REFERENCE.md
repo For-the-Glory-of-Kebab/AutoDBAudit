@@ -274,30 +274,31 @@ python main.py --validate-config
 
 ```bash
 # Set up environment (PowerShell)
-$env:PYTHONPATH="$PWD\src"
+cd c:\Users\sickp\source\SQLAuditProject\AutoDBAudit
+.\venv\Scripts\Activate.ps1
 
 # 1. Run initial audit
-python main.py --audit
+python src/main.py --audit
 
 # 2. Generate remediation scripts
-python main.py --generate-remediation
+python src/main.py --generate-remediation
 
 # 3. Preview changes
-python main.py --apply-remediation --dry-run
+python src/main.py --apply-remediation --dry-run
 
 # 4. Execute remediation
-python main.py --apply-remediation
+python src/main.py --apply-remediation
 
 # 5. Check status
-python main.py --status
+python src/main.py --status
 
 # 6. If needed, rollback
-python main.py --apply-remediation --rollback
+python src/main.py --apply-remediation --rollback
 
 # 7. Finalize
-python main.py --finalize --excel output/sql_audit_edited.xlsx
+python src/main.py --finalize --excel output/sql_audit_edited.xlsx
 ```
 
 ---
 
-*Document Version: 2.0 | Last Updated: 2025-12-09*
+*Document Version: 2.1 | Last Updated: 2025-12-16*

@@ -15,6 +15,7 @@ This folder contains all project documentation. README.md stays in the root as r
 | [PROJECT_STATUS.md](PROJECT_STATUS.md) | Current implementation state, what works, what doesn't | Everyone |
 | [TODO.md](TODO.md) | Task tracker and priorities | Developers |
 | [AI_RUNBOOK.md](AI_RUNBOOK.md) | Quick reference for AI assistants | AI agents |
+| [SESSION_HANDOFF_DEV_SWITCH.md](SESSION_HANDOFF_DEV_SWITCH.md) | **Critical Handoff Guide** (Read first on new machine) | Developers |
 
 ### Workflow & Usage
 | File | Purpose | Audience |
@@ -28,7 +29,8 @@ This folder contains all project documentation. README.md stays in the root as r
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Codebase architecture with diagrams | Developers |
 | [SCHEMA_REFERENCE.md](SCHEMA_REFERENCE.md) | SQLite schema documentation | Developers |
 | [SCHEMA_ALIGNMENT_ANALYSIS.md](SCHEMA_ALIGNMENT_ANALYSIS.md) | Schema mismatch analysis and fixes | Developers |
-| [EXCEL_REPORT_LAYOUT.md](EXCEL_REPORT_LAYOUT.md) | Excel sheet structure | Developers |
+| [EXCEL_REPORT_LAYOUT.md](EXCEL_REPORT_LAYOUT.md) | Excel sheet structure (General) | Developers |
+| [EXCEL_COLUMNS.md](EXCEL_COLUMNS.md) | **Strict Schema** & Column Definitions | Developers |
 | [HOTFIX_ORCHESTRATION.md](HOTFIX_ORCHESTRATION.md) | Hotfix deployment design (pending) | Developers |
 
 ### Archive
