@@ -1,0 +1,44 @@
+{
+  "AppName": "AutoDBAudit",
+  "Version": "1.0.0",
+  "OutputName": "AutoDBAudit_FieldKit",
+  "PyInstallerSpec": "packaging\\autodbaudit.spec",
+  "Assets": [
+    {
+      "Source": "config/sql_targets.example.json",
+      "Destination": "config/sql_targets.example.json",
+      "Description": "Default Targets Config"
+    },
+    {
+      "Source": "config/audit_config.example.json",
+      "Destination": "config/audit_config.example.json",
+      "Description": "Default Audit Config"
+    },
+    {
+      "Source": "credentials/credentials.example.json",
+      "Destination": "credentials/credentials.example.json",
+      "Description": "Credentials Template"
+    },
+    {
+      "Source": "docs/USER_GUIDE_DIST.md",
+      "Destination": "UserGuide.md",
+      "Description": "User Guide"
+    },
+    {
+      "Source": "tools",
+      "Destination": "tools",
+      "Description": "Core Tools Directory"
+    },
+    {
+      "Source": "resources",
+      "Destination": "resources",
+      "Description": "Extensible Resources Directory"
+    },
+    {
+      "Source": "packaging/extras/Startup.bat",
+      "Destination": "Startup.bat",
+      "Description": "Startup Script",
+      "Optional": true
+    }
+  ]
+}
