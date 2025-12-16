@@ -73,6 +73,7 @@ NON_ESSENTIAL_SERVICE_TYPES = frozenset({
     "vss writer",
     "ceip telemetry",
     "polybase",
+    "ad helper",  # Active Directory helper
     "other",
     "other sql service",
 })

@@ -101,9 +101,9 @@ LAST_REVIEWED_COLUMN = ColumnDef(
     is_manual=True,
 )
 
-# Reusable "Status" column - dropdown for exception/review status
+# Reusable "Review Status" column - dropdown for exception/review status
 STATUS_COLUMN = ColumnDef(
-    name="Status",
+    name="Review Status",
     width=16,
     alignment=Alignments.CENTER,
     is_manual=True,

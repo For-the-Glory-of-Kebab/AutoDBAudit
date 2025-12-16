@@ -1016,8 +1016,15 @@ class Sql2019PlusProvider(QueryProvider):
         SELECT 
             servicename AS ServiceName,
             CASE 
+                -- Database Engine: display name OR raw service name patterns
                 WHEN servicename LIKE '%SQL Server (%' THEN 'Database Engine'
+                WHEN servicename LIKE 'MSSQL$%' THEN 'Database Engine'
+                WHEN servicename = 'MSSQLSERVER' THEN 'Database Engine'
+                -- SQL Agent: display name OR raw service name patterns
                 WHEN servicename LIKE '%Agent%' THEN 'SQL Agent'
+                WHEN servicename LIKE 'SQLAgent$%' THEN 'SQL Agent'
+                WHEN servicename = 'SQLSERVERAGENT' THEN 'SQL Agent'
+                -- Other services
                 WHEN servicename LIKE '%Browser%' THEN 'SQL Browser'
                 WHEN servicename LIKE '%Full-text%' OR servicename LIKE '%Fulltext%' THEN 'Full-Text Search'
                 WHEN servicename LIKE '%Analysis%' OR servicename LIKE '%SSAS%' THEN 'Analysis Services'
@@ -1027,13 +1034,19 @@ class Sql2019PlusProvider(QueryProvider):
                 WHEN servicename LIKE '%VSS%' OR servicename LIKE '%Writer%' THEN 'VSS Writer'
                 WHEN servicename LIKE '%CEIP%' OR servicename LIKE '%Telemetry%' THEN 'CEIP Telemetry'
                 WHEN servicename LIKE '%PolyBase%' THEN 'PolyBase'
-                ELSE 'Other'
+                -- AD Helper is a common SQL auxiliary service
+                WHEN servicename LIKE '%ADHelper%' THEN 'AD Helper'
+                ELSE 'Other SQL Service'
             END AS ServiceType,
             -- Extract instance name from service display name
             CASE 
                 WHEN servicename LIKE '%(%)%' THEN 
                     SUBSTRING(servicename, CHARINDEX('(', servicename) + 1, 
                               CHARINDEX(')', servicename) - CHARINDEX('(', servicename) - 1)
+                WHEN servicename LIKE 'MSSQL$%' THEN
+                    SUBSTRING(servicename, 7, LEN(servicename) - 6)
+                WHEN servicename LIKE 'SQLAgent$%' THEN
+                    SUBSTRING(servicename, 10, LEN(servicename) - 9)
                 ELSE NULL
             END AS InstanceName,
             startup_type_desc AS StartupType,
@@ -1048,8 +1061,8 @@ class Sql2019PlusProvider(QueryProvider):
         FROM sys.dm_server_services
         ORDER BY 
             CASE 
-                WHEN servicename LIKE '%SQL Server (%' THEN 1
-                WHEN servicename LIKE '%Agent%' THEN 2
+                WHEN servicename LIKE '%SQL Server (%' OR servicename LIKE 'MSSQL$%' OR servicename = 'MSSQLSERVER' THEN 1
+                WHEN servicename LIKE '%Agent%' OR servicename LIKE 'SQLAgent$%' OR servicename = 'SQLSERVERAGENT' THEN 2
                 ELSE 99
             END,
             servicename

@@ -36,7 +36,7 @@ SHEET_ANNOTATION_CONFIG = {
         "entity_type": "sa_account",
         "key_cols": ["Server", "Instance"],
         "editable_cols": {
-            "Status": "review_status",  # Review Status dropdown (⏳ Needs Review / ✓ Exception)
+            "Review Status": "review_status",  # Review Status dropdown (⏳ Needs Review / ✓ Exception)
             "Justification": "justification",  # FAIL + justification = exception
             "Last Reviewed": "last_reviewed",  # Date when auditor reviewed
             "Notes": "notes",
@@ -46,7 +46,7 @@ SHEET_ANNOTATION_CONFIG = {
         "entity_type": "login",
         "key_cols": ["Server", "Instance", "Login Name"],
         "editable_cols": {
-            "Status": "review_status",
+            "Review Status": "review_status",
             "Justification": "justification",
             "Last Revised": "last_reviewed",
             "Notes": "notes",
@@ -56,7 +56,7 @@ SHEET_ANNOTATION_CONFIG = {
         "entity_type": "role_member",
         "key_cols": ["Server", "Instance", "Role", "Member"],
         "editable_cols": {
-            "Status": "review_status",
+            "Review Status": "review_status",
             "Justification": "justification",
             "Last Revised": "last_reviewed",
         },
@@ -65,7 +65,7 @@ SHEET_ANNOTATION_CONFIG = {
         "entity_type": "config",
         "key_cols": ["Server", "Instance", "Setting"],
         "editable_cols": {
-            "Status": "review_status",
+            "Review Status": "review_status",
             "Exception Reason": "justification",
             "Last Reviewed": "last_reviewed",
         },
@@ -74,7 +74,7 @@ SHEET_ANNOTATION_CONFIG = {
         "entity_type": "service",
         "key_cols": ["Server", "Instance", "Service Name"],
         "editable_cols": {
-            "Status": "review_status",
+            "Review Status": "review_status",
             "Justification": "justification",
             "Last Reviewed": "last_reviewed",
         },
@@ -83,7 +83,7 @@ SHEET_ANNOTATION_CONFIG = {
         "entity_type": "database",
         "key_cols": ["Server", "Instance", "Database"],
         "editable_cols": {
-            "Status": "review_status",
+            "Review Status": "review_status",
             "Justification": "justification",
             "Last Reviewed": "last_reviewed",
             "Notes": "notes",
@@ -93,7 +93,7 @@ SHEET_ANNOTATION_CONFIG = {
         "entity_type": "db_user",
         "key_cols": ["Server", "Instance", "Database", "User Name"],
         "editable_cols": {
-            "Status": "review_status",
+            "Review Status": "review_status",
             "Justification": "justification",
             "Last Reviewed": "last_reviewed",
             "Notes": "notes",
@@ -103,7 +103,7 @@ SHEET_ANNOTATION_CONFIG = {
         "entity_type": "db_role",
         "key_cols": ["Server", "Instance", "Database", "Role", "Member"],
         "editable_cols": {
-            "Status": "review_status",
+            "Review Status": "review_status",
             "Justification": "justification",
             "Last Reviewed": "last_reviewed",
         },
@@ -112,7 +112,7 @@ SHEET_ANNOTATION_CONFIG = {
         "entity_type": "permission",
         "key_cols": ["Server", "Instance", "Scope", "Grantee", "Permission"],
         "editable_cols": {
-            "Status": "review_status",
+            "Review Status": "review_status",
             "Justification": "justification",
             "Last Reviewed": "last_reviewed",
             "Notes": "notes",
@@ -122,7 +122,7 @@ SHEET_ANNOTATION_CONFIG = {
         "entity_type": "orphaned_user",
         "key_cols": ["Server", "Instance", "Database", "User Name"],
         "editable_cols": {
-            "Status": "review_status",
+            "Review Status": "review_status",
             "Justification": "justification",
             "Last Revised": "last_reviewed",
         },
@@ -131,7 +131,7 @@ SHEET_ANNOTATION_CONFIG = {
         "entity_type": "linked_server",
         "key_cols": ["Server", "Instance", "Linked Server"],
         "editable_cols": {
-            "Status": "review_status",
+            "Review Status": "review_status",
             "Purpose": "purpose",
             "Justification": "justification",
             "Last Revised": "last_reviewed",
@@ -156,7 +156,7 @@ SHEET_ANNOTATION_CONFIG = {
         "entity_type": "backup",
         "key_cols": ["Server", "Instance", "Database"],
         "editable_cols": {
-            "Status": "review_status",
+            "Review Status": "review_status",
             "Justification": "justification",
             "Last Reviewed": "last_reviewed",
             "Notes": "notes",
@@ -166,7 +166,7 @@ SHEET_ANNOTATION_CONFIG = {
         "entity_type": "audit_settings",
         "key_cols": ["Server", "Instance", "Setting"],
         "editable_cols": {
-            "Status": "review_status",
+            "Review Status": "review_status",
             "Justification": "justification",
             "Last Reviewed": "last_reviewed",
             "Notes": "notes",

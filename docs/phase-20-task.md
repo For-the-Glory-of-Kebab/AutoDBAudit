@@ -1,38 +1,42 @@
-# Phase 20B/C Task Tracker
+# Phase 20 Complete Task Tracker
 
 > **Date**: 2025-12-16
-> **Status**: Ready for Commit ✅
+> **Status**: Ready for E2E Test ✅
 
 ---
 
-## Completed This Session
+## All Phases Complete
 
-### Phase 20B: Action Log Fix ✅
-- Exceptions now appear on Excel Actions sheet
-- Modified `sync_service.py` to call `writer.add_action()` for exceptions
-
-### Phase 20C: Q2 SQL Agent Logic ✅
-- SQL Agent stopped/disabled = WARNING discrepancy (⏳)
-- Modified `services.py` discrepancy detection
-
----
-
-## Files Modified
-
-| File | Change |
-|------|--------|
-| `sync_service.py` | Added `writer.add_action()` for exception logging |
-| `services.py` | Q2: SQL Agent stopped = needs_action |
+| Phase | Item | Status |
+|-------|------|--------|
+| **20A** | STATUS_COLUMN, LAST_REVIEWED_COLUMN | ✅ 14 sheets |
+| **20A** | ##...## login exclusion (Q1) | ✅ |
+| **20A** | Role Matrix info-only (Q3) | ✅ |
+| **20A** | parse_datetime_flexible() | ✅ |
+| **20A** | Merged cell handling | ✅ |
+| **20B** | Exceptions on Actions sheet | ✅ |
+| **20C** | SQL Agent stopped = WARNING | ✅ |
+| **20D** | Service type detection (C.3) | ✅ |
+| **20E** | STATUS_COLUMN renamed (C.8/C.9) | ✅ |
+| **20E** | All annotation_sync configs updated | ✅ |
 
 ---
 
-## Commit Ready
+## Key Fixes This Session
 
-```
-feat(phase-20bc): Action log Excel fix and SQL Agent discrepancy
+1. **C.3**: Service type detection for MSSQLSERVER, MSSQL$*, SQLAgent$*, ADHelper
+2. **C.8/C.9**: Renamed STATUS_COLUMN from "Status" to "Review Status" to avoid column name collision
+3. All 14 annotation_sync configs updated to use "Review Status"
 
-- Fix exceptions not appearing on Actions sheet (Phase 20B)
-- Add writer.add_action() for documented exceptions in sync
-- Implement Q2: SQL Agent stopped/disabled = WARNING discrepancy
-- Exceptions now show as "Closed" with Low risk on Actions sheet
-```
+---
+
+## E2E Verified Items
+
+- C.5: Trustworthy logic ✅ (already correct)
+- C.6: Guest user logic ✅ (already correct)
+- C.7: Role Matrix info-only ✅ (Phase 20A)
+- C.10: Restart flag ✅ (already implemented)
+
+---
+
+**Ready for user E2E testing**
