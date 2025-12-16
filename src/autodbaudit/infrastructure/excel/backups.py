@@ -134,9 +134,14 @@ class BackupSheetMixin(ServerGroupMixin, BaseSheetMixin):
     
     def _add_backup_dropdowns(self) -> None:
         """Add dropdown validations for status columns."""
-        from autodbaudit.infrastructure.excel.base import add_dropdown_validation
+        from autodbaudit.infrastructure.excel.base import (
+            add_dropdown_validation, add_review_status_conditional_formatting, STATUS_VALUES
+        )
         
         ws = self._backup_sheet
         # Status column (J) - column 10 (shifted +1 from I)
         add_dropdown_validation(ws, "J", ["PASS", "WARN", "FAIL"])
+        # Review Status column (K) - column 11
+        add_dropdown_validation(ws, "K", STATUS_VALUES.all())
+        add_review_status_conditional_formatting(ws, "K")
 

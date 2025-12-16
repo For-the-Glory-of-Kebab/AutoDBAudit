@@ -171,12 +171,17 @@ class DatabaseSheetMixin(ServerGroupMixin, BaseSheetMixin):
     
     def _add_database_dropdowns(self) -> None:
         """Add dropdown validations for status columns."""
-        from autodbaudit.infrastructure.excel.base import add_dropdown_validation
+        from autodbaudit.infrastructure.excel.base import (
+            add_dropdown_validation, add_review_status_conditional_formatting, STATUS_VALUES
+        )
         
         ws = self._database_sheet
-        # Recovery Model column (E) - column 5
-        add_dropdown_validation(ws, "E", ["🛡️ Full", "📦 Bulk-Logged", "⚡ Simple"])
-        # State column (F) - column 6
-        add_dropdown_validation(ws, "F", ["✓ Online", "⛔ Offline", "🔄 Restoring", "⏳ Recovering", "⚠️ Suspect", "🚨 Emergency"])
-        # Trustworthy column (I) - column 9
-        add_dropdown_validation(ws, "I", ["✓ ON", "✗ OFF", "✓", "✗"])
+        # Recovery Model column (F) - column 6, after Action(A), Server(B), Instance(C), DB(D), Owner(E)
+        add_dropdown_validation(ws, "F", ["🛡️ Full", "📦 Bulk-Logged", "⚡ Simple"])
+        # State column (G) - column 7
+        add_dropdown_validation(ws, "G", ["✓ Online", "⛔ Offline", "🔄 Restoring", "⏳ Recovering", "⚠️ Suspect", "🚨 Emergency"])
+        # Trustworthy column (J) - column 10
+        add_dropdown_validation(ws, "J", ["✓ ON", "✗ OFF", "✓", "✗"])
+        # Review Status column (K) - column 11
+        add_dropdown_validation(ws, "K", STATUS_VALUES.all())
+        add_review_status_conditional_formatting(ws, "K")

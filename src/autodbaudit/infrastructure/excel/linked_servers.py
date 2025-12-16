@@ -142,7 +142,9 @@ class LinkedServerSheetMixin(ServerGroupMixin, BaseSheetMixin):
         if self._ls_validations_added:
             return
         
-        from autodbaudit.infrastructure.excel.base import add_dropdown_validation
+        from autodbaudit.infrastructure.excel.base import (
+            add_dropdown_validation, add_review_status_conditional_formatting, STATUS_VALUES
+        )
         
         ws = self._linked_server_sheet
         # RPC Out dropdown (column G = 7, shifted +1 from F)
@@ -151,6 +153,9 @@ class LinkedServerSheetMixin(ServerGroupMixin, BaseSheetMixin):
         add_dropdown_validation(ws, "J", ["✓ Yes", "✗ No"])
         # Risk dropdown (column K = 11, shifted +1 from J)
         add_dropdown_validation(ws, "K", ["🟢 Normal", "🔴 HIGH"])
+        # Review Status dropdown (column L = 12)
+        add_dropdown_validation(ws, "L", STATUS_VALUES.all())
+        add_review_status_conditional_formatting(ws, "L")
         
         self._ls_validations_added = True
     

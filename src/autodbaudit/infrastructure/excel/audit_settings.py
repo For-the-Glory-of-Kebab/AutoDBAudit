@@ -106,8 +106,13 @@ class AuditSettingSheetMixin(ServerGroupMixin, BaseSheetMixin):
     
     def _add_audit_dropdowns(self) -> None:
         """Add dropdown validations for status columns."""
-        from autodbaudit.infrastructure.excel.base import add_dropdown_validation
+        from autodbaudit.infrastructure.excel.base import (
+            add_dropdown_validation, add_review_status_conditional_formatting, STATUS_VALUES
+        )
         
         ws = self._audit_setting_sheet
         # Status column (G = 7, shifted +1)
         add_dropdown_validation(ws, "G", ["PASS", "FAIL"])
+        # Review Status column (H) - column 8
+        add_dropdown_validation(ws, "H", STATUS_VALUES.all())
+        add_review_status_conditional_formatting(ws, "H")

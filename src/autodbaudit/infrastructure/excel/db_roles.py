@@ -181,17 +181,22 @@ class DBRoleSheetMixin(ServerGroupMixin, BaseSheetMixin):
     
     def _add_db_role_dropdowns(self) -> None:
         """Add dropdown validations for role/status columns."""
-        from autodbaudit.infrastructure.excel.base import add_dropdown_validation
+        from autodbaudit.infrastructure.excel.base import (
+            add_dropdown_validation, add_review_status_conditional_formatting, STATUS_VALUES
+        )
         
         ws = self._db_role_sheet
-        # Role column (D) - column 4: all standard roles + custom option
-        add_dropdown_validation(ws, "D", [
+        # Role column (E) - column 5 (Action=A, Server=B, Instance=C, DB=D)
+        add_dropdown_validation(ws, "E", [
             "👑 db_owner", "⚙️ db_securityadmin", "⚙️ db_accessadmin",
             "⚙️ db_backupoperator", "⚙️ db_ddladmin",
             "📖 db_datareader", "✏️ db_datawriter",
             "db_denydatareader", "db_denydatawriter", "public", "(Custom)"
         ])
-        # Member Type column (F) - column 6
-        add_dropdown_validation(ws, "F", ["🪟 Windows", "🔑 SQL", "📦 Role"])
-        # Risk column (G) - column 7
-        add_dropdown_validation(ws, "G", ["🔴 High", "🟡 Medium", "🟢 Low", "—"])
+        # Member Type column (G) - column 7 (after Role=E, Member=F)
+        add_dropdown_validation(ws, "G", ["🪟 Windows", "🔑 SQL", "📦 Role"])
+        # Risk column (H) - column 8
+        add_dropdown_validation(ws, "H", ["🔴 High", "🟡 Medium", "🟢 Low", "—"])
+        # Review Status column (I) - column 9
+        add_dropdown_validation(ws, "I", STATUS_VALUES.all())
+        add_review_status_conditional_formatting(ws, "I")

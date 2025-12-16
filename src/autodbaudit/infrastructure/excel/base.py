@@ -43,12 +43,14 @@ __all__ = [
     "format_size_mb",
     "get_sql_year",
     "add_dropdown_validation",
+    "add_review_status_conditional_formatting",
     "LAST_REVISED_COLUMN",
     "LAST_REVIEWED_COLUMN",
     "STATUS_COLUMN",
     "ACTION_COLUMN",
     "apply_action_needed_styling",
     "apply_exception_documented_styling",
+    "apply_review_status_styling",
     "parse_datetime_flexible",
     "STATUS_VALUES",
 ]
@@ -59,23 +61,27 @@ __all__ = [
 # ============================================================================
 
 class StatusValues:
-    """Valid values for the Status dropdown column."""
+    """Valid values for the Status dropdown column.
+    
+    Two values only:
+    - NEEDS_REVIEW: Item requires auditor attention (default for discrepancies)
+    - EXCEPTION: Auditor has documented a justification/exception
+    """
     NEEDS_REVIEW = "⏳ Needs Review"
     EXCEPTION = "✓ Exception"
-    REVIEWED = "✓ Reviewed"
     
     @classmethod
     def all(cls) -> list[str]:
         """Return all valid status values for dropdown."""
-        return [cls.NEEDS_REVIEW, cls.EXCEPTION, cls.REVIEWED]
+        return [cls.NEEDS_REVIEW, cls.EXCEPTION]
     
     @classmethod
     def is_documented(cls, value: str | None) -> bool:
-        """Check if a status value indicates documented/reviewed."""
+        """Check if a status value indicates documented exception."""
         if not value:
             return False
         value_clean = str(value).strip()
-        return value_clean in (cls.EXCEPTION, cls.REVIEWED)
+        return cls.EXCEPTION in value_clean or "Exception" in value_clean
 
 
 STATUS_VALUES = StatusValues
@@ -104,7 +110,7 @@ LAST_REVIEWED_COLUMN = ColumnDef(
 # Reusable "Review Status" column - dropdown for exception/review status
 STATUS_COLUMN = ColumnDef(
     name="Review Status",
-    width=16,
+    width=14,  # Wide enough for dropdown content
     alignment=Alignments.CENTER,
     is_manual=True,
 )
@@ -144,6 +150,34 @@ def apply_exception_documented_styling(cell) -> None:
     cell.value = Icons.PASS  # ✅
     cell.fill = Fills.INFO   # Blue background
     cell.font = Fonts.INFO
+    cell.alignment = Alignments.CENTER
+
+
+def apply_review_status_styling(cell, value: str | None = None) -> None:
+    """
+    Apply conditional formatting to Review Status cell based on value.
+    
+    Colors:
+    - ⏳ Needs Review: Orange/warn (needs attention)
+    - ✓ Exception: Green (documented deviation)
+    - ✓ Reviewed: Green (approved)
+    - Empty: No styling
+    """
+    if value is None:
+        value = cell.value
+    
+    if not value:
+        return
+    
+    value_str = str(value).strip()
+    
+    if STATUS_VALUES.NEEDS_REVIEW in value_str or "Needs Review" in value_str:
+        cell.fill = Fills.WARN
+        cell.font = Fonts.WARN
+    elif STATUS_VALUES.EXCEPTION in value_str or "Exception" in value_str:
+        cell.fill = Fills.PASS
+        cell.font = Fonts.PASS
+    
     cell.alignment = Alignments.CENTER
 
 
@@ -234,6 +268,9 @@ def parse_datetime_flexible(
             "%m/%d/%Y %H:%M:%S",
             "%m/%d/%Y %H:%M",
             "%m/%d/%Y",
+            # US formats with AM/PM (Excel keyboard shortcuts: Ctrl+; and Ctrl+Shift+;)
+            "%m/%d/%Y %I:%M:%S %p",
+            "%m/%d/%Y %I:%M %p",
             # European formats (DD/MM/YYYY) - try after US
             "%d/%m/%Y %H:%M:%S",
             "%d/%m/%Y %H:%M",
@@ -327,6 +364,55 @@ def add_dropdown_validation(
     dv.errorTitle = "Invalid Value"
     ws.add_data_validation(dv)
     dv.add(f"{column_letter}{start_row}:{column_letter}{end_row}")
+
+
+def add_review_status_conditional_formatting(
+    ws: Worksheet,
+    column_letter: str,
+    start_row: int = 2,
+    end_row: int = 1000,
+) -> None:
+    """Add Excel conditional formatting rules for Review Status column.
+    
+    Creates persistent CF rules that appear in Excel's Conditional Formatting manager:
+    - "✓ Exception" -> Green fill (documented/approved)
+    - "⏳ Needs Review" -> Orange/yellow fill (needs attention)
+    
+    These rules are applied to the entire column range and persist when the file is saved.
+    
+    Args:
+        ws: The worksheet to add formatting to
+        column_letter: Column letter for Review Status (e.g., "I", "J")
+        start_row: Starting row (default 2 to skip header)
+        end_row: Ending row (default 1000)
+    """
+    from openpyxl.formatting.rule import FormulaRule
+    from openpyxl.styles import PatternFill, Font
+    
+    cell_range = f"{column_letter}{start_row}:{column_letter}{end_row}"
+    
+    # Rule 1: "✓ Exception" -> Green fill
+    # Using SEARCH to find "Exception" anywhere in the cell value
+    exception_fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
+    exception_font = Font(color="006100", bold=True)
+    exception_rule = FormulaRule(
+        formula=[f'SEARCH("Exception",{column_letter}{start_row})'],
+        fill=exception_fill,
+        font=exception_font,
+        stopIfTrue=True
+    )
+    ws.conditional_formatting.add(cell_range, exception_rule)
+    
+    # Rule 2: "⏳ Needs Review" -> Orange/Yellow fill
+    needs_review_fill = PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid")
+    needs_review_font = Font(color="9C5700", bold=True)
+    needs_review_rule = FormulaRule(
+        formula=[f'SEARCH("Needs Review",{column_letter}{start_row})'],
+        fill=needs_review_fill,
+        font=needs_review_font,
+        stopIfTrue=True
+    )
+    ws.conditional_formatting.add(cell_range, needs_review_rule)
 
 
 # ============================================================================

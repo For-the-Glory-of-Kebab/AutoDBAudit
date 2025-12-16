@@ -202,9 +202,14 @@ class RoleSheetMixin(BaseSheetMixin):
 
     def _add_role_dropdowns(self) -> None:
         """Add dropdown validations for status columns."""
-        from autodbaudit.infrastructure.excel.base import add_dropdown_validation
+        from autodbaudit.infrastructure.excel.base import (
+            add_dropdown_validation, add_review_status_conditional_formatting, STATUS_VALUES
+        )
 
         ws = self._role_sheet
         # Enabled column (G) - column 7 (shifted +1 from F)
         add_dropdown_validation(ws, "G", ["✓ Yes", "✗ No"])
+        # Review Status column (H) - column 8
+        add_dropdown_validation(ws, "H", STATUS_VALUES.all())
+        add_review_status_conditional_formatting(ws, "H")
 

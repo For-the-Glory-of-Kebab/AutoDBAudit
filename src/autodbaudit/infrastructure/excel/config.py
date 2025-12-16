@@ -113,10 +113,15 @@ class ConfigSheetMixin(ServerGroupMixin, BaseSheetMixin):
 
     def _add_config_dropdowns(self) -> None:
         """Add dropdown validations for status columns."""
-        from autodbaudit.infrastructure.excel.base import add_dropdown_validation
+        from autodbaudit.infrastructure.excel.base import (
+            add_dropdown_validation, add_review_status_conditional_formatting, STATUS_VALUES
+        )
 
         ws = self._config_sheet
         # Status column (G) - column 7 (shifted +1 from F)
         add_dropdown_validation(ws, "G", ["✅ PASS", "❌ FAIL"])
         # Risk column (H) - column 8 (shifted +1 from G)
         add_dropdown_validation(ws, "H", ["Critical", "High", "Medium", "Low"])
+        # Review Status column (I) - column 9
+        add_dropdown_validation(ws, "I", STATUS_VALUES.all())
+        add_review_status_conditional_formatting(ws, "I")

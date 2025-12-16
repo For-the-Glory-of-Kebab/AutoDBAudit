@@ -184,10 +184,15 @@ class DBUserSheetMixin(ServerGroupMixin, BaseSheetMixin):
     
     def _add_db_user_dropdowns(self) -> None:
         """Add dropdown validations for status columns."""
-        from autodbaudit.infrastructure.excel.base import add_dropdown_validation
+        from autodbaudit.infrastructure.excel.base import (
+            add_dropdown_validation, add_review_status_conditional_formatting, STATUS_VALUES
+        )
         
         ws = self._db_user_sheet
-        # Login Status column (G) - column 7
-        add_dropdown_validation(ws, "G", ["✓ Mapped", "🔧 System", "⚠️ Orphaned"])
-        # Compliant column (H) - column 8
-        add_dropdown_validation(ws, "H", ["✓", "⚠️ Review", "❌ GUEST"])
+        # Login Status column (H) - column 8 (Action=A, Server=B, Instance=C, DB=D, User=E, Type=F, Login=G)
+        add_dropdown_validation(ws, "H", ["✓ Mapped", "🔧 System", "⚠️ Orphaned"])
+        # Compliant column (I) - column 9
+        add_dropdown_validation(ws, "I", ["✓", "⚠️ Review", "❌ GUEST"])
+        # Review Status column (J) - column 10
+        add_dropdown_validation(ws, "J", STATUS_VALUES.all())
+        add_review_status_conditional_formatting(ws, "J")

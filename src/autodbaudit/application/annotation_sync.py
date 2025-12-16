@@ -362,6 +362,16 @@ class AnnotationSyncService:
                         fields[field_name] = val
                         has_any_value = True
             
+            # AUTO-STATUS: If justification present but review_status empty, auto-set to Exception
+            # This allows users to just fill in justification and have status auto-populate
+            has_justification = bool(fields.get("justification") or fields.get("purpose"))
+            has_status = bool(fields.get("review_status"))
+            if has_justification and not has_status:
+                from autodbaudit.infrastructure.excel.base import STATUS_VALUES
+                fields["review_status"] = STATUS_VALUES.EXCEPTION  # "✓ Exception"
+                has_any_value = True
+                logger.debug("Auto-set status to Exception for %s (justification present)", entity_key)
+            
             # Check if this row has action indicator (⏳ means needs action = FAIL/WARN)
             # This is used by detect_exception_changes to only log exceptions for FAIL items
             if action_col_idx is not None and action_col_idx < len(row):
@@ -518,13 +528,20 @@ class AnnotationSyncService:
                         ws.cell(row=row_num, column=col_idx).value = row_annotations[field_name]
                         updated += 1
                 
-                # If this row has justification filled, update action indicator (⏳→✅)
+                # Update action indicator (⏳→✅) if:
+                # - justification is filled, OR
+                # - review_status is set to "Exception"
                 if has_justification and action_col_idx:
                     justification = row_annotations.get("justification", "")
-                    if justification and str(justification).strip():
+                    review_status = row_annotations.get("review_status", "")
+                    has_just = justification and str(justification).strip()
+                    has_exception = review_status and "Exception" in str(review_status)
+                    
+                    if has_just or has_exception:
                         # Import styling function
                         from autodbaudit.infrastructure.excel.base import apply_exception_documented_styling
                         apply_exception_documented_styling(ws.cell(row=row_num, column=action_col_idx))
+                        updated += 1
                         updated += 1
         
         return updated
@@ -622,19 +639,28 @@ class AnnotationSyncService:
         exceptions = []
         
         for full_key, fields in new_annotations.items():
-            # Check if this has justification field
-            justification = fields.get("justification", "").strip()
-            if not justification:
+            # Check if this has justification OR review_status set to Exception
+            # Either one counts as documenting an exception
+            raw_justification = fields.get("justification", "")
+            justification = str(raw_justification).strip() if raw_justification else ""
+            
+            raw_review_status = fields.get("review_status", "")
+            review_status = str(raw_review_status).strip() if raw_review_status else ""
+            has_exception_status = "Exception" in review_status
+            
+            # Need at least one of: justification text OR exception status
+            if not justification and not has_exception_status:
                 continue
             
             # Check if this row had action_needed = True (was showing ⏳)
             # This indicates it was a FAIL/WARN item needing attention
-            # If not present, we assume it's not an exception (just a note on PASS item)
+            # If not present, we still count it if they explicitly set Exception status
             action_needed = fields.get("action_needed", False)
             
-            # Only treat as exception if it was marked as needing action
-            # If action_needed is not set (None/False), skip - it's just a note
-            if not action_needed:
+            # Treat as exception if:
+            # 1. It was marked as needing action (⏳) and has justification, OR
+            # 2. It has Exception status (user explicitly marked it)
+            if not action_needed and not has_exception_status:
                 continue
             
             # Check if this is NEW or CHANGED

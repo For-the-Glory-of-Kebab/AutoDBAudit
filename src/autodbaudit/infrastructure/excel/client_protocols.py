@@ -172,10 +172,15 @@ class ClientProtocolSheetMixin(ServerGroupMixin, BaseSheetMixin):
     
     def _add_protocol_dropdowns(self) -> None:
         """Add dropdown validations for choice columns."""
-        from autodbaudit.infrastructure.excel.base import add_dropdown_validation
+        from autodbaudit.infrastructure.excel.base import (
+            add_dropdown_validation, add_review_status_conditional_formatting, STATUS_VALUES
+        )
         
         ws = self._client_protocol_sheet
-        # Enabled column (E) - column 5
-        add_dropdown_validation(ws, "E", ["✓ Yes", "✗ No"])
-        # Status column (G) - column 7  
-        add_dropdown_validation(ws, "G", ["✅ Compliant", "✅ Disabled", "⚠️ Needs Review", "ℹ️ Disabled", "—"])
+        # Enabled column (F) - column 6 (Action=A, Server=B, Instance=C, Protocol=D, Order=E)
+        add_dropdown_validation(ws, "F", ["✓ Yes", "✗ No"])
+        # Status column (H) - column 8 (after Enabled=F, Connection=G)
+        add_dropdown_validation(ws, "H", ["✅ Compliant", "✅ Disabled", "⚠️ Needs Review", "ℹ️ Disabled", "—"])
+        # Review Status column (I) - column 9
+        add_dropdown_validation(ws, "I", STATUS_VALUES.all())
+        add_review_status_conditional_formatting(ws, "I")

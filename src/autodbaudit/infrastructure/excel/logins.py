@@ -145,12 +145,15 @@ class LoginSheetMixin(BaseSheetMixin):
         
         # Determine if action is needed:
         # - System logins: never discrepant (Q1 decision)
-        # - Disabled logins (potential unused accounts)
-        # - SQL logins without password policy (except N/A for Windows logins)
+        # - Disabled logins: COMPLIANT (disabled = not a risk)
+        # - SQL logins without password policy: discrepant (pwd_policy=False)
+        # - Windows logins: pwd_policy is None (N/A), not discrepant
         if is_system_login:
             needs_action = False
         else:
-            needs_action = is_disabled or (pwd_policy is False)
+            # Only SQL logins with password policy disabled need action
+            # Disabled logins are COMPLIANT (intentionally disabled = good)
+            needs_action = (pwd_policy is False) and not is_disabled
         apply_action_needed_styling(ws.cell(row=row, column=1), needs_action)
         
         # Apply shade to informational columns (not status)
@@ -223,13 +226,18 @@ class LoginSheetMixin(BaseSheetMixin):
     
     def _add_login_dropdowns(self) -> None:
         """Add dropdown validations for status columns."""
-        from autodbaudit.infrastructure.excel.base import add_dropdown_validation
+        from autodbaudit.infrastructure.excel.base import (
+            add_dropdown_validation, add_review_status_conditional_formatting, STATUS_VALUES
+        )
         
         ws = self._login_sheet
         # Enabled column (F) - column 6 (shifted +1 from E)
         add_dropdown_validation(ws, "F", ["✓ Yes", "✗ No"])
         # Password Policy column (G) - column 7 (shifted +1 from F)
         add_dropdown_validation(ws, "G", ["✓ Yes", "✗ No", "N/A"])
+        # Review Status column (I) - column 9
+        add_dropdown_validation(ws, "I", STATUS_VALUES.all())
+        add_review_status_conditional_formatting(ws, "I")
     
     def _finalize_logins(self) -> None:
         """Finalize login sheet - merge remaining groups."""

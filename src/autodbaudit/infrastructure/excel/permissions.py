@@ -227,10 +227,15 @@ class PermissionSheetMixin(ServerGroupMixin, BaseSheetMixin):
 
     def _add_permission_dropdowns(self) -> None:
         """Add validation dropdowns."""
-        from autodbaudit.infrastructure.excel.base import add_dropdown_validation
+        from autodbaudit.infrastructure.excel.base import (
+            add_dropdown_validation, add_review_status_conditional_formatting, STATUS_VALUES
+        )
 
         ws = self._permission_sheet
         # Scope (C)
         add_dropdown_validation(ws, "C", ["SERVER", "DATABASE"])
         # State (G)
         add_dropdown_validation(ws, "G", ["✅ GRANT", "⛔ DENY", "⚠️ GRANT w/ OPT"])
+        # Review Status column (L) - column 12
+        add_dropdown_validation(ws, "L", STATUS_VALUES.all())
+        add_review_status_conditional_formatting(ws, "L")

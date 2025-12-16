@@ -161,7 +161,9 @@ class SAAccountSheetMixin(BaseSheetMixin):
     
     def _add_sa_dropdowns(self) -> None:
         """Add dropdown validations for status columns."""
-        from autodbaudit.infrastructure.excel.base import add_dropdown_validation, STATUS_VALUES
+        from autodbaudit.infrastructure.excel.base import (
+            add_dropdown_validation, add_review_status_conditional_formatting, STATUS_VALUES
+        )
         
         ws = self._sa_account_sheet
         # Status column (D) - PASS/FAIL/WARN
@@ -172,3 +174,4 @@ class SAAccountSheetMixin(BaseSheetMixin):
         add_dropdown_validation(ws, "F", ["✓", "✗"])
         # Review Status column (I) - our new dropdown
         add_dropdown_validation(ws, "I", STATUS_VALUES.all())
+        add_review_status_conditional_formatting(ws, "I")

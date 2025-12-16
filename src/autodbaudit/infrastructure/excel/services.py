@@ -183,9 +183,10 @@ class ServiceSheetMixin(BaseSheetMixin):
             (is_sql_agent and (is_stopped or is_disabled))  # Q2: Agent down = discrepancy
         )
         
-        # For display purposes, "compliant" means account compliance
-        # But needs_action reflects the full discrepancy
-        is_compliant = account_compliant
+        # Compliant column should match the action indicator
+        # If needs_action = True (⏳), then compliant = False (✗)
+        # This prevents confusion where ⏳ shows but Compliant says ✓
+        is_compliant = not needs_action
         
         if needs_action:
             self._increment_warn()
@@ -288,12 +289,17 @@ class ServiceSheetMixin(BaseSheetMixin):
     
     def _add_service_dropdowns(self) -> None:
         """Add dropdown validations for status columns."""
-        from autodbaudit.infrastructure.excel.base import add_dropdown_validation
+        from autodbaudit.infrastructure.excel.base import (
+            add_dropdown_validation, add_review_status_conditional_formatting, STATUS_VALUES
+        )
         
         ws = self._service_sheet
-        # Status column (E) - column 5
-        add_dropdown_validation(ws, "E", ["✓ Running", "✗ Stopped", "Unknown"])
-        # Startup column (F) - column 6
-        add_dropdown_validation(ws, "F", ["⚡ Auto", "🔧 Manual", "⛔ Disabled"])
-        # Compliant column (H) - column 8
-        add_dropdown_validation(ws, "H", ["✓", "✗"])
+        # Status column (F) - column 6 (shifted +1)
+        add_dropdown_validation(ws, "F", ["✓ Running", "✗ Stopped", "Unknown"])
+        # Startup column (G) - column 7 (shifted +1)
+        add_dropdown_validation(ws, "G", ["⚡ Auto", "🔧 Manual", "⛔ Disabled"])
+        # Compliant column (I) - column 9 (shifted +1)
+        add_dropdown_validation(ws, "I", ["✓", "✗"])
+        # Review Status column (J) - column 10
+        add_dropdown_validation(ws, "J", STATUS_VALUES.all())
+        add_review_status_conditional_formatting(ws, "J")

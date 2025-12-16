@@ -160,11 +160,16 @@ class OrphanedUserSheetMixin(ServerGroupMixin, BaseSheetMixin):
     
     def _add_orphan_dropdowns(self) -> None:
         """Add dropdown validations for status columns."""
-        from autodbaudit.infrastructure.excel.base import add_dropdown_validation
+        from autodbaudit.infrastructure.excel.base import (
+            add_dropdown_validation, add_review_status_conditional_formatting, STATUS_VALUES
+        )
         
         ws = self._orphaned_user_sheet
         # Type column (F) - column 6 (shifted +1 from E)
         add_dropdown_validation(ws, "F", ["🪟 Windows", "🔑 SQL"])
         # Status column (G) - column 7 (shifted +1 from F)
         add_dropdown_validation(ws, "G", ["⚠️ Orphaned", "✓ Fixed", "❌ Removed"])
+        # Review Status column (H) - column 8
+        add_dropdown_validation(ws, "H", STATUS_VALUES.all())
+        add_review_status_conditional_formatting(ws, "H")
 

@@ -154,8 +154,8 @@ class RoleMatrixSheetMixin(ServerGroupMixin, BaseSheetMixin):
         self._apply_row_color(row, row_color, data_cols=meta_cols, ws=ws)
 
         # Style Matrix Cells (if checked)
-        # Matrix columns are from index 7 to 7+len(FIXED_ROLES)-1 (1-based, shifted +1)
-        start_col = 7
+        # Matrix columns are from column 6 onwards (after 5 meta cols: Server, Instance, DB, Principal, Type)
+        start_col = 6  # Fixed: No ACTION_COLUMN in Role Matrix, roles start at col 6
         for i, fixed_role in enumerate(FIXED_ROLES):
             if fixed_role in roles_lower:
                 cell = ws.cell(row=row, column=start_col + i)
