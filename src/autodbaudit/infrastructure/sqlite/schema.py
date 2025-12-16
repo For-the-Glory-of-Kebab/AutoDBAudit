@@ -673,25 +673,64 @@ def set_annotation(
 
     else:
         # Insert new
-        cursor = connection.execute(
-            """
-            INSERT INTO annotations 
-            (entity_type, entity_key, field_name, field_value, status_override, created_at, modified_by)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        """,
-            (
-                entity_type,
-                entity_key,
-                field_name,
-                field_value,
-                status_override,
-                now,
-                modified_by,
-            ),
-        )
+        # Use try/except IntegrityError to handle race conditions or unique constraint violations
+        # where the row didn't exist in SELECT but exists now.
+        try:
+            cursor = connection.execute(
+                """
+                INSERT INTO annotations 
+                (entity_type, entity_key, field_name, field_value, status_override, created_at, modified_by)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+                (
+                    entity_type,
+                    entity_key,
+                    field_name,
+                    field_value,
+                    status_override,
+                    now,
+                    modified_by,
+                ),
+            )
+            connection.commit()
+            return cursor.lastrowid
+        except sqlite3.IntegrityError:
+            # Fallback: Does it exist now?
+            existing_retry = connection.execute(
+                """
+                SELECT id FROM annotations
+                WHERE entity_type = ? AND entity_key = ? AND field_name = ?
+            """,
+                (entity_type, entity_key, field_name),
+            ).fetchone()
 
-        connection.commit()
-        return cursor.lastrowid
+            if existing_retry:
+                # Update it
+                connection.execute(
+                    """
+                    UPDATE annotations
+                    SET field_value = ?, status_override = ?, modified_at = ?, modified_by = ?
+                    WHERE id = ?
+                """,
+                    (
+                        field_value,
+                        status_override,
+                        now,
+                        modified_by,
+                        existing_retry["id"],
+                    ),
+                )
+                connection.commit()
+                return existing_retry["id"]
+            else:
+                # Genuine valid constraint failure (shouldn't happen with these keys)
+                logger.error(
+                    "IntegrityError in set_annotation for %s|%s|%s",
+                    entity_type,
+                    entity_key,
+                    field_name,
+                )
+                raise
 
 
 def build_entity_key(*parts: str) -> str:

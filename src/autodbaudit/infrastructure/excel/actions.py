@@ -59,8 +59,12 @@ ACTION_COLUMNS = (
     ColumnDef("Finding", 40, Alignments.LEFT),
     ColumnDef("Risk Level", 10, Alignments.CENTER),
     ColumnDef("Change Description", 45, Alignments.LEFT),  # What changed
-    ColumnDef("Change Type", 12, Alignments.CENTER, is_status=True),  # Fixed/Regressed/New
-    ColumnDef("Detected Date", 12, Alignments.CENTER),  # When change detected (editable)
+    ColumnDef(
+        "Change Type", 12, Alignments.CENTER, is_status=True
+    ),  # Fixed/Regressed/New
+    ColumnDef(
+        "Detected Date", 12, Alignments.CENTER
+    ),  # When change detected (editable)
     ColumnDef("Notes", 45, Alignments.LEFT, is_manual=True),  # User commentary
 )
 
@@ -70,24 +74,24 @@ ACTION_CONFIG = SheetConfig(name="Actions", columns=ACTION_COLUMNS)
 class ActionSheetMixin(BaseSheetMixin):
     """
     Mixin for Actions sheet functionality.
-    
+
     Provides the `add_action` method to record changelog entries.
     Each change is automatically numbered and timestamped with
     the date it was detected.
-    
+
     Change Types:
         - Fixed: Issue was resolved (FAIL → PASS)
         - Regressed: Issue came back (PASS → FAIL)
         - New: Issue newly detected
-    
+
     Attributes:
         _action_sheet: Reference to the Actions worksheet
         _action_count: Counter for action ID assignment
     """
-    
+
     _action_sheet = None
     _action_count: int = 0
-    
+
     def add_action(
         self,
         server_name: str,
@@ -97,38 +101,47 @@ class ActionSheetMixin(BaseSheetMixin):
         risk_level: str,
         recommendation: str,  # Now used as "Change Description"
         status: str = "Open",  # Now used as "Change Type"
-        found_date: datetime | None = None,  # Now "Detected Date"
-        resolution_notes: str = "",  # Now just "Notes"
+        found_date: datetime | None = None,
+        notes: str | None = None,
     ) -> None:
         """
         Add a changelog entry row with automatic ID and date.
-        
-        Each entry is auto-assigned an incremental ID and
-        the detected date defaults to the current date.
-        
+
         Args:
             server_name: Server hostname
             instance_name: SQL Server instance name
             category: Finding category for grouping
             finding: Description of what changed
-            risk_level: Severity (Low=good news, High=bad news)
+            risk_level: Severity (Low for fixes, High for regressions)
             recommendation: Change description (what happened)
             status: Change type (Closed for fixes, Open for issues)
-            found_date: When change was detected (editable, defaults to now)
-            resolution_notes: (Optional) User notes/commentary
+            found_date: When change was detected
+            notes: (Optional) User notes/commentary
         """
-        if self._action_sheet is None:
-            self._action_sheet = self._ensure_sheet(ACTION_CONFIG)
-            self._add_action_dropdowns()
-        
-        ws = self._action_sheet
-        
-        # Auto-assign ID and date
+        import logging
+
+        logger = logging.getLogger(__name__)
+
+        ws = self._ensure_sheet(ACTION_CONFIG)
         self._action_count += 1
+
+        # Determine status icon
+        status_icon = Icons.PENDING
+        if status.lower() in ("closed", "fixed", "resolved"):
+            status_icon = Icons.PASS  # ✅
+        elif status.lower() in ("exception", "warn"):
+            status_icon = Icons.PASS
+
+        logger.info(
+            "ActionWriter: Adding row %d: %s | %s",
+            self._action_count,
+            category,
+            finding,
+        )
+
         if found_date is None:
             found_date = datetime.now()
-        
-        # Prepare row data (10 columns now)
+
         data = [
             str(self._action_count),
             server_name,
@@ -136,14 +149,14 @@ class ActionSheetMixin(BaseSheetMixin):
             category,
             finding,
             risk_level.title(),
-            recommendation,       # Change Description
-            None,                 # Change Type - styled separately
+            recommendation,  # Change Description
+            None,  # Change Type - styled separately
             format_date(found_date),  # Detected Date
-            resolution_notes,     # Notes (user commentary)
+            notes,  # Notes
         ]
-        
+
         row = self._write_row(ws, ACTION_CONFIG, data)
-        
+
         # Style Change Type cell (column 8)
         status_cell = ws.cell(row=row, column=8)
         status_lower = status.lower()
@@ -155,7 +168,7 @@ class ActionSheetMixin(BaseSheetMixin):
             status_cell.value = f"{Icons.PASS} Closed"
             status_cell.fill = Fills.PASS
             status_cell.font = Fonts.PASS
-        
+
         # Style risk level cell with severity colors
         risk_cell = ws.cell(row=row, column=6)
         risk_lower = risk_level.lower()
@@ -169,14 +182,27 @@ class ActionSheetMixin(BaseSheetMixin):
         elif risk_lower == "medium":
             risk_cell.fill = Fills.WARN
             risk_cell.font = Fonts.WARN
-    
+
     def _add_action_dropdowns(self) -> None:
         """Add dropdown validations for action columns."""
         from autodbaudit.infrastructure.excel.base import add_dropdown_validation
-        
+
         ws = self._action_sheet
         # Category column (D) - column 4
-        add_dropdown_validation(ws, "D", ["SA Account", "Configuration", "Backup", "Login", "Permissions", "Service", "Database", "Other"])
+        add_dropdown_validation(
+            ws,
+            "D",
+            [
+                "SA Account",
+                "Configuration",
+                "Backup",
+                "Login",
+                "Permissions",
+                "Service",
+                "Database",
+                "Other",
+            ],
+        )
         # Risk Level column (F) - column 6
         add_dropdown_validation(ws, "F", ["Low", "Medium", "High"])
         # Change Type column (H) - column 8

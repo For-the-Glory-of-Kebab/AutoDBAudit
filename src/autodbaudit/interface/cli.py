@@ -321,13 +321,72 @@ Examples:
                 return 1
 
             print(f"\n✅ Sync complete!")
-            print(f"   Baseline: Run #{result['initial_run_id']}")
-            print(f"   Current:  Run #{result['current_run_id']}")
-            print("")
-            print(f"   ✅ Fixed:         {result['fixed']}")
-            print(f"   ⚠️  Still Failing: {result['still_failing']}")
-            print(f"   🔴 Regression:    {result['regression']}")
-            print(f"   🆕 New:           {result['new']}")
+            # CLI Output Colors
+            CYAN = "\033[96m"
+            GREEN = "\033[92m"
+            YELLOW = "\033[93m"
+            RED = "\033[91m"
+            BOLD = "\033[1m"
+            RESET = "\033[0m"
+
+            print(f"\n{BOLD}{CYAN}=== Sync Complete ==={RESET}")
+            print(f"   Baseline Run: {BOLD}#{result.get('initial_run_id', '?')}{RESET}")
+            print(f"   Current Run:  {BOLD}#{result.get('current_run_id', '?')}{RESET}")
+
+            base = result.get("baseline", {})
+            recent = result.get("recent", {})
+
+            # Helper for colored numbers
+            def fmt_num(val, color_if_pos=None):
+                path_color = RESET
+                if val > 0:
+                    path_color = color_if_pos if color_if_pos else RESET
+                return f"{path_color}{val:<5}{RESET}"
+
+            print(
+                f"\n   {BOLD}Comparison        | Fixed | Regression | New | Still Failing{RESET}"
+            )
+            print(
+                f"   {CYAN}------------------|-------|------------|-----|--------------{RESET}"
+            )
+
+            # Baseline Row
+            b_fixed = fmt_num(base.get("fixed", 0), GREEN)
+            b_reg = fmt_num(base.get("regression", 0), RED)
+            b_new = fmt_num(base.get("new", 0), RED)
+            b_fail = fmt_num(base.get("still_failing", 0), YELLOW)
+            print(
+                f"   Vs Baseline       | {b_fixed} | {b_reg}      | {b_new} | {b_fail}"
+            )
+
+            # Recent Row
+            r_fixed = fmt_num(recent.get("fixed", 0), GREEN)
+            r_reg = fmt_num(recent.get("regression", 0), RED)
+            r_new = fmt_num(recent.get("new", 0), RED)
+            r_fail = fmt_num(recent.get("still_failing", 0), YELLOW)
+            print(
+                f"   Vs Last Sync      | {r_fixed} | {r_reg}      | {r_new} | {r_fail}"
+            )
+            print(
+                f"   {CYAN}----------------------------------------------------------{RESET}"
+            )
+
+            drift = result.get("drift_count", 0)
+            if drift > 0:
+                print(
+                    f"\n   {YELLOW}⚠️  Drift Detected: {drift} system version changes{RESET}"
+                )
+
+            # Exception stats
+            new_ex = result.get("exceptions", 0)
+            total_ex = result.get("total_exceptions", 0)
+
+            print(f"\n   {GREEN}✓ Exceptions Documented:{RESET}")
+            if new_ex > 0:
+                print(f"     • {BOLD}{new_ex}{RESET} added/updated this run")
+            print(f"     • {BOLD}{total_ex}{RESET} total active exceptions in database")
+
+            print(f"\n   {CYAN}Report saved to output folder.{RESET}")
             return 0
 
         elif args.finalize:
