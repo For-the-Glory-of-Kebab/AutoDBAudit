@@ -530,13 +530,37 @@ class SyncService:
             # Open fresh connection for exception logging (original conn was closed earlier)
             with sqlite3.connect(self.db_path) as exc_conn:
                 for exc in exception_changes:
-                    # Log each exception as an action
+                    # Log each exception to SQLite action_log
                     self._log_exception_action(
                         conn=exc_conn,
                         initial_run_id=initial_run_id,
                         current_run_id=current_run_id,
                         exc=exc,
                     )
+                    
+                    # ALSO add to Excel Actions sheet (Phase 20B fix)
+                    # Parse entity_key for server/instance (format: "Server|Instance|...")
+                    parts = exc["entity_key"].split("|")
+                    server = parts[0] if len(parts) > 0 else "Unknown"
+                    instance = parts[1] if len(parts) > 1 else "(Default)"
+                    
+                    # Build concise finding description
+                    entity_type = exc.get("entity_type", "Item")
+                    entity_key_short = exc["entity_key"][:60]
+                    justification = exc.get("justification", "")[:100]
+                    
+                    writer.add_action(
+                        server_name=server,
+                        instance_name=instance,
+                        category=f"Exception: {entity_type.replace('_', ' ').title()}",
+                        finding=f"Justified: {entity_key_short}",
+                        risk_level="Low",  # Exception = risk documented/accepted
+                        recommendation=f"User added justification: {justification}",
+                        status="Closed",  # Documented = closed
+                        found_date=datetime.now(),
+                        resolution_notes=justification,
+                    )
+                    
                 exc_conn.commit()
 
         result["report_path"] = str(path_archive)

@@ -163,14 +163,24 @@ class ServiceSheetMixin(BaseSheetMixin):
         is_essential = any(s in service_type_lower for s in ESSENTIAL_SERVICE_TYPES)
         is_non_essential = any(s in service_type_lower for s in NON_ESSENTIAL_SERVICE_TYPES) or not is_essential
         
+        # Check if this is specifically SQL Agent
+        is_sql_agent = "agent" in service_type_lower or "sql agent" in service_type_lower
+        
         # Service is running and enabled? Non-essential services need justification
         is_running = "running" in (status or "").lower()
+        is_stopped = "stopped" in (status or "").lower()
         is_auto = "auto" in (startup_type or "").lower()
+        is_disabled = "disabled" in (startup_type or "").lower()
         
         # Needs action if:
         # 1. Account is non-compliant (for any service), OR
-        # 2. Non-essential service is running/enabled (needs justification)
-        needs_action = not account_compliant or (is_non_essential and is_running and is_auto)
+        # 2. Non-essential service is running/enabled (needs justification), OR
+        # 3. SQL Agent is stopped or disabled (Q2: WARNING, may need justification)
+        needs_action = (
+            not account_compliant or 
+            (is_non_essential and is_running and is_auto) or
+            (is_sql_agent and (is_stopped or is_disabled))  # Q2: Agent down = discrepancy
+        )
         
         # For display purposes, "compliant" means account compliance
         # But needs_action reflects the full discrepancy

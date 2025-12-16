@@ -1,38 +1,38 @@
-# Phase 20 Task Tracker
+# Phase 20B/C Task Tracker
 
 > **Date**: 2025-12-16
-> **Status**: Phase A Complete ✅
+> **Status**: Ready for Commit ✅
 
 ---
 
-## Implementation Complete
+## Completed This Session
 
-| Item | Status |
-|------|--------|
-| `parse_datetime_flexible()` | ✅ All formats handled |
-| Merged cell fix | ✅ Both read/write |
-| Role Matrix info-only (Q3) | ✅ |
-| ##...## login exclusion (Q1) | ✅ System logins excluded |
-| STATUS_COLUMN on all 14 sheets | ✅ |
-| LAST_REVIEWED_COLUMN on all 14 sheets | ✅ |
-| Annotation sync configs | ✅ 18 sheets |
+### Phase 20B: Action Log Fix ✅
+- Exceptions now appear on Excel Actions sheet
+- Modified `sync_service.py` to call `writer.add_action()` for exceptions
 
-## Sheets Updated
+### Phase 20C: Q2 SQL Agent Logic ✅
+- SQL Agent stopped/disabled = WARNING discrepancy (⏳)
+- Modified `services.py` discrepancy detection
 
-SA Account, Server Logins, Backups, Linked Servers, Sensitive Roles, Configuration, Services, Databases, Database Users, Database Roles, Orphaned Users, Permissions, Client Protocols, Audit Settings
+---
 
-## Key Code Changes
+## Files Modified
 
 | File | Change |
 |------|--------|
-| `base.py` | DateTime parser, StatusValues, column defs |
-| `annotation_sync.py` | Merged cell fix, all sheet configs |
-| `role_matrix.py` | Info-only (ACTION_COLUMN removed) |
-| `logins.py` | Q1: ##...## exclusion logic |
-| 13 other sheet modules | STATUS_COLUMN, LAST_REVIEWED_COLUMN |
+| `sync_service.py` | Added `writer.add_action()` for exception logging |
+| `services.py` | Q2: SQL Agent stopped = needs_action |
 
-## Next Steps
+---
 
-- Phase B: Action Log schema redesign
-- Q2: SQL Agent off = WARNING logic
-- E2E testing
+## Commit Ready
+
+```
+feat(phase-20bc): Action log Excel fix and SQL Agent discrepancy
+
+- Fix exceptions not appearing on Actions sheet (Phase 20B)
+- Add writer.add_action() for documented exceptions in sync
+- Implement Q2: SQL Agent stopped/disabled = WARNING discrepancy
+- Exceptions now show as "Closed" with Low risk on Actions sheet
+```
