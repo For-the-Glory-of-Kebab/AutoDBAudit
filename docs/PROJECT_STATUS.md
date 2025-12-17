@@ -11,6 +11,13 @@ The Sync/Remediation logic (`--sync`) is functional but has edge cases with Exce
 *   **Excel Interface:** Improved date handling and styling.
 *   **Annotation Sync:** **NEEDS ATTENTION**. Missing config for "Services" and Key Collision issues on "Backups".
 
+### Current Focus (2025-12-17)
+- **Sync Engine Hardening**: Fixing exception counting logic and action log persistence.
+    - Resolved critical crash in `SyncService`.
+    - Fixed "Notes" column detection for Sensitive Roles.
+    - Fixed false positive exceptions in Client Protocols.
+- **Immediate Next Steps**: verify edits via `--sync`.
+
 ## 🐛 Known Issues (See SESSION_HANDOFF_2025-12-17.md for details)
 1.  **Services Sheet Ignored:** Missing from `SHEET_ANNOTATION_CONFIG`.
 2.  **Backup Exceptions Mismatch:** Key collision likely.

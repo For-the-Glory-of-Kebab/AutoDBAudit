@@ -664,8 +664,9 @@ class HistoryStore:
             ON CONFLICT(initial_run_id, entity_key, action_type) DO UPDATE SET
                 status = excluded.status,
                 description = excluded.description,
-                sync_run_id = excluded.sync_run_id,
-                action_date = excluded.action_date
+                sync_run_id = excluded.sync_run_id
+                -- action_date PRESOLVED: We do NOT update the date on conflict.
+                -- This ensures we keep the "First Detected" timestamp.
             """,
             (
                 initial_run_id,
@@ -678,6 +679,24 @@ class HistoryStore:
             ),
         )
         conn.commit()
+
+    def get_last_successful_sync_run(self, current_run_id: int) -> int | None:
+        """
+        Get the ID of the last COMPLETED sync run before the current one.
+        Returns None if no previous completed sync run exists.
+        """
+        conn = self._get_connection()
+        row = conn.execute(
+            """
+            SELECT id FROM audit_runs 
+            WHERE run_type = 'sync' 
+              AND status = 'completed'
+              AND id < ? 
+            ORDER BY id DESC LIMIT 1
+            """,
+            (current_run_id,),
+        ).fetchone()
+        return row["id"] if row else None
 
     def get_findings(self, run_id: int) -> list[dict]:
         """Get all findings for a specific run."""

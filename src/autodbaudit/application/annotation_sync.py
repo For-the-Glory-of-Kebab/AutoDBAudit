@@ -59,6 +59,7 @@ SHEET_ANNOTATION_CONFIG = {
             "Review Status": "review_status",
             "Justification": "justification",
             "Last Revised": "last_reviewed",
+            "Notes": "notes",
         },
     },
     "Configuration": {
@@ -68,6 +69,7 @@ SHEET_ANNOTATION_CONFIG = {
             "Review Status": "review_status",
             "Exception Reason": "justification",
             "Last Reviewed": "last_reviewed",
+            "Notes": "notes",
         },
     },
     "Services": {
@@ -77,6 +79,7 @@ SHEET_ANNOTATION_CONFIG = {
             "Review Status": "review_status",
             "Justification": "justification",
             "Last Reviewed": "last_reviewed",
+            "Notes": "notes",
         },
     },
     "Databases": {
@@ -106,6 +109,7 @@ SHEET_ANNOTATION_CONFIG = {
             "Review Status": "review_status",
             "Justification": "justification",
             "Last Reviewed": "last_reviewed",
+            "Notes": "notes",
         },
     },
     "Permission Grants": {
@@ -125,6 +129,7 @@ SHEET_ANNOTATION_CONFIG = {
             "Review Status": "review_status",
             "Justification": "justification",
             "Last Revised": "last_reviewed",
+            "Notes": "notes",
         },
     },
     "Linked Servers": {
@@ -135,6 +140,7 @@ SHEET_ANNOTATION_CONFIG = {
             "Purpose": "purpose",
             "Justification": "justification",
             "Last Revised": "last_reviewed",
+            "Notes": "notes",
         },
     },
     "Triggers": {
@@ -142,6 +148,7 @@ SHEET_ANNOTATION_CONFIG = {
         "key_cols": ["Server", "Instance", "Database", "Trigger Name"],
         "editable_cols": {
             "Purpose": "purpose",
+            "Notes": "notes",
         },
     },
     "Client Protocols": {
@@ -149,12 +156,11 @@ SHEET_ANNOTATION_CONFIG = {
         "key_cols": ["Server", "Instance", "Protocol"],
         "editable_cols": {
             "Justification": "justification",
-            "Notes": "notes",
         },
     },
     "Backups": {
         "entity_type": "backup",
-        "key_cols": ["Server", "Instance", "Database"],
+        "key_cols": ["Server", "Instance", "Database", "Recovery Model"],
         "editable_cols": {
             "Review Status": "review_status",
             "Justification": "justification",
@@ -285,18 +291,53 @@ class AnnotationSyncService:
 
         # Find key column indices
         key_indices = []
+        found_keys = 0
+        
+        # Try primary key config
         for key_col in config["key_cols"]:
+            found = False
             if key_col in header_map:
                 key_indices.append(header_map[key_col])
+                found = True
             else:
                 # Try partial match
                 for h, idx in header_map.items():
                     if key_col.lower() in h.lower():
                         key_indices.append(idx)
+                        found = True
                         break
+            if found:
+                found_keys += 1
 
-        if len(key_indices) != len(config["key_cols"]):
-            logger.warning("Could not find all key columns for %s sheet", ws.title)
+        # Fallback for Backups (backward compatibility for existing reports)
+        if found_keys != len(config["key_cols"]) and config["entity_type"] == "backup":
+            logger.warning("Backups sheet missing 'Recovery Model'. Trying legacy key.")
+            legacy_keys = ["Server", "Instance", "Database"]
+            key_indices = []
+            found_keys = 0
+            for key_col in legacy_keys:
+                 if key_col in header_map:
+                    key_indices.append(header_map[key_col])
+                    found_keys += 1
+            
+            # If we found the legacy keys, valid. 
+            # Note: This means entity_key will be "Server|Instance|Database"
+            # Logic later needs to handle this or migration.
+            if found_keys == 3:
+                 logger.info("Using legacy key for Backups sheet.")
+
+        if found_keys != len(key_indices) and found_keys == 0:
+             # Logic above: key_indices length might differ if we fallback?
+             # Actually, key_indices contains the indices. found_keys tracks count.
+             # If we used fallback, key_indices has 3 items. found_keys is 3.
+             pass
+
+        # Strict check: Did we find enough keys for strict match OR fallback match?
+        # If we are using standard config, we need match.
+        required_keys = 3 if (config["entity_type"] == "backup" and len(key_indices) == 3) else len(config["key_cols"])
+        
+        if len(key_indices) != required_keys:
+            logger.warning("Could not find all key columns for %s sheet (Found %d/%d)", ws.title, len(key_indices), required_keys)
             return annotations
 
         # Find editable column indices
@@ -311,10 +352,11 @@ class AnnotationSyncService:
                         editable_indices[field_name] = idx
                         break
 
-        # Find action indicator column (column 1 with header containing ⏳)
+        # Find action indicator column (column with header containing ⏳)
+        # MUST use raw header_row because header_map keys are stripped of emojis
         action_col_idx = None
-        for h, idx in header_map.items():
-            if "⏳" in str(h):
+        for idx, val in enumerate(header_row):
+            if val and "⏳" in str(val):
                 action_col_idx = idx
                 break
 
@@ -386,10 +428,8 @@ class AnnotationSyncService:
                                 fields[field_name] = clean_val
                                 has_any_value = True
 
-            # AUTO-STATUS: If justification present, FORCE status to Exception (if eligible)
-            # User Rule: "either or both of these fields... should count as one"
-            # Logic: If justification is present, it IS an exception.
-            raw_just = fields.get("justification") or fields.get("purpose")
+            # AUTO-STATUS: Check Justification OR Purpose OR NOTES
+            raw_just = fields.get("justification") or fields.get("purpose") or fields.get("notes")
 
             # Check review status for "Exception"
             raw_status = fields.get("review_status")
@@ -702,10 +742,10 @@ class AnnotationSyncService:
         exceptions = []
 
         for full_key, fields in new_annotations.items():
-            # Check if this has justification OR review_status set to Exception
+            # Check if this has justification OR review_status set to Exception OR Notes
             # Either one counts as documenting an exception
-            raw_justification = fields.get("justification", "")
-            justification = str(raw_justification).strip() if raw_justification else ""
+            raw_just = fields.get("justification") or fields.get("purpose") or fields.get("notes")
+            justification = str(raw_just).strip() if raw_just else ""
 
             raw_review_status = fields.get("review_status", "")
             review_status = str(raw_review_status).strip() if raw_review_status else ""
@@ -728,7 +768,9 @@ class AnnotationSyncService:
 
             # Check if this is NEW or CHANGED
             old_fields = old_annotations.get(full_key, {})
-            old_justification = old_fields.get("justification", "").strip()
+            # construct old justification similarly
+            old_raw = old_fields.get("justification") or old_fields.get("purpose") or old_fields.get("notes")
+            old_justification = str(old_raw).strip() if old_raw else ""
 
             if justification != old_justification:
                 # Parse entity key
