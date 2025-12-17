@@ -1,13 +1,13 @@
 # AI Runbook – AutoDBAudit
 
 > **For AI assistants**: Quick reference to work on this repo without rediscovering context.
-> **Last Updated**: 2025-12-11
+> **Last Updated**: 2025-12-17
 
 ---
 
 ## Project Summary
 
-**AutoDBAudit** is a self-contained, offline-capable SQL Server audit and remediation tool. It audits instances against 28+ security requirements, generates Excel reports with dropdown validation, suggests T-SQL fixes, tracks actions/exceptions in SQLite, and (eventually) orchestrates hotfix deployments.
+**AutoDBAudit** is an offline-capable SQL Server audit and remediation tool. It audits instances against 28+ security requirements (see `db-requirements.md`), generates Excel reports with dropdown validation, suggests T-SQL fixes, tracks actions/exceptions in SQLite, and (eventually) orchestrates hotfix deployments.
 
 **Design Goal**: A person with ZERO SQL experience should be able to run audits, apply fixes, and deliver compliance results.
 
@@ -34,30 +34,15 @@
 4. **Use** SQLite + openpyxl; no ORM or alternate Excel engine
 5. **Keep domain layer pure** — no file/network I/O there
 6. **Sync docs** — keep `docs/` folder updated with any significant changes
-7. **Pretend directory is** `D:\Raja-Initiative` for the main development machine
 
 ### ⚠️ CRITICAL: Command Execution Rules
 
 **See full documentation:** `.agent/workflows/run-python.md`
 
-**Patterns that TRIGGER confirmation prompts:**
-- Semicolons: `cmd1; cmd2`
-- Environment vars: `$env:VAR="x"; cmd`
-- Chained: `cmd1 && cmd2`
-- Pipe to file: `cmd | Out-File x.txt`
-- File writes: `Copy-Item`, `Move-Item`, `Remove-Item`, `New-Item`
-
-**Patterns that AUTO-RUN:**
+**Auto-run safe commands:**
 - Simple single commands: `python main.py --audit`
 - Read-only: `Get-Content`, `dir`, `type`, `cat`
 - Helper scripts: `.\run.ps1 --audit`
-
-**Mitigation strategies:**
-1. Use `.\run.ps1` wrapper instead of `$env:PYTHONPATH=...`
-2. Have user activate venv once: `.\venv\Scripts\Activate.ps1`
-3. Split compound commands into separate tool calls
-4. Use `write_to_file` / `replace_file_content` tools instead of shell writes
-5. For file I/O (move/copy/delete), use tool functions, not PowerShell
 
 **User setup (once per session):**
 ```powershell
@@ -71,14 +56,13 @@ cd c:\Users\sickp\source\SQLAuditProject\AutoDBAudit
 
 | Component | Status |
 |-----------|--------|
-| **Audit + Excel** | ✅ Working - 20+ sheets (inc. Role Matrix, Permissions) |
-| **Modular Collectors** | ✅ Working - Refactored into `application/collectors/` |
-| **Modular Remediation** | ✅ Working - Refactored into `application/remediation/` |
+| **Audit + Excel** | ✅ Working - 17 sheets |
+| **Annotation Sync** | ✅ Working - All 17 sheets in config |
 | **SQLite Storage** | ✅ Working - findings, annotations, action_log |
-| **Remediation Scripts** | ✅ Working - 4-category + rollback + Aggressiveness Levels |
-| **Script Executor** | ✅ Working - with dry-run, credential protection |
-| **Sync/Finalize** | ✅ Working - Full E2E verification |
-| **Hotfix Deployment** | ⏳ Stubs only - NotImplementedError |
+| **Remediation Scripts** | ✅ Working - 4-category + rollback |
+| **Sync Command** | ✅ Working - Fixed infinite loop & action log |
+| **Finalize Command** | ⚠️ Partial - Basic implementation |
+| **Hotfix Deployment** | ⏳ Stubs only |
 
 ---
 
@@ -86,27 +70,24 @@ cd c:\Users\sickp\source\SQLAuditProject\AutoDBAudit
 
 | File | Purpose |
 |------|---------|
-| [`docs/SESSION_HANDOFF_DEV_SWITCH.md`](../docs/SESSION_HANDOFF_DEV_SWITCH.md) | **START HERE** - Machine Handoff Context |
-| [`docs/PROJECT_STATUS.md`](../docs/PROJECT_STATUS.md) | **Comprehensive** current state |
-| [`docs/EXCEL_COLUMNS.md`](../docs/EXCEL_COLUMNS.md) | **Strict Schema** for all reports |
-| [`docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md) | Codebase architecture with diagrams |
+| [`docs/PROJECT_STATUS.md`](PROJECT_STATUS.md) | **Current state** (read first) |
+| [`docs/TODO.md`](TODO.md) | Task tracker |
 | [`db-requirements.md`](../db-requirements.md) | 28 audit requirements |
+| [`docs/EXCEL_COLUMNS.md`](EXCEL_COLUMNS.md) | **Strict Schema** for all reports |
+| [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) | Codebase architecture with diagrams |
 
 ---
 
-## What's Working Now
+## Critical Code Locations
 
-- ✅ **CLI** - All commands wired in `cli.py` and `src/main.py`.
-- ✅ **Excel Package** - Modular logic in `infrastructure/excel/`.
-- ✅ **20+ Sheets** - All populated, including Matrix and Permissions.
-- ✅ **Query Provider** - SQL 2008-2025+ compatible.
-- ✅ **Refactoring** - Full modularization of Collectors and Remediation completed.
-
-## What's Still Pending
-
-- ⏳ `--deploy-hotfixes` (stubs exist, raises NotImplementedError)
-- ⏳ `Inventory Population` (raw tables `logins`, `server_info` etc. are empty by design; using `findings`)
+| Feature | File |
+|---------|------|
+| Sheet annotation config | `src/autodbaudit/application/annotation_sync.py:27-197` |
+| Sync logic | `src/autodbaudit/application/sync_service.py` |
+| Excel sheet modules | `src/autodbaudit/infrastructure/excel/*.py` |
+| SQL queries | `src/autodbaudit/infrastructure/sql/query_provider.py` |
+| SQLite schema | `src/autodbaudit/infrastructure/sqlite/schema.py` |
 
 ---
 
-*Last updated: 2025-12-16*
+*Last updated: 2025-12-17*

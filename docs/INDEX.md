@@ -1,6 +1,6 @@
 # Documentation Index
 
-> **Last Updated**: 2025-12-11  
+> **Last Updated**: 2025-12-17  
 > **Single source of truth** for AutoDBAudit project documentation.
 
 This folder contains all project documentation. README.md stays in the root as required.

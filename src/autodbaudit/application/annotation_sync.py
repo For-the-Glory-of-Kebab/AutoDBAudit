@@ -187,11 +187,10 @@ SHEET_ANNOTATION_CONFIG = {
     },
     "Actions": {
         "entity_type": "action",
-        "key_cols": ["Server", "Instance", "Finding"],
+        "key_cols": ["ID"],  # Use DB ID for unique, reliable row matching
         "editable_cols": {
-            "Detected Date": "detected_date",
-            "Assigned To": "assigned_to",
-            "Notes": "notes",
+            "Detected Date": "action_date",  # User can override detected date
+            "Notes": "notes",  # User commentary
         },
     },
 }
@@ -292,7 +291,7 @@ class AnnotationSyncService:
         # Find key column indices
         key_indices = []
         found_keys = 0
-        
+
         # Try primary key config
         for key_col in config["key_cols"]:
             found = False
@@ -316,28 +315,37 @@ class AnnotationSyncService:
             key_indices = []
             found_keys = 0
             for key_col in legacy_keys:
-                 if key_col in header_map:
+                if key_col in header_map:
                     key_indices.append(header_map[key_col])
                     found_keys += 1
-            
-            # If we found the legacy keys, valid. 
+
+            # If we found the legacy keys, valid.
             # Note: This means entity_key will be "Server|Instance|Database"
             # Logic later needs to handle this or migration.
             if found_keys == 3:
-                 logger.info("Using legacy key for Backups sheet.")
+                logger.info("Using legacy key for Backups sheet.")
 
         if found_keys != len(key_indices) and found_keys == 0:
-             # Logic above: key_indices length might differ if we fallback?
-             # Actually, key_indices contains the indices. found_keys tracks count.
-             # If we used fallback, key_indices has 3 items. found_keys is 3.
-             pass
+            # Logic above: key_indices length might differ if we fallback?
+            # Actually, key_indices contains the indices. found_keys tracks count.
+            # If we used fallback, key_indices has 3 items. found_keys is 3.
+            pass
 
         # Strict check: Did we find enough keys for strict match OR fallback match?
         # If we are using standard config, we need match.
-        required_keys = 3 if (config["entity_type"] == "backup" and len(key_indices) == 3) else len(config["key_cols"])
-        
+        required_keys = (
+            3
+            if (config["entity_type"] == "backup" and len(key_indices) == 3)
+            else len(config["key_cols"])
+        )
+
         if len(key_indices) != required_keys:
-            logger.warning("Could not find all key columns for %s sheet (Found %d/%d)", ws.title, len(key_indices), required_keys)
+            logger.warning(
+                "Could not find all key columns for %s sheet (Found %d/%d)",
+                ws.title,
+                len(key_indices),
+                required_keys,
+            )
             return annotations
 
         # Find editable column indices
@@ -355,10 +363,15 @@ class AnnotationSyncService:
         # Find action indicator column (column with header containing ⏳)
         # MUST use raw header_row because header_map keys are stripped of emojis
         action_col_idx = None
+        status_col_idx = None  # Track Status column for discrepancy detection
         for idx, val in enumerate(header_row):
-            if val and "⏳" in str(val):
-                action_col_idx = idx
-                break
+            if val:
+                val_str = str(val)
+                if "⏳" in val_str:
+                    action_col_idx = idx
+                # Find Status column (may contain PASS/FAIL/WARN)
+                if val_str.strip().lower() == "status" or val_str.strip() == "Status":
+                    status_col_idx = idx
 
         # Track last non-empty values for key columns (handles merged cells)
         # When cells are merged, only first row has value, rest are None
@@ -428,8 +441,8 @@ class AnnotationSyncService:
                                 fields[field_name] = clean_val
                                 has_any_value = True
 
-            # AUTO-STATUS: Check Justification OR Purpose OR NOTES
-            raw_just = fields.get("justification") or fields.get("purpose") or fields.get("notes")
+            # AUTO-STATUS: Check Justification ONLY (notes/purpose are documentation, NOT exception triggers)
+            raw_just = fields.get("justification")
 
             # Check review status for "Exception"
             raw_status = fields.get("review_status")
@@ -460,6 +473,12 @@ class AnnotationSyncService:
                 elif action_val and "✅" in str(action_val):
                     # Already documented, but was previously a FAIL
                     fields["action_needed"] = True
+
+            # Read actual Status column value for discrepancy detection
+            if status_col_idx is not None and status_col_idx < len(row):
+                status_val = row[status_col_idx]
+                if status_val:
+                    fields["status"] = str(status_val).strip()
 
             # Only store if there are actual annotations
             if has_any_value:
@@ -517,6 +536,12 @@ class AnnotationSyncService:
         try:
             wb.save(excel_path)
             logger.info("Wrote %d annotation cells to %s", total_updated, excel_path)
+        except PermissionError:
+            logger.error(
+                f"❌ Cannot write to '{excel_path.name}' - file is open!\n"
+                f"   Please close the file in Excel and try again."
+            )
+            return 0
         except Exception as e:
             logger.error("Failed to save Excel file: %s", e)
             return 0
@@ -562,10 +587,12 @@ class AnnotationSyncService:
 
         # Find action indicator column (usually column 1 with header "⏳")
         action_col_idx = None
+        status_col_idx = None  # Column with PASS/FAIL/WARN values
         for h, idx in header_map.items():
             if "⏳" in str(h) or h == "":  # Action column header is usually just ⏳
                 action_col_idx = idx
-                break
+            if h.strip().lower() == "status":
+                status_col_idx = idx
 
         # Check if this sheet has a justification field
         has_justification = "justification" in config["editable_cols"].values()
@@ -626,16 +653,25 @@ class AnnotationSyncService:
                         ws.cell(row=row_num, column=col_idx).value = val
                         updated += 1
 
-                # Update action indicator (⏳→✅) if:
-                # - justification is filled, OR
-                # - review_status is set to "Exception"
+                # Update action indicator (⏳→✅) ONLY if:
+                # - Row is FAIL/WARN (discrepant), AND
+                # - justification is filled OR review_status is "Exception"
+                # PASS rows: keep justification as text but NO indicator
                 if has_justification and action_col_idx:
                     justification = row_annotations.get("justification", "")
                     review_status = row_annotations.get("review_status", "")
                     has_just = justification and str(justification).strip()
                     has_exception = review_status and "Exception" in str(review_status)
 
-                    if has_just or has_exception:
+                    # Check row status - must be discrepant to apply indicator
+                    is_discrepant = False
+                    if status_col_idx:
+                        status_val = ws.cell(row=row_num, column=status_col_idx).value
+                        if status_val:
+                            status_str = str(status_val).upper()
+                            is_discrepant = status_str in ("FAIL", "WARN", "⏳", "⚠")
+
+                    if (has_just or has_exception) and is_discrepant:
                         # Import styling function
                         from autodbaudit.infrastructure.excel.base import (
                             apply_exception_documented_styling,
@@ -645,7 +681,12 @@ class AnnotationSyncService:
                             ws.cell(row=row_num, column=action_col_idx)
                         )
                         updated += 1
-                        updated += 1
+                    elif (has_just or has_exception) and not is_discrepant:
+                        # PASS row with justification: clear Review Status
+                        # Keep justification as documentation, but no indicator
+                        review_status_col = editable_indices.get("review_status")
+                        if review_status_col:
+                            ws.cell(row=row_num, column=review_status_col).value = ""
 
         return updated
 
@@ -726,25 +767,66 @@ class AnnotationSyncService:
         new_annotations: dict[str, dict],
     ) -> list[dict]:
         """
-        Compare annotations to detect new/changed justifications for FAIL items.
+        Compare annotations to detect new/changed/removed justifications for FAIL items.
 
         Only logs as "exception" when an item that had a pending action (⏳)
         now has justification. Items that were already PASS are just notes,
         not exceptions.
+
+        Also detects REMOVED exceptions: when user clears BOTH Justification
+        AND Review Status (reverts from Exception).
 
         Args:
             old_annotations: Previous annotations from DB
             new_annotations: Current annotations from Excel
 
         Returns:
-            List of {entity_key, entity_type, justification, is_new}
+            List of {entity_key, entity_type, justification, is_new, change_type}
+            where change_type is 'added', 'updated', or 'removed'
         """
         exceptions = []
 
+        # Helper to check if DB annotation was already an exception
+        # DB annotations don't have status field - just check justification/review_status
+        def was_previously_exception(fields: dict) -> bool:
+            if not fields:
+                return False
+            raw_just = fields.get("justification")
+            justification = str(raw_just).strip() if raw_just else ""
+            raw_status = fields.get("review_status", "")
+            has_exception_status = "Exception" in str(raw_status)
+            return bool(justification) or has_exception_status
+
+        # Helper to check if Excel annotation qualifies as NEW exception
+        # Must be DISCREPANT (FAIL/WARN) to count as exception
+        def is_new_exception(fields: dict) -> bool:
+            if not fields:
+                return False
+
+            # First check status - must be FAIL/WARN to be exception
+            row_status = str(fields.get("status", "")).upper()
+            is_discrepant = row_status in ("FAIL", "WARN", "⏳", "⚠")
+
+            # Also treat as discrepant if action_needed was explicitly set
+            if fields.get("action_needed", False):
+                is_discrepant = True
+
+            # If row is passing, it's NOT an exception (just documentation)
+            if not is_discrepant:
+                return False
+
+            # Now check if it has justification or Exception status
+            raw_just = fields.get("justification")
+            justification = str(raw_just).strip() if raw_just else ""
+            raw_status = fields.get("review_status", "")
+            has_exception_status = "Exception" in str(raw_status)
+            return bool(justification) or has_exception_status
+
+        # 1. Detect NEW and UPDATED exceptions
         for full_key, fields in new_annotations.items():
-            # Check if this has justification OR review_status set to Exception OR Notes
-            # Either one counts as documenting an exception
-            raw_just = fields.get("justification") or fields.get("purpose") or fields.get("notes")
+            # Check if this has justification OR review_status set to Exception
+            # Notes/Purpose are DOCUMENTATION ONLY, not exception triggers
+            raw_just = fields.get("justification")
             justification = str(raw_just).strip() if raw_just else ""
 
             raw_review_status = fields.get("review_status", "")
@@ -755,42 +837,95 @@ class AnnotationSyncService:
             if not justification and not has_exception_status:
                 continue
 
-            # Check if this row had action_needed = True (was showing ⏳)
-            # This indicates it was a FAIL/WARN item needing attention
-            # If not present, we still count it if they explicitly set Exception status
-            action_needed = fields.get("action_needed", False)
+            # CRITICAL: Check if this row is actually DISCREPANT (FAIL/WARN)
+            # PASS rows with justification are documentation only, NOT exceptions
+            row_status = str(fields.get("status", "")).upper()
 
-            # Treat as exception if:
-            # 1. It was marked as needing action (⏳) and has justification, OR
-            # 2. It has Exception status (user explicitly marked it)
-            if not action_needed and not has_exception_status:
+            # action_needed was a legacy field - check explicitly
+            is_discrepant = row_status in ("FAIL", "WARN", "⏳", "⚠")
+
+            # Also treat as discrepant if action_needed was explicitly set
+            if fields.get("action_needed", False):
+                is_discrepant = True
+
+            # If row is passing and no explicit exception status, skip it
+            # Keep the justification in DB as documentation for future reference
+            if not is_discrepant and not has_exception_status:
+                logger.debug(
+                    "Skipping non-discrepant row with justification: %s (status=%s)",
+                    full_key,
+                    row_status,
+                )
                 continue
 
             # Check if this is NEW or CHANGED
             old_fields = old_annotations.get(full_key, {})
-            # construct old justification similarly
-            old_raw = old_fields.get("justification") or old_fields.get("purpose") or old_fields.get("notes")
+            old_raw = old_fields.get("justification")
             old_justification = str(old_raw).strip() if old_raw else ""
 
-            if justification != old_justification:
+            old_status = old_fields.get("review_status", "")
+            was_exception = was_previously_exception(old_fields)
+
+            if justification != old_justification or (
+                has_exception_status and not was_exception
+            ):
                 # Parse entity key
                 parts = full_key.split("|", 1)
                 if len(parts) == 2:
                     entity_type, entity_key = parts
+
+                    if not was_exception:
+                        change_type = "added"
+                    else:
+                        change_type = "updated"
+
                     exceptions.append(
                         {
                             "full_key": full_key,
                             "entity_type": entity_type,
                             "entity_key": entity_key,
                             "justification": justification,
-                            "is_new": not old_justification,
+                            "is_new": not was_exception,
+                            "change_type": change_type,
                         }
                     )
                     logger.info(
                         "Exception %s: %s - %s",
-                        "added" if not old_justification else "updated",
+                        change_type,
                         entity_type,
                         entity_key[:50],
                     )
+
+        # 2. Detect REMOVED exceptions (was exception in old, not in new)
+        for full_key, old_fields in old_annotations.items():
+            if not was_previously_exception(old_fields):
+                continue  # Was not an exception before
+
+            new_fields = new_annotations.get(full_key, {})
+            if is_new_exception(new_fields):
+                continue  # Still an exception (and is discrepant)
+
+            # Exception was removed!
+            parts = full_key.split("|", 1)
+            if len(parts) == 2:
+                entity_type, entity_key = parts
+                old_just = old_fields.get("justification", "")
+
+                exceptions.append(
+                    {
+                        "full_key": full_key,
+                        "entity_type": entity_type,
+                        "entity_key": entity_key,
+                        "justification": "",  # Now empty
+                        "old_justification": str(old_just).strip() if old_just else "",
+                        "is_new": False,
+                        "change_type": "removed",
+                    }
+                )
+                logger.info(
+                    "Exception removed: %s - %s",
+                    entity_type,
+                    entity_key[:50],
+                )
 
         return exceptions

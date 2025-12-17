@@ -159,18 +159,26 @@ class HistoryStore:
         """
         )
 
-        # Action Log table (for remediation tracking)
+        # Action Log table (for remediation/change tracking)
+        # Uses ID as primary key for Excel row matching
+        # UNIQUE constraint allows one row per (entity, action_type) per audit
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS action_log (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 initial_run_id INTEGER NOT NULL,
                 entity_key TEXT NOT NULL,
+                finding_type TEXT NOT NULL DEFAULT '',
+                
                 action_type TEXT NOT NULL,
-                status TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'open',
                 action_date TEXT NOT NULL,
                 description TEXT,
+                notes TEXT,
+                
                 sync_run_id INTEGER,
+                captured_at TEXT,
+                
                 FOREIGN KEY (initial_run_id) REFERENCES audit_runs(id),
                 FOREIGN KEY (sync_run_id) REFERENCES audit_runs(id),
                 UNIQUE(initial_run_id, entity_key, action_type)
@@ -623,14 +631,16 @@ class HistoryStore:
         Get all actions associated with a baseline run.
 
         Returns:
-            List of dicts with keys: entity_key, action_type, action_date, status, etc.
+            List of dicts with ALL action columns including id for Excel matching.
         """
         conn = self._get_connection()
         rows = conn.execute(
             """
-            SELECT entity_key, action_type, action_date, status, description, sync_run_id
+            SELECT id, entity_key, finding_type, action_type, status, 
+                   action_date, description, notes, sync_run_id, captured_at
             FROM action_log 
             WHERE initial_run_id = ?
+            ORDER BY action_date DESC
             """,
             (initial_run_id,),
         ).fetchall()
@@ -645,40 +655,98 @@ class HistoryStore:
         action_date: str,
         description: str,
         sync_run_id: int,
-    ) -> None:
+        finding_type: str = "",
+        notes: str | None = None,
+        user_date_override: str | None = None,
+    ) -> int | None:
         """
         Insert or update an action in the log.
+
+        Args:
+            initial_run_id: ID of the initial audit run
+            entity_key: Unique key for the entity (e.g., "server|instance|login")
+            action_type: Type of action (Fixed, Exception, Regression, etc.)
+            status: Status (open, closed, exception)
+            action_date: When the change was FIRST detected (ISO format)
+            description: Auto-generated or user-provided description
+            sync_run_id: ID of the sync run that detected this
+            finding_type: Category (sa_account, login, config, etc.)
+            notes: User notes (editable in Excel)
+            user_date_override: If user edited date in Excel, use this instead
+
+        Returns:
+            The action ID (for tracking in Excel)
         """
+        from datetime import datetime, timezone
+
         conn = self._get_connection()
+        now_iso = datetime.now(timezone.utc).isoformat()
 
-        # Check simple existence for update vs insert logic to preserve dates if needed?
-        # The logic in SyncService was specific: preserve date if status/type matches.
-        # We will implement a standard upsert here.
-
-        conn.execute(
+        # Check if row already exists
+        existing = conn.execute(
             """
-            INSERT INTO action_log (
-                initial_run_id, entity_key, action_type, status,
-                action_date, description, sync_run_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(initial_run_id, entity_key, action_type) DO UPDATE SET
-                status = excluded.status,
-                description = excluded.description,
-                sync_run_id = excluded.sync_run_id
-                -- action_date PRESOLVED: We do NOT update the date on conflict.
-                -- This ensures we keep the "First Detected" timestamp.
+            SELECT id, action_date, notes FROM action_log 
+            WHERE initial_run_id = ? AND entity_key = ? AND action_type = ?
             """,
-            (
-                initial_run_id,
-                entity_key,
-                action_type,
-                status,
-                action_date,
-                description,
-                sync_run_id,
-            ),
-        )
-        conn.commit()
+            (initial_run_id, entity_key, action_type),
+        ).fetchone()
+
+        if existing:
+            # Update existing - preserve original date unless user override
+            final_date = (
+                user_date_override if user_date_override else existing["action_date"]
+            )
+            # Preserve existing notes if not provided
+            final_notes = notes if notes is not None else existing["notes"]
+
+            conn.execute(
+                """
+                UPDATE action_log SET
+                    status = ?,
+                    action_date = ?,
+                    description = ?,
+                    notes = ?,
+                    sync_run_id = ?,
+                    finding_type = ?
+                WHERE id = ?
+                """,
+                (
+                    status,
+                    final_date,
+                    description,
+                    final_notes,
+                    sync_run_id,
+                    finding_type,
+                    existing["id"],
+                ),
+            )
+            conn.commit()
+            return existing["id"]
+        else:
+            # Insert new
+            final_date = user_date_override if user_date_override else action_date
+            cursor = conn.execute(
+                """
+                INSERT INTO action_log (
+                    initial_run_id, entity_key, finding_type, action_type, status,
+                    action_date, description, notes, sync_run_id, captured_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    initial_run_id,
+                    entity_key,
+                    finding_type,
+                    action_type,
+                    status,
+                    final_date,
+                    description,
+                    notes,
+                    sync_run_id,
+                    now_iso,
+                ),
+            )
+            conn.commit()
+            return cursor.lastrowid
 
     def get_last_successful_sync_run(self, current_run_id: int) -> int | None:
         """

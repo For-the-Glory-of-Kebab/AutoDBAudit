@@ -103,9 +103,10 @@ class ActionSheetMixin(BaseSheetMixin):
         status: str = "Open",  # Now used as "Change Type"
         found_date: datetime | None = None,
         notes: str | None = None,
+        action_id: int | None = None,  # DB action ID for row matching
     ) -> None:
         """
-        Add a changelog entry row with automatic ID and date.
+        Add a changelog entry row with DB ID for row matching.
 
         Args:
             server_name: Server hostname
@@ -117,13 +118,20 @@ class ActionSheetMixin(BaseSheetMixin):
             status: Change type (Closed for fixes, Open for issues)
             found_date: When change was detected
             notes: (Optional) User notes/commentary
+            action_id: (Optional) Database action ID for Excel row matching
         """
         import logging
 
         logger = logging.getLogger(__name__)
 
         ws = self._ensure_sheet(ACTION_CONFIG)
-        self._action_count += 1
+
+        # Use DB ID if provided, otherwise auto-generate
+        if action_id is not None:
+            display_id = str(action_id)
+        else:
+            self._action_count += 1
+            display_id = str(self._action_count)
 
         # Determine status icon
         status_icon = Icons.PENDING
@@ -133,8 +141,8 @@ class ActionSheetMixin(BaseSheetMixin):
             status_icon = Icons.PASS
 
         logger.info(
-            "ActionWriter: Adding row %d: %s | %s",
-            self._action_count,
+            "ActionWriter: Adding row ID=%s: %s | %s",
+            display_id,
             category,
             finding,
         )
@@ -143,7 +151,7 @@ class ActionSheetMixin(BaseSheetMixin):
             found_date = datetime.now()
 
         data = [
-            str(self._action_count),
+            display_id,
             server_name,
             instance_name or "(Default)",
             category,
@@ -152,7 +160,7 @@ class ActionSheetMixin(BaseSheetMixin):
             recommendation,  # Change Description
             None,  # Change Type - styled separately
             format_date(found_date),  # Detected Date
-            notes,  # Notes
+            notes or "",  # Notes - empty string if None
         ]
 
         row = self._write_row(ws, ACTION_CONFIG, data)

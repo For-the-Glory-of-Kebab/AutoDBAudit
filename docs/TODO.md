@@ -1,102 +1,82 @@
 # TODO Tracker
 
-> **Last Updated**: 2025-12-16
+> **Last Updated**: 2025-12-17
 
 ---
 
 ## 🔴 High Priority (Current Sprint)
 
-- [ ] **Phase 20B**: Action Log schema redesign
-- [ ] **Phase 20C**: Q2 - SQL Agent off = WARNING logic
-- [ ] **Manual E2E Test Execution** - User conducting "0 to 100" verification
-- [x] **Phase 20A**: Foundation - Status columns, ##...## exclusion ✅ (2025-12-16)
-  - [x] `parse_datetime_flexible()` for robust date handling
-  - [x] Merged cell fix in annotation sync
-  - [x] Q1: ##...## system logins excluded
-  - [x] Q3: Role Matrix info-only
-  - [x] STATUS_COLUMN + LAST_REVIEWED_COLUMN on all 14 sheets
+- [ ] **E2E Verification** - Run `--sync` and verify:
+  - Exception counting matches manual count
+  - Action Log sheet is populated
+  - All justified items show ✅ indicator
+- [ ] **User Testing** - User conducts "0 to 100" verification
 
 ---
 
 ## 🟡 Medium Priority
 
-- [ ] **Dynamic Configuration**: Refactor `data_collector.py` to read `audit_config.json` rules instead of hardcoded `SECURITY_SETTINGS`.
+- [ ] **Dynamic Configuration** - Refactor `data_collector.py` to read `audit_config.json` rules instead of hardcoded `SECURITY_SETTINGS`
 - [ ] **Cross-Version Testing** - Verify SQL 2008 R2 compatibility explicitly
 - [ ] **--deploy-hotfixes** - Implement the stubbed hotfix module
+- [ ] **Client Protocols User Notes** - Add distinct "User Notes" column separate from system "Notes"
 
 ---
 
-## ✅ Completed
+## ✅ Completed (2025-12-17)
 
-### 2025-12-13: Developer Experience
-- [x] **Colored Logging**: INFO=cyan, WARNING=yellow, ERROR=red, DEBUG=gray
-- [x] **Config Examples**: Added comprehensive `.example.json` files with full schema
-- [x] **Git Exclusions**: Actual config files excluded, examples preserved
+### Sync Engine Rebuild
+- [x] **Phase 1: Core Infrastructure** - action_log schema consolidated, upsert_action returns ID
+- [x] **Phase 2: Action Sheet Sync** - ID-based matching, user date/notes preserved
+- [x] **Phase 3: Entity Diffing** - NEW entity_diff.py with 29 change types
+- [x] **Phase 4: Instance Availability** - Unavailable instances handled correctly
+
+### Sync Stabilization (2025-12-17)
+- [x] **Excel File Lock** - Error out if file is open
+- [x] **Exception Logic** - Check row status, ignore PASS rows
+- [x] **Stats Accuracy** - Recalculate total exceptions from final report
+- [x] **Issue Counts** - Exclude documented exceptions from "Drift/Issues" count
+- [x] **Infinite Loop Fix** - Dedented `write_all_to_excel` in SyncService
+- [x] **Action Log Crash** - Fixed SyntaxError in `add_action` method
+- [x] **SA Account Key Collision** - Added "Current Name" to key columns
+- [x] **Notes Column Detection** - Added to Sensitive Roles and other sheets
+- [x] **Client Protocols Phantom Bug** - Removed "Notes" from editable columns
+- [x] **Date Parsing** - ISO `T` separator support in `parse_datetime_flexible`
+- [x] **Method Name Fix** - `get_last_successful_sync_run` → `get_previous_sync_run`
+
+---
+
+## ✅ Previously Completed
+
+### 2025-12-16: Phase 20 Foundation
+- [x] STATUS_COLUMN + LAST_REVIEWED_COLUMN on all 14 sheets
+- [x] `parse_datetime_flexible()` for robust date handling
+- [x] Merged cell fix in annotation sync
+- [x] Q1: ##...## system logins excluded
+- [x] Q3: Role Matrix info-only
 
 ### 2025-12-13: Version Build Compliance Checking
-- [x] **Config**: Added `expected_builds` to audit_config.json for per-version targets
-- [x] **Instances Sheet**: Added "Version Status" column with PASS/WARN styling
-- [x] **Finding**: Version mismatches saved as WARN finding in SQLite
-- [x] **Sync Stats**: Added debug logging for "since last sync" calculation
-
-### 2025-12-13: Finalize Command Enhancement
-- [x] **--finalize**: Added comprehensive safety checks (blocks if FAIL/WARN exist without exception)
-- [x] **--force**: Added bypass flag for safety checks
-- [x] **--finalize-status**: Added preview command to check readiness
-- [x] **Archive**: Creates final Excel archive in `finalized/` folder
-- [x] **Instance Name Fix**: Fixed Actions sheet showing "DEFAULT" for all instances
-- [x] **Date Persistence**: Sync now preserves user-edited dates from existing Excel
-- [x] **Rollback Scripts**: Now uncommented by default (ready to execute)
-
-### 2025-12-13: Action Indicator Column
-- [x] **Excel**: Added ⏳ Action column to 8 sheets (SA Account, Configuration, Logins, Roles, Linked Servers, Backups, Orphaned Users)
-- [x] **Styling**: Added ACTION_BG color and ACTION Fill to excel_styles.py
-- [x] **Helper**: Added ACTION_COLUMN definition and apply_action_needed_styling() to base.py
-- [x] **Docs**: Updated excel_report_layout.md with new feature documentation
-- [x] **Simulation Runner**: Created run_simulation.py with apply/revert modes
-- [x] **SQL Fixes**: Patched 2019+.sql for SQL 2008 R2 compatibility (THROW -> RAISERROR)
-- [x] **Instance ID**: Fixed multiple default instances via port detection
-
-### 2025-12-16: E2E Regression Fixes (Phase 22)
-- [x] **Linked Servers**: Fixed signature mismatch
-- [x] **Backups**: Fixed `add_backup_history`
-- [x] **Triggers**: Fixed signature and enabled/disabled logic
-- [x] **Encryption**: Implemented missing keys collection
-- [x] **Role Matrix**: Implemented `add_role_matrix_row` aggregation
-- [x] **Permission Grants**: Fixed server/database permission collection
-- [x] **Documentation**: Created `EXCEL_COLUMNS.md`
+- [x] Added `expected_builds` to audit_config.json
+- [x] Instances Sheet: "Version Status" column with PASS/WARN styling
+- [x] Finalize command with safety checks
+- [x] Action Indicator Column (⏳) on 8 sheets
+- [x] Simulation Runner `run_simulation.py`
 
 ### 2025-12-12: E2E Prep & Architecture Refinement
-- [x] **Schema Fix**: Solved `run_type` and `action_log` missing/crash (Fresh Start)
-- [x] **Docs**: Created `E2E_TESTING_GUIDE.md` and updated `PROJECT_STATUS.md`
-- [x] **Simulation**: Created `simulate_update.py` for version drift testing
-- [x] **Sync Logic**: Verified time-travel diffing logic with unit tests
-- [x] **Visuals**: Added Icons (🛡️/⚠️) and Headers to Remediation & Rollback scripts
-- [x] **Security**: Moved passwords/secrets to separate `.secrets` file in output
-
-### 2025-12-11: Environment Setup & Audit Test
-- [x] Moved sql_targets.json to config/ folder
-- [x] Added credential file loading
-- [x] First audit on SQL 2025 Docker verified
-- [x] Identified true SQLite schema (schema.py v2)
-
-### 2025-12-09: Remediation & Status
-- [x] `--apply-remediation` with dry-run/rollback
-- [x] Smart Script Generation (4 categories)
-- [x] `--status` Dashboard
-- [x] SQLite Data Persistence (Findings)
+- [x] Schema Fix: `run_type` and `action_log` crash (Fresh Start)
+- [x] Sync Logic: Time-travel diffing logic with unit tests
+- [x] Colored Logging: INFO=cyan, WARNING=yellow, ERROR=red
 
 ---
 
 ## ⚠️ Known Issues
 
-### "Ghost Tables"
-The database schema contains tables like `logins`, `server_info`, `backups` that are currently **EMPTY**. The code only populates `findings` and `audit_runs`. This is by design for the current "Result-Based" architecture but may be confusing.
+### Results-Based Persistence
+The database schema contains tables like `logins`, `server_info`, `backups` that are **EMPTY** by design. The code only populates `findings` and `audit_runs`. This is intentional for the current architecture.
 
 ### Excel Overwrites
-Currently, `main.py` tends to overwrite `audit_report_latest.xlsx`. A decision is needed on whether to keep historical Excel reports permanently or rely on the Database as the only history.
+Currently, `main.py` overwrites `audit_report_latest.xlsx`. Historical reports are stored in timestamped files.
 
 ---
 
-*Last Updated: 2025-12-15*
-
+*Keep this file synchronized with PROJECT_STATUS.md and session handoffs*

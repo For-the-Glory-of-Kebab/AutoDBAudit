@@ -378,6 +378,17 @@ class EnhancedReportWriter(
         """
         path = Path(path)
 
+        # Check if file is locked (open in another program like Excel)
+        if path.exists():
+            try:
+                with open(path, "a"):
+                    pass  # File is not locked
+            except PermissionError:
+                raise PermissionError(
+                    f"❌ Cannot write to '{path.name}' - file is open!\n"
+                    f"   Please close the file in Excel and try again."
+                )
+
         # Create output directory if needed
         path.parent.mkdir(parents=True, exist_ok=True)
 

@@ -1,35 +1,58 @@
 # Project Status: AutoDBAudit
 
 **Last Updated:** 2025-12-17
-**Current Phase:** Stabilization & Robustness (Sync Logic)
+**Current Phase:** Sync Stabilization Complete / Documentation & Handoff
 
 ## 📌 Executive Summary
-The Sync/Remediation logic (`--sync`) is functional but has edge cases with Excel data reading (Key Collisions) and Configuration gaps. Core infrastructure (CLI, Reports, DB Persistence) is solid.
 
-## 🚧 Active Modules
-*   **Sync Service:** Stabilizing. Fixed infinite loops and path syntax errors.
-*   **Excel Interface:** Improved date handling and styling.
-*   **Annotation Sync:** **NEEDS ATTENTION**. Missing config for "Services" and Key Collision issues on "Backups".
+AutoDBAudit is a SQL Server security audit tool implementing 28 compliance requirements. The core workflow is functional.
+**CRITICAL MILESTONE (2025-12-17):** The Sync Engine (`--sync`) is now stable, resilient to open files, and correctly tracks exceptions and issue counts.
 
-### Current Focus (2025-12-17)
-- **Sync Engine Hardening**: Fixing exception counting logic and action log persistence.
-    - Resolved critical crash in `SyncService`.
-    - Fixed "Notes" column detection for Sensitive Roles.
-    - Fixed false positive exceptions in Client Protocols.
-- **Immediate Next Steps**: verify edits via `--sync`.
+## ✅ Working Components
 
-## 🐛 Known Issues (See SESSION_HANDOFF_2025-12-17.md for details)
-1.  **Services Sheet Ignored:** Missing from `SHEET_ANNOTATION_CONFIG`.
-2.  **Backup Exceptions Mismatch:** Key collision likely.
-3.  **Redundant Output Files:** cluttering root output folder.
+| Component | Status | Notes |
+|-----------|--------|-------|
+| `--audit` | ✅ Working | Excel + SQLite output, 17 sheets |
+| `--generate-remediation` | ✅ Working | 4-category scripts + rollback |
+| `--apply-remediation` | ✅ Working | With --dry-run, --rollback |
+| `--status` | ✅ Working | Dashboard summary |
+| `--sync` | ✅ **STABLE** | Fixed: Locks, Exceptions, Stats, Indicators |
+| `--finalize` | ⚠️ Partial | Basic implementation |
+| `--deploy-hotfixes` | ⏳ Pending | Stubs only |
 
-## ✅ Recent Wins
-*   **Action Log:** Persistence verified. Syntax errors fixed.
-*   **SA Accounts:** Key collision resolved.
-*   **CLI:** Improved reporting aesthetics and clarity.
-*   **Performance:** Fixed infinite loop in sync process.
+## 🔧 Recent Fixes (2025-12-17 Session)
 
-## 📅 Immediate Roadmap
-1.  Add `Services` to annotation config.
-2.  Refine `Backups` unique key.
-3.  Implement cleaner output directory structure for sync runs.
+1.  **Excel File Locking 🔒**: Added robust check to error out if Excel is open, preventing crashes.
+2.  **Use Previous Sync Reference**: Fixed entity diff to compare against *previous sync* (not initial baseline), preventing duplicate logs.
+3.  **Accurate Exception Logic 🎯**:
+    *   PASS rows with justification now keep text but get **NO** exception indicator.
+    *   Review Status is cleared for PASS rows.
+4.  **Correct Statistics 📊**:
+    *   "Total Active Exceptions" recalculated from final Excel state.
+    *   "Drift/Issues" count now **excludes** exceptioned items (as requested).
+5.  **Infinite Loop Fixed**: Resolved sync service loop.
+6.  **Action Log Persistence**: Fixed ID-based tracking and user note preservation.
+
+## ⚠️ Known Limitations
+
+1.  **Client Protocols**: "Notes" column removed (phantom issue); use "Justification".
+2.  **Backups Key**: Uses composite key including Recovery Model.
+3.  **Ghost Tables**: Results-based persistence means some tables are empty by design.
+
+## 📂 Architecture Summary
+
+```
+src/autodbaudit/
+├── application/        # Business services (audit, sync, remediation)
+├── infrastructure/     # I/O layer (SQL, SQLite, Excel)
+├── domain/             # Pure data models
+├── interface/          # CLI
+└── hotfix/             # Stubs for future hotfix deployment
+```
+
+## 📅 Next Steps (For Next Session)
+
+1.  **Remediation Robustness**: Review `DEV_THOUGHTS.md` for grouping delete statements.
+2.  **Visual Improvements**: Merge cells in Instance sheet, better CLI icons.
+3.  **Version Mismatch**: Ensure version mismatch counts as a discrepancy.
+4.  **Finalize Logic**: Implement the "Sqash History" vision for finalization.

@@ -189,13 +189,15 @@ def apply_review_status_styling(cell, value: str | None = None) -> None:
 
 
 def format_date(value: Any) -> str:
-    """Format a date value for display."""
+    """Format a datetime value for display with time component."""
     if value is None:
         return ""
     if isinstance(value, datetime):
-        return value.strftime("%Y-%m-%d")
+        return value.strftime("%Y-%m-%d %H:%M")
     s = str(value)
-    return s[:10] if len(s) >= 10 else s
+    # If it has a T (ISO format), replace with space for readability
+    s = s.replace("T", " ")
+    return s[:16] if len(s) >= 16 else s
 
 
 def parse_datetime_flexible(

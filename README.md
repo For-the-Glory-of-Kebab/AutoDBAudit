@@ -53,7 +53,7 @@ See [docs/CLI_REFERENCE.md](docs/CLI_REFERENCE.md) for full command reference.
 | `--generate-remediation` | ✅ Working | 4-category scripts + rollback |
 | `--apply-remediation` | ✅ Working | With --dry-run, --rollback |
 | `--status` | ✅ Working | Dashboard summary |
-| `--sync` | ✅ Working | Progress tracking |
+| `--sync` | ✅ **STABLE** | Robust tracking, exceptions, stats |
 | `--finalize` | ⚠️ Partial | Basic implementation |
 | `--deploy-hotfixes` | ⏳ Pending | Stubs only |
 
@@ -105,6 +105,7 @@ All documentation is in the [`docs/`](docs/) folder:
 |----------|---------|
 | [INDEX.md](docs/INDEX.md) | Documentation index |
 | [PROJECT_STATUS.md](docs/PROJECT_STATUS.md) | Current implementation state |
+| [DEV_THOUGHTS.md](docs/DEV_THOUGHTS.md) | Future vision & requirements |
 | [AUDIT_WORKFLOW.md](docs/AUDIT_WORKFLOW.md) | Complete lifecycle |
 | [CLI_REFERENCE.md](docs/CLI_REFERENCE.md) | Command reference |
 | [SCHEMA_REFERENCE.md](docs/SCHEMA_REFERENCE.md) | SQLite tables |
@@ -191,9 +192,10 @@ python test_multi_instance.py
 |------|---------|
 | [db-requirements.md](db-requirements.md) | 28 security requirements being audited |
 | [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md) | What's done, what's next |
+| [docs/DEV_THOUGHTS.md](docs/DEV_THOUGHTS.md) | Future ideas |
 | [docs/TODO.md](docs/TODO.md) | Task tracker |
 | [docs/excel_report_layout.md](docs/excel_report_layout.md) | Sheet column documentation |
 
 ---
 
-*Last updated: 2025-12-08*
+*Last updated: 2025-12-17*

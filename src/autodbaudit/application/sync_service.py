@@ -91,7 +91,7 @@ class SyncService:
             return {"error": "No baseline audit found"}
 
         targets_file = targets_file or "sql_targets.json"
-        
+
         # ---------------------------------------------------------------------
         # Pre-flight Check: Finalized State
         # ---------------------------------------------------------------------
@@ -106,23 +106,16 @@ class SyncService:
         # ---------------------------------------------------------------------
         # Paths & Locking
         # ---------------------------------------------------------------------
-        # Output Logic: cleaner structure
-        # Output Logic: cleaner structure
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        # sync_folder = self.db_path.parent / "sync_runs"
-        # sync_folder.mkdir(exist_ok=True)
-        # Note: User requested not to use subfolders / nested structures
-        output_dir = self.db_path.parent
-        
-        # We save to a new timestamped file in root output
-        final_excel_path = output_dir / f"sync_report_{timestamp}.xlsx"
-        
-        # We also need to READ from the "Latest" user file to get annotations
-        # Default to "Audit_Latest.xlsx" in output root unless managed
+        # Output directory: Use audit folder if managed, otherwise db_path.parent
         if audit_manager and audit_id:
+            output_dir = audit_manager._get_audit_folder(audit_id)
             input_excel_path = audit_manager.get_latest_excel_path(audit_id)
+            # Save back to the SAME working file (Audit_XXX_Latest.xlsx)
+            final_excel_path = input_excel_path
         else:
+            output_dir = self.db_path.parent
             input_excel_path = self.db_path.parent / "Audit_Latest.xlsx"
+            final_excel_path = input_excel_path
 
         logger.info("Sync: initial baseline run ID = %d", initial_run_id)
 
@@ -178,26 +171,51 @@ class SyncService:
             now_iso = datetime.now(timezone.utc).isoformat()
 
             for ex in exceptions:
-                # Store Action Data for later committing
-                desc = f"Exception Documented: {ex['justification']}"
-                deferred_exception_actions.append({
-                    "initial_run_id": initial_run_id,
-                    "entity_key": ex["full_key"],
-                    "action_type": "Exception",
-                    "status": "exception",
-                    "action_date": now_iso,
-                    "description": desc,
-                })
-                exception_count += 1
-                logger.info("Sync: Found exception for %s", ex["full_key"])
+                change_type = ex.get("change_type", "added")
 
+                if change_type == "removed":
+                    # Exception was reverted - log as removal
+                    desc = f"Exception Removed (was: {ex.get('old_justification', 'N/A')[:50]})"
+                    action_type = "Exception Removed"
+                    status = "pending"  # Back to needing attention
+                else:
+                    # Added or updated exception
+                    desc = f"Exception Documented: {ex['justification']}"
+                    action_type = "Exception"
+                    status = "exception"
+
+                deferred_exception_actions.append(
+                    {
+                        "initial_run_id": initial_run_id,
+                        "entity_key": ex["full_key"],
+                        "action_type": action_type,
+                        "status": status,
+                        "action_date": now_iso,
+                        "description": desc,
+                    }
+                )
+
+                if change_type != "removed":
+                    exception_count += 1
+
+                logger.info("Sync: Exception %s for %s", change_type, ex["full_key"])
+
+            # Count total documented exceptions (must be DISCREPANT + justified)
             documented_exceptions_count = sum(
                 1
                 for v in current_annotations.values()
-                if v.get("justification") or v.get("review_status") == "Exception" or v.get("notes")
+                if (
+                    (v.get("justification") or v.get("review_status") == "Exception")
+                    and (
+                        str(v.get("status", "")).upper() in ("FAIL", "WARN", "⏳", "⚠")
+                        or v.get("action_needed", False)  # Fallback for ✅ rows
+                    )
+                )
             )
         else:
-            logger.info("Sync: No existing Excel report found to read annotations from.")
+            logger.info(
+                "Sync: No existing Excel report found to read annotations from."
+            )
 
         # ---------------------------------------------------------------------
         # PHASE 2: Re-Audit (Refreshed Scan) & Action Sheet Population
@@ -210,7 +228,50 @@ class SyncService:
 
         # 1. Prepare Writer with Action Log Data
         all_actions = self.store.get_actions_for_run(initial_run_id)
-        
+
+        # ---------------------------------------------------------------------
+        # 1.5 Apply User Edits from Actions Sheet (Phase 2)
+        # ---------------------------------------------------------------------
+        # Extract action annotations keyed by "action|{ID}"
+        action_user_edits = {}
+        if input_excel_path and input_excel_path.exists():
+            for full_key, fields in current_annotations.items():
+                if full_key.startswith("action|"):
+                    try:
+                        action_id = int(full_key.split("|")[1])
+                        action_user_edits[action_id] = fields
+                    except (ValueError, IndexError):
+                        pass  # Skip malformed keys
+
+            # Update existing actions with user edits
+            for action in all_actions:
+                action_id = action.get("id")
+                if action_id and action_id in action_user_edits:
+                    user_edits = action_user_edits[action_id]
+                    user_date = user_edits.get("action_date")
+                    user_notes = user_edits.get("notes")
+
+                    # Update DB with user edits (preserves user's changes)
+                    if user_date or user_notes:
+                        self.store.upsert_action(
+                            initial_run_id=initial_run_id,
+                            entity_key=action["entity_key"],
+                            action_type=action["action_type"],
+                            status=action["status"],
+                            action_date=action["action_date"],
+                            description=action.get("description", ""),
+                            sync_run_id=initial_run_id,  # Use initial run until new audit completes
+                            finding_type=action.get("finding_type", ""),
+                            notes=user_notes,
+                            user_date_override=user_date,
+                        )
+                        # Update in-memory action for display
+                        if user_date:
+                            action["action_date"] = user_date
+                        if user_notes:
+                            action["notes"] = user_notes
+                        logger.info("Sync: Applied user edits to action #%d", action_id)
+
         # Inject Deferred Exceptions (so they appear in THIS report)
         for ex in deferred_exception_actions:
             # ex has keys: initial_run_id, entity_key, action_type, status, action_date, description
@@ -218,35 +279,52 @@ class SyncService:
             all_actions.append(ex)
 
         if all_actions:
-            logger.info("Sync: Populating Actions sheet with %d entries", len(all_actions))
-            # Sort by date, treating None as empty string
-            all_actions.sort(key=lambda x: x.get("action_date") or "")
+            logger.info(
+                "Sync: Populating Actions sheet with %d entries", len(all_actions)
+            )
+
+            # Sort by date, normalizing datetime to ISO string for comparison
+            def date_sort_key(x):
+                d = x.get("action_date")
+                if d is None:
+                    return ""
+                if isinstance(d, datetime):
+                    return d.isoformat()
+                return str(d)
+
+            all_actions.sort(key=date_sort_key)
 
             for action in all_actions:
                 ek = action["entity_key"]
                 parts = ek.split("|")
                 # Heuristic parsing for display
                 # Format usually: TYPE|Server|Instance|FindingKey...
-                # Or just Server|Instance|... 
-                
+                # Or just Server|Instance|...
+
                 # Try to extract readable parts
                 server_name = "Unknown"
                 instance_name = ""
                 category = action["action_type"]
                 finding_text = ek
-                
+
                 if len(parts) >= 3:
-                     # Check if first part looks like type
-                     if parts[0] in ["sa_account", "backup", "service", "config", "login"]:
-                         server_name = parts[1]
-                         instance_name = parts[2]
-                         category = parts[0].title()
-                         finding_text = "|".join(parts[3:]) if len(parts) > 3 else ek
-                     else:
-                         # Assume Server|Instance|...
-                         server_name = parts[0]
-                         instance_name = parts[1]
-                         finding_text = "|".join(parts[2:]) if len(parts) > 2 else ek
+                    # Check if first part looks like type
+                    if parts[0] in [
+                        "sa_account",
+                        "backup",
+                        "service",
+                        "config",
+                        "login",
+                    ]:
+                        server_name = parts[1]
+                        instance_name = parts[2]
+                        category = parts[0].title()
+                        finding_text = "|".join(parts[3:]) if len(parts) > 3 else ek
+                    else:
+                        # Assume Server|Instance|...
+                        server_name = parts[0]
+                        instance_name = parts[1]
+                        finding_text = "|".join(parts[2:]) if len(parts) > 2 else ek
 
                 status_db = action["status"].lower()
                 risk = "Low" if status_db in ("fixed", "exception") else "High"
@@ -265,9 +343,12 @@ class SyncService:
                     finding=finding_text,
                     risk_level=risk,
                     recommendation=action.get("description", ""),
-                    status=("Closed" if status_db in ("fixed", "exception") else "Open"),
+                    status=(
+                        "Closed" if status_db in ("fixed", "exception") else "Open"
+                    ),
                     found_date=adate,
-                    notes=f"ID:{action.get('id', 'new')}",
+                    notes=action.get("notes", ""),  # User notes from DB
+                    action_id=action.get("id"),  # DB ID for row matching
                 )
 
         try:
@@ -300,14 +381,18 @@ class SyncService:
                     description=ex_action_data["description"],
                     sync_run_id=current_run_id,
                 )
-                logger.info("Sync: Logged exception for %s with sync_run_id %d", ex_action_data["entity_key"], current_run_id)
+                logger.info(
+                    "Sync: Logged exception for %s with sync_run_id %d",
+                    ex_action_data["entity_key"],
+                    current_run_id,
+                )
 
             # -------------------------------------------------------------------------
             # 1. Detect Version / System Info Drift
             # -------------------------------------------------------------------------
             current_instances = self.store.get_all_instances()
             drift_count = 0
-            
+
             for i in current_instances:
                 iid = i.id
                 if iid in pre_scan_instances:
@@ -334,7 +419,9 @@ class SyncService:
                         if server:
                             hostname = server.hostname
                             inst_name = i.instance_name
-                            entity_key = f"{hostname}\\{inst_name}" if inst_name else hostname
+                            entity_key = (
+                                f"{hostname}\\{inst_name}" if inst_name else hostname
+                            )
                             full_key = f"{entity_key}|System|Version"
 
                             desc = f"System Update Detected: {', '.join(changes)}"
@@ -352,11 +439,52 @@ class SyncService:
                             drift_count += 1
 
             # -------------------------------------------------------------------------
+            # 1.5 Entity Diffing (Comprehensive Change Detection)
+            # -------------------------------------------------------------------------
+            from autodbaudit.application.entity_diff import detect_all_changes
+
+            # Get scanned instance IDs for current run
+            conn = self.store._get_connection()
+            scanned_pairs = self.store.get_instances_for_run(current_run_id)
+            scanned_instance_ids = set()
+            for s, i in scanned_pairs:
+                # i is an Instance object, s is a Server object
+                scanned_instance_ids.add(i.id)
+
+            # Use PREVIOUS SYNC as reference (not initial baseline)
+            # This prevents re-detecting the same changes every sync
+            entity_ref_run_id = self.store.get_previous_sync_run(current_run_id)
+            if entity_ref_run_id is None:
+                entity_ref_run_id = initial_run_id  # First sync uses baseline
+
+            entity_changes = detect_all_changes(
+                self.store, entity_ref_run_id, current_run_id, scanned_instance_ids
+            )
+
+            entity_change_count = 0
+            for change in entity_changes:
+                self.store.upsert_action(
+                    initial_run_id=initial_run_id,
+                    entity_key=change.entity_key,
+                    action_type=change.change_type,
+                    status="fixed" if change.risk_level == "low" else "open",
+                    action_date=now_iso,
+                    description=change.description,
+                    sync_run_id=current_run_id,
+                    finding_type=change.entity_type,
+                )
+                entity_change_count += 1
+                logger.info("EntityDiff: %s", change.description)
+
+            if entity_change_count > 0:
+                logger.info("Sync: Detected %d entity changes", entity_change_count)
+
+            # -------------------------------------------------------------------------
             # 2. Calculate Findings Diffs
             # -------------------------------------------------------------------------
             baseline_findings = self.store.get_findings(initial_run_id)
             current_findings = self.store.get_findings(current_run_id)
-            
+
             # --- Valid Instances Filter ---
             # To prevent false "Fixed" when connection fails:
             # Get list of instances that were SUCCESSFULLY scanned in CURRENT run
@@ -367,8 +495,10 @@ class SyncService:
                 iname = i.instance_name if i.instance_name else "(Default)"
                 # Key format varies, but usually starts with Hostname|Instance
                 valid_instance_keys.add(f"{s.hostname}|{i.instance_name or ''}".lower())
-                valid_instance_keys.add(f"{s.hostname}|{i.instance_name or '(Default)'}".lower())
-            
+                valid_instance_keys.add(
+                    f"{s.hostname}|{i.instance_name or '(Default)'}".lower()
+                )
+
             def is_valid_instance_key(key: str) -> bool:
                 # Naive check: does the key start with any valid server|instance?
                 # Keys are typically: "Type|Server|Instance|..." or "Server|Instance|..."
@@ -377,11 +507,11 @@ class SyncService:
                 for valid in valid_instance_keys:
                     # Robust check: split key by pipe and match first two
                     parts = key_lower.split("|")
-                    
+
                     # Handle "Type|Server|Instance" format (Annotations style)
                     if len(parts) >= 3 and f"{parts[1]}|{parts[2]}" == valid:
                         return True
-                    
+
                     # Handle "Server|Instance" format (Old findings style?)
                     if len(parts) >= 2 and f"{parts[0]}|{parts[1]}" == valid:
                         return True
@@ -390,25 +520,25 @@ class SyncService:
             # --- Reference Run ---
             # Use Last SUCCESSFUL Sync Run as baseline for "New/Fixed" relative changes
             prev_run_id = self.store.get_previous_sync_run(current_run_id)
-            
+
             ref_findings = (
                 self.store.get_findings(prev_run_id)
                 if prev_run_id
                 else baseline_findings
             )
-            
+
             ref_map = {f["entity_key"]: f for f in ref_findings}
             cur_map = {f["entity_key"]: f for f in current_findings}
-            
+
             now_iso = datetime.now(timezone.utc).isoformat()
-            
+
             # 1. Detect New Issues / Regressions (Cur vs Ref)
             for key, cur_f in cur_map.items():
                 cur_status = cur_f.get("status", "FAIL")
-                
+
                 # Only check if valid instance (sanity check, though findings imply valid scan)
                 # But mostly we care about Ref vs Cur
-                
+
                 if key in ref_map:
                     ref_status = ref_map[key].get("status", "FAIL")
                     if ref_status == "PASS" and cur_status in ("FAIL", "WARN"):
@@ -440,9 +570,12 @@ class SyncService:
                     # Candidate for "Fixed"
                     # CRITICAL: Check if instance was actually scanned
                     if not is_valid_instance_key(key):
-                        logger.warning("Sync: Skipping 'Fixed' check for %s (Instance not scanned)", key)
+                        logger.warning(
+                            "Sync: Skipping 'Fixed' check for %s (Instance not scanned)",
+                            key,
+                        )
                         continue
-                    
+
                     ref_status = ref_f.get("status", "FAIL")
                     if ref_status in ("FAIL", "WARN"):
                         # FIXED
@@ -460,28 +593,34 @@ class SyncService:
             # PHASE 3: Write Back Annotations & Save
             # -------------------------------------------------------------------------
             latest_annotations = annot_sync.load_from_db()
-            
-            if hasattr(processed_writer, 'save'):
+
+            if hasattr(processed_writer, "save"):
                 processed_writer.save(final_excel_path)
             else:
                 logger.error("Processed writer does not support save")
-            
+
             annot_sync.write_all_to_excel(final_excel_path, latest_annotations)
-            
+
             logger.info("Sync Complete. Report saved to: %s", final_excel_path)
-            
-            # Update Audit_Latest.xlsx as well for convenience (UI)
-            try:
-                import shutil
-                shutil.copy2(final_excel_path, self.db_path.parent / "Audit_Latest.xlsx")
-                logger.info("Updated Audit_Latest.xlsx")
-            except Exception as e:
-                logger.warning("Could not update Audit_Latest.xlsx: %s", e)
 
             # -------------------------------------------------------------------------
             # Calculate Stats (Baseline & Recent)
             # -------------------------------------------------------------------------
-            def calc_diff(old_list, new_list):
+            # Create a robust diff function that uses the valid_instance_keys set
+            # to avoid counting items as "fixed" when their instance wasn't scanned
+
+            def calc_diff(old_list, new_list, check_instance_validity=True):
+                """
+                Calculate diff between two findings lists.
+
+                Args:
+                    old_list: Previous findings list
+                    new_list: Current findings list
+                    check_instance_validity: If True, only count "Fixed" for valid instances
+
+                Returns:
+                    Dict with fixed, still_failing, regression, new counts
+                """
                 old_map = {f["entity_key"]: f.get("status", "FAIL") for f in old_list}
                 new_map = {f["entity_key"]: f.get("status", "FAIL") for f in new_list}
 
@@ -490,25 +629,51 @@ class SyncService:
                 still_failing = 0
                 new_issues = 0
 
+                # Helper to check if item is exceptioned
+                def is_exceptioned(key):
+                    if not latest_annotations or key not in latest_annotations:
+                        return False
+                    v = latest_annotations[key]
+                    has_just = v.get("justification")
+                    has_lbl = v.get("review_status") == "Exception"
+                    return bool(has_just or has_lbl)
+
                 # Check Old against New (Fixed vs Still Failing)
                 for key, old_status in old_map.items():
                     if key not in new_map:
-                        # Only count as fixed if it was a FAIL/WARN and instance was scanned
-                        # (We assume implicit validity since we filtered findings? No, need check)
+                        # Item disappeared from findings - could be fixed OR instance unavailable
                         if old_status in ("FAIL", "WARN"):
-                             if is_valid_instance_key(key):
-                                 fixed += 1
+                            # Only count as fixed if instance was actually scanned
+                            if check_instance_validity:
+                                if is_valid_instance_key(key):
+                                    fixed += 1
+                                # If not valid, we silently skip - item is in limbo
+                            else:
+                                fixed += 1
                     else:
                         new_status = new_map[key]
-                        if old_status in ("FAIL", "WARN") and new_status in ("FAIL", "WARN"):
-                            still_failing += 1
+                        if old_status in ("FAIL", "WARN") and new_status in (
+                            "FAIL",
+                            "WARN",
+                        ):
+                            # Included in "still failing" ONLY if not exceptioned
+                            if not is_exceptioned(key):
+                                still_failing += 1
+                        elif old_status in ("FAIL", "WARN") and new_status == "PASS":
+                            # Explicit PASS status means fixed
+                            fixed += 1
                         elif old_status == "PASS" and new_status in ("FAIL", "WARN"):
-                            regressed += 1
+                            # Included in "regressed" ONLY if not exceptioned
+                            if not is_exceptioned(key):
+                                regressed += 1
+                        # PASS -> PASS is ignored (good, no change)
 
                 # Check New against Old (New Issues)
                 for key, new_status in new_map.items():
                     if key not in old_map and new_status in ("FAIL", "WARN"):
-                        new_issues += 1
+                        # Included in "new issues" ONLY if not exceptioned
+                        if not is_exceptioned(key):
+                            new_issues += 1
 
                 return {
                     "fixed": fixed,
@@ -524,6 +689,21 @@ class SyncService:
                 recent_stats = calc_diff(prev_findings, current_findings)
             else:
                 recent_stats = baseline_stats.copy()
+
+            # Recalculate documented_exceptions_count from completed Excel
+            # This ensures accurate count with status fields populated
+            final_annotations = annot_sync.read_all_from_excel(final_excel_path)
+            documented_exceptions_count = sum(
+                1
+                for v in final_annotations.values()
+                if (
+                    (v.get("justification") or v.get("review_status") == "Exception")
+                    and (
+                        str(v.get("status", "")).upper() in ("FAIL", "WARN", "⏳", "⚠")
+                        or v.get("action_needed", False)
+                    )
+                )
+            )
 
         return {
             "status": "success",
