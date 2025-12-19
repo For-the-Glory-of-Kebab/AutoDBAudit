@@ -11,6 +11,7 @@ build/
 dist/
 *.egg-info/
 .pytest_cache/
+.mypy_cache/
 
 # PyInstaller
 *.spec
@@ -46,3 +47,22 @@ desktop.ini
 # Logs
 *.log
 logs/
+
+# Test workspace (contains test output, logs, dumps)
+.test_workspace/
+
+# Temporary test files in root (legacy, should be moved)
+debug*.py
+diagnose*.py
+inspect*.py
+probe*.py
+quick_test.py
+reset_*.py
+test_*.py
+!tests/test_*.py
+run_e2e*.py
+run_simulation.py
+run_true_e2e.py
+*_report.md
+*_results.txt
+*.sql

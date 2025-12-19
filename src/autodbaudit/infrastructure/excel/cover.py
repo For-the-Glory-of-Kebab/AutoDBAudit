@@ -70,6 +70,34 @@ class CoverSheetMixin(BaseSheetMixin):
         self.started_at = started_at
         self.ended_at = ended_at
 
+    def set_stats_from_service(
+        self,
+        active_issues: int,
+        documented_exceptions: int,
+        compliant_items: int,
+    ) -> None:
+        """
+        Set Cover sheet stats from StatsService (unified source of truth).
+
+        This overrides the internal _issue_count, _warn_count, _pass_count
+        with values from StatsService to ensure CLI and Cover sheet match.
+
+        Args:
+            active_issues: FAIL/WARN without exception (shown as Critical)
+            documented_exceptions: FAIL/WARN with exception (shown as Warnings)
+            compliant_items: PASS items
+        """
+        # Override internal counters with StatsService values
+        self._issue_count = active_issues
+        self._warn_count = documented_exceptions  # Exceptions shown as "Warnings Found"
+        self._pass_count = compliant_items
+        logger.info(
+            "Cover sheet stats set from StatsService: issues=%d, exceptions=%d, pass=%d",
+            active_issues,
+            documented_exceptions,
+            compliant_items,
+        )
+
     def create_cover_sheet(self) -> None:
         """Create the cover sheet with audit summary and branding."""
         if "Cover" in self.wb.sheetnames:

@@ -596,7 +596,7 @@ class HistoryStore:
         """Get the most recent audit run ID."""
         conn = self._get_connection()
         row = conn.execute(
-            "SELECT id FROM audit_runs ORDER BY started_at DESC LIMIT 1"
+            "SELECT id FROM audit_runs ORDER BY id DESC LIMIT 1"
         ).fetchone()
         return row["id"] if row else None
 
@@ -707,7 +707,8 @@ class HistoryStore:
                     description = ?,
                     notes = ?,
                     sync_run_id = ?,
-                    finding_type = ?
+                    finding_type = ?,
+                    captured_at = ?
                 WHERE id = ?
                 """,
                 (
@@ -717,6 +718,7 @@ class HistoryStore:
                     final_notes,
                     sync_run_id,
                     finding_type,
+                    now_iso,
                     existing["id"],
                 ),
             )
@@ -771,6 +773,23 @@ class HistoryStore:
         from autodbaudit.infrastructure.sqlite.schema import get_findings_for_run
 
         return get_findings_for_run(self._get_connection(), run_id)
+
+    def update_finding_status(self, run_id: int, entity_key: str, status: str) -> None:
+        """Update status of a specific finding."""
+        conn = self._get_connection()
+        conn.execute(
+            """
+            UPDATE findings
+            SET status = ?
+            WHERE audit_run_id = ? AND entity_key = ?
+            """,
+            (status, run_id, entity_key),
+        )
+        count = conn.total_changes
+        logger.warning(
+            f"DEBUG: update_finding_status Run={run_id} Key='{entity_key}' Status='{status}' - Executed"
+        )
+        conn.commit()
 
     # ========================================================================
     # Annotation Operations

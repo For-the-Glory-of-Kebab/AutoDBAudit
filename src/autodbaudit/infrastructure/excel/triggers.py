@@ -26,12 +26,13 @@ __all__ = ["TriggerSheetMixin", "TRIGGER_CONFIG"]
 TRIGGER_COLUMNS = (
     ColumnDef("Server", 18, Alignments.LEFT),
     ColumnDef("Instance", 15, Alignments.LEFT),
-    ColumnDef("Level", 12, Alignments.CENTER),
+    ColumnDef("Level", 12, Alignments.CENTER),  # Scope - SERVER or Database name
     ColumnDef("Database", 20, Alignments.LEFT),
     ColumnDef("Trigger Name", 30, Alignments.LEFT),
     ColumnDef("Event", 20, Alignments.LEFT),
     ColumnDef("Enabled", 10, Alignments.CENTER),
-    ColumnDef("Purpose", 45, Alignments.LEFT, is_manual=True),
+    ColumnDef("Purpose", 45, Alignments.LEFT, is_manual=True),  # User documentation
+    ColumnDef("Last Revised", 14, Alignments.CENTER, is_manual=True),  # Date
 )
 
 TRIGGER_CONFIG = SheetConfig(name="Triggers", columns=TRIGGER_COLUMNS)
@@ -39,9 +40,9 @@ TRIGGER_CONFIG = SheetConfig(name="Triggers", columns=TRIGGER_COLUMNS)
 
 class TriggerSheetMixin(ServerGroupMixin, BaseSheetMixin):
     """Mixin for Triggers sheet with server/instance grouping."""
-    
+
     _trigger_sheet = None
-    
+
     def add_trigger(
         self,
         server_name: str,
@@ -57,12 +58,12 @@ class TriggerSheetMixin(ServerGroupMixin, BaseSheetMixin):
             self._trigger_sheet = self._ensure_sheet(TRIGGER_CONFIG)
             self._init_grouping(self._trigger_sheet, TRIGGER_CONFIG)
             self._add_trigger_dropdowns()
-        
+
         ws = self._trigger_sheet
-        
+
         # Track grouping and get row color
         row_color = self._track_group(server_name, instance_name, TRIGGER_CONFIG.name)
-        
+
         data = [
             server_name,
             instance_name or "(Default)",
@@ -70,29 +71,30 @@ class TriggerSheetMixin(ServerGroupMixin, BaseSheetMixin):
             database_name or "",
             trigger_name,
             event_type or "",
-            None,  # Enabled
-            "",    # Purpose
+            None,  # Enabled (will be styled)
+            "",  # Purpose
+            "",  # Last Revised
         ]
-        
+
         row = self._write_row(ws, TRIGGER_CONFIG, data)
-        
+
         self._apply_row_color(row, row_color, data_cols=[1, 2, 3, 4, 5, 6], ws=ws)
         apply_boolean_styling(ws.cell(row=row, column=7), is_enabled)
-        
+
         # Highlight server-level triggers
         if level.upper() == "SERVER":
             for col in [3, 4, 5, 6]:
                 ws.cell(row=row, column=col).fill = Fills.INFO
-    
+
     def _finalize_triggers(self) -> None:
         """Finalize triggers sheet - merge remaining groups."""
         if self._trigger_sheet:
             self._finalize_grouping(TRIGGER_CONFIG.name)
-    
+
     def _add_trigger_dropdowns(self) -> None:
         """Add dropdown validations for status columns."""
         from autodbaudit.infrastructure.excel.base import add_dropdown_validation
-        
+
         ws = self._trigger_sheet
         # Enabled column (G) - column 7
         add_dropdown_validation(ws, "G", ["✓", "✗"])

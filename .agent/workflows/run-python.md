@@ -1,57 +1,33 @@
 ---
-description: Command execution rules to avoid confirmation prompts
+description: Run any Python command in venv without prompting
 ---
-
-# Safe Command Auto-Run Policy
-
 // turbo-all
 
-## Auto-Run Works For
+Execute Python in the project venv - all variations are safe:
 
-1. **Python scripts (file-based)**
-   ```powershell
-   python script.py
-   python src/test_file.py
-   ```
-
-2. **PowerShell file operations**
-   ```powershell
-   New-Item, Remove-Item, Copy-Item, Get-ChildItem
-   ```
-
-3. **Git read-only**
-   ```powershell
-   git status, git log, git diff
-   ```
-
-## Does NOT Auto-Run (IDE limitation)
-
-- `python -c "..."` (inline code) - always prompts
-- Multi-command pipelines
-- Commands with quotes in arguments
-
-## Workaround for Import Tests
-
-Instead of:
+1. One-liner:
 ```powershell
-python -c "from module import X; print('OK')"  # PROMPTS
+.\venv\Scripts\python.exe -c "print('hello')"
 ```
 
-Do this:
-1. Create temp script: `test_imports.py`
-2. Run: `python test_imports.py`  # AUTO-RUNS
-3. Delete script after
+2. Run a module:
+```powershell
+.\venv\Scripts\python.exe -m MODULE_NAME ARGS
+```
 
-## User Preference
+3. Run a script file:
+```powershell
+.\venv\Scripts\python.exe SCRIPT.py
+```
 
-Focus interactions on:
-- Big-picture decisions
-- Bugs and features
-- Architecture vision
+4. Run pytest:
+```powershell
+.\venv\Scripts\python.exe -m pytest ARGS
+```
 
-NOT on:
-- Routine verification
-- File moves
-- Simple tests
+5. Run src.main:
+```powershell
+.\venv\Scripts\python.exe -m src.main ARGS
+```
 
-Auto-run all safe operations. Only prompt for destructive or external operations.
+All Python execution within venv is SAFE to auto-run.

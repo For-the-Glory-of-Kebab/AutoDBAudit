@@ -79,6 +79,10 @@ class AccessControlCollector(BaseCollector):
             is_disabled = bool(lg.get("IsDisabled"))
             pwd_policy = lg.get("PasswordPolicyEnforced")
 
+            logger.warning(
+                f"DEBUG: Login={login_name}, Type={login_type}, Disabled={is_disabled}, Policy={pwd_policy}"
+            )
+
             self.writer.add_login(
                 server_name=self.ctx.server_name,
                 instance_name=self.ctx.instance_name,
@@ -148,6 +152,17 @@ class AccessControlCollector(BaseCollector):
                     member_type=r.get("MemberType", ""),
                     is_disabled=bool(r.get("MemberDisabled")),
                 )
+
+                # Check for sensitive roles (sysadmin)
+                if r.get("RoleName") == "sysadmin":
+                    self.save_finding(
+                        finding_type="server_role_member",
+                        entity_name=r.get("MemberName", ""),
+                        status="FAIL",
+                        risk_level="critical",
+                        description=f"Member of 'sysadmin': {r.get('MemberName')}",
+                        recommendation="Review sysadmin membership",
+                    )
             return len(roles)
         except Exception as e:
             logger.warning("Roles failed: %s", e)

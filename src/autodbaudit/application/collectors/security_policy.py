@@ -32,25 +32,28 @@ class SecurityPolicyCollector(BaseCollector):
         try:
             audits = self.conn.execute_query(self.prov.get_audit_settings())
             for aud in audits:
-                audit_name = aud.get("AuditName", "")
-                is_enabled = bool(aud.get("IsEnabled"))
+                # Query returns SettingName, CurrentValue, RecommendedValue, Status
+                setting_name = aud.get("SettingName", "")
+                current_value = aud.get("CurrentValue", "")
+                recommended = aud.get("RecommendedValue", "")
+                status = aud.get("Status", "PASS")
 
                 self.writer.add_audit_setting(
                     server_name=self.ctx.server_name,
                     instance_name=self.ctx.instance_name,
-                    setting_name=f"SQL Audit: {audit_name}",
-                    current_value="Enabled" if is_enabled else "Disabled",
-                    recommended_value="Enabled",
+                    setting_name=setting_name,
+                    current_value=current_value,
+                    recommended_value=recommended,
                 )
 
-                if not is_enabled:
+                if status.upper() == "FAIL":
                     self.save_finding(
                         finding_type="audit",
-                        entity_name=audit_name,
-                        status="WARN",
+                        entity_name=setting_name,
+                        status="FAIL",
                         risk_level="medium",
-                        description=f"SQL Audit '{audit_name}' is disabled",
-                        recommendation="Enable audit if used for compliance",
+                        description=f"Audit setting '{setting_name}' is non-compliant: {current_value}",
+                        recommendation=f"Set to {recommended}",
                     )
             return len(audits)
         except Exception as e:

@@ -6,7 +6,7 @@ fully-featured audit report generator using the Mixin Pattern.
 
 Architecture Overview:
     The report writer uses Python's multiple inheritance (mixin pattern)
-    to compose functionality from 16 specialized sheet modules. Each
+    to compose functionality from 19 specialized sheet modules. Each
     module provides:
     - Column definitions (SheetConfig)
     - Data entry method (add_*)
@@ -18,23 +18,32 @@ Mixin Pattern Benefits:
     3. Testability: Each mixin can be tested independently
     4. Maintainability: ~100 lines per file vs 1000+ in monolith
 
-Sheet Order (16 total):
-    1.  Cover           - Audit summary and statistics
-    2.  Instances       - SQL Server instance inventory
-    3.  SA Account      - SA account security status
-    4.  Server Logins   - Server-level login audit
-    5.  Sensitive Roles - Sysadmin role membership
-    6.  Configuration   - sp_configure security settings
-    7.  Services        - SQL Server services audit
-    8.  Databases       - Database properties and security
-    9.  Database Users  - Per-database user security matrix
-    10. Database Roles  - Database role membership
-    11. Orphaned Users  - Users without server logins
-    12. Linked Servers  - Linked server configuration
-    13. Triggers        - Server and database triggers
-    14. Backups         - Backup history and compliance
-    15. Audit Settings  - Login audit configuration
-    16. Actions         - Remediation action items
+Sheet Order (19 total):
+    1.  Cover             - Audit summary and statistics
+    2.  Instances         - SQL Server instance inventory
+    3.  SA Account        - SA account security status
+    4.  Server Logins     - Server-level login audit
+    5.  Sensitive Roles   - Sysadmin role membership
+    6.  Configuration     - sp_configure security settings
+    7.  Services          - SQL Server services audit
+    8.  Databases         - Database properties and security
+    9.  Database Users    - Per-database user security matrix
+    10. Database Roles    - Database role membership
+    11. Permission Grants - Server/database permissions
+    12. Orphaned Users    - Users without server logins
+    13. Linked Servers    - Linked server configuration
+    14. Triggers          - Server and database triggers (NOTE: no action column)
+    15. Client Protocols  - Network protocol settings
+    16. Backups           - Backup history and compliance
+    17. Audit Settings    - Login audit configuration
+    18. Encryption        - TDE and encryption keys
+    19. Actions           - Remediation action items
+
+Known Inconsistencies (technical debt):
+    - Triggers sheet has no action indicator column (differs from other sheets)
+    - Linked Servers has Purpose before Justification (differs from standard order)
+    - Some sheets use "Last Revised", others use "Last Reviewed"
+
 
 Usage Example:
     from autodbaudit.infrastructure.excel import EnhancedReportWriter

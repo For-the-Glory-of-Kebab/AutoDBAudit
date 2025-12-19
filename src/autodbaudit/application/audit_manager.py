@@ -155,9 +155,8 @@ class AuditManager:
         # Find next run number
         run_num = len(metadata.get("runs", [])) + 1
 
-        # Create run folder
-        run_folder = self._get_run_folder(audit_id, run_num)
-        run_folder.mkdir(parents=True, exist_ok=True)
+        # NOTE: No run folder created - all data lives in SQLite
+        # Excel working copy is in audit root folder
 
         # Update metadata
         run_info = {

@@ -312,8 +312,18 @@ Examples:
                     print("⚠️  No audit found. Syncing in legacy mode (root output).")
 
             service = SyncService(db_path=DEFAULT_OUTPUT_DIR / "audit_history.db")
+
+            # Create AuditService with correct paths (respecting CLI overrides/patches)
+            audit_service = AuditService(
+                config_dir=DEFAULT_CONFIG_DIR,
+                output_dir=DEFAULT_OUTPUT_DIR,
+            )
+
             result = service.sync(
-                targets_file=args.targets, audit_manager=manager, audit_id=audit_id
+                audit_service=audit_service,
+                targets_file=args.targets,
+                audit_manager=manager,
+                audit_id=audit_id,
             )
 
             if "error" in result:
@@ -608,12 +618,12 @@ def run_audit(args: argparse.Namespace) -> int:
         except Exception as e:
             logger.warning("Could not save config snapshot: %s", e)
 
-    # Create run within audit
+    # Create run within audit (just increments run counter, no folder needed)
     run_num = manager.create_run(audit_id)
     print(f"   Starting run #{run_num}")
 
-    # Get paths for this run
-    run_folder = manager._get_run_folder(audit_id, run_num)
+    # Get paths - we only need the latest Excel (working copy), not per-run snapshots
+    # All data is persisted in SQLite, Excel is just for user interaction
     latest_excel_path = manager.get_latest_excel_path(audit_id)
     db_path = manager.get_global_db_path()
 
@@ -628,11 +638,9 @@ def run_audit(args: argparse.Namespace) -> int:
         targets_file=args.targets, organization=args.organization
     )
 
-    # Move Excel to run folder and copy to latest
+    # Move Excel to latest working copy location (no per-run snapshots needed)
     import shutil
 
-    run_snapshot = run_folder / report_path.name
-    shutil.copy(report_path, run_snapshot)
     shutil.copy(report_path, latest_excel_path)
     report_path.unlink()  # Remove from root output
 
@@ -640,9 +648,8 @@ def run_audit(args: argparse.Namespace) -> int:
     manager.complete_run(audit_id, run_num, servers=0, findings=0)
 
     print(f"\n✅ Audit completed successfully!")
-    print(f"📊 Run snapshot:  {report_path}")
-    print(f"📊 Latest report: {latest_excel_path}")
-    print(f"💾 Database:      {db_path}")
+    print(f"📊 Report: {latest_excel_path}")
+    print(f"💾 Database: {db_path}")
 
     return 0
 

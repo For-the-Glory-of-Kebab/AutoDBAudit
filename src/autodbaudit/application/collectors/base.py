@@ -71,7 +71,14 @@ class BaseCollector(ABC):
         Save a finding to SQLite if db_conn is available in context.
         """
         if self.ctx.db_conn is None or self.ctx.audit_run_id is None:
+            logger.warning(
+                f"DEBUG: save_finding skipped! Conn: {self.ctx.db_conn}, RunID: {self.ctx.audit_run_id}"
+            )
             return
+
+        logger.warning(
+            f"DEBUG: save_finding called for {entity_name}, Status: {status}"
+        )
 
         try:
             from autodbaudit.infrastructure.sqlite.schema import (
@@ -96,5 +103,7 @@ class BaseCollector(ABC):
                 recommendation=recommendation,
                 details=details,
             )
+            self.ctx.db_conn.commit()
+            self.ctx.db_conn.commit()
         except Exception as e:
             logger.warning("Failed to save finding '%s': %s", entity_name, e)

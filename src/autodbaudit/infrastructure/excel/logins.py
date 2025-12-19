@@ -53,15 +53,15 @@ LOGIN_CONFIG = SheetConfig(name="Server Logins", columns=LOGIN_COLUMNS)
 
 class LoginSheetMixin(BaseSheetMixin):
     """Mixin for Server Logins sheet with server/instance grouping."""
-    
+
     _login_sheet = None
     _login_last_server: str = ""
     _login_last_instance: str = ""
     _login_server_start_row: int = 2
     _login_instance_start_row: int = 2
-    _login_server_idx: int = 0      # Color rotation for servers
+    _login_server_idx: int = 0  # Color rotation for servers
     _login_instance_alt: bool = False  # Alternate shade for instances
-    
+
     def add_login(
         self,
         server_name: str,
@@ -83,25 +83,25 @@ class LoginSheetMixin(BaseSheetMixin):
             self._login_server_idx = 0
             self._login_instance_alt = False
             self._add_login_dropdowns()
-        
+
         ws = self._login_sheet
         current_row = self._row_counters[LOGIN_CONFIG.name]
         inst_display = instance_name or "(Default)"
-        
+
         # Check if SERVER changed
         if server_name != self._login_last_server:
             # Finalize previous server group (merges both server & instance)
             if self._login_last_server:
                 self._merge_login_groups(ws)
                 self._login_server_idx += 1
-            
+
             # Start new server
             self._login_server_start_row = current_row
             self._login_instance_start_row = current_row
             self._login_last_server = server_name
             self._login_last_instance = inst_display
             self._login_instance_alt = False
-        
+
         # Check if INSTANCE changed (within same server)
         elif inst_display != self._login_last_instance:
             # Merge previous instance group
@@ -109,14 +109,14 @@ class LoginSheetMixin(BaseSheetMixin):
             self._login_instance_start_row = current_row
             self._login_last_instance = inst_display
             self._login_instance_alt = not self._login_instance_alt  # Toggle shade
-        
+
         # Get colors
         color_main, color_light = SERVER_GROUP_COLORS[
             self._login_server_idx % len(SERVER_GROUP_COLORS)
         ]
         # Use main color for even instances, light for odd
         row_color = color_main if self._login_instance_alt else color_light
-        
+
         # Prepare row data
         is_enabled = not is_disabled
         data = [
@@ -128,21 +128,23 @@ class LoginSheetMixin(BaseSheetMixin):
             None,  # Enabled
             None,  # Password Policy
             default_db or "",
-            "",    # Notes
-            "",    # Last Revised
+            "",  # Notes
+            "",  # Last Revised
         ]
-        
+
         row = self._write_row(ws, LOGIN_CONFIG, data)
-        
+
         # Determine if this is a system/internal login (Q1 decision)
         # ##...## pattern logins are SQL Server internal accounts - exclude from discrepancy
         is_system_login = (
             login_name.startswith("##") and login_name.endswith("##")
         ) or login_name.lower() in {
-            "sa", "nt authority\\system", "nt service\\mssqlserver",
-            "nt service\\sqlserveragent"
+            "sa",
+            "nt authority\\system",
+            "nt service\\mssqlserver",
+            "nt service\\sqlserveragent",
         }
-        
+
         # Determine if action is needed:
         # - System logins: never discrepant (Q1 decision)
         # - Disabled logins: COMPLIANT (disabled = not a risk)
@@ -152,15 +154,17 @@ class LoginSheetMixin(BaseSheetMixin):
             needs_action = False
         else:
             # Only SQL logins with password policy disabled need action
-            # Disabled logins are COMPLIANT (intentionally disabled = good)
-            needs_action = (pwd_policy is False) and not is_disabled
+            # Disabled logins WITH NO POLICY are still findings (defense in depth)
+            needs_action = pwd_policy is not None and not pwd_policy
         apply_action_needed_styling(ws.cell(row=row, column=1), needs_action)
-        
+
         # Apply shade to informational columns (not status)
-        fill = PatternFill(start_color=row_color, end_color=row_color, fill_type="solid")
+        fill = PatternFill(
+            start_color=row_color, end_color=row_color, fill_type="solid"
+        )
         for col in [2, 3, 4, 5, 8]:  # Server=2, Instance=3, Name=4, Type=5, DefaultDB=8
             ws.cell(row=row, column=col).fill = fill
-        
+
         # Style Enabled column with icon + color (now column 6)
         enabled_cell = ws.cell(row=row, column=6)
         if is_enabled:
@@ -171,7 +175,7 @@ class LoginSheetMixin(BaseSheetMixin):
             enabled_cell.value = f"{Icons.FAIL} No"
             enabled_cell.font = Fonts.FAIL
             enabled_cell.fill = Fills.FAIL
-        
+
         # Style Password Policy (now column 7)
         policy_cell = ws.cell(row=row, column=7)
         if pwd_policy is None:
@@ -185,7 +189,7 @@ class LoginSheetMixin(BaseSheetMixin):
             policy_cell.value = f"{Icons.FAIL} No"
             policy_cell.font = Fonts.WARN
             policy_cell.fill = Fills.WARN
-    
+
     def _merge_login_instance(self, ws) -> None:
         """Merge Instance cells for current instance group."""
         current_row = self._row_counters[LOGIN_CONFIG.name]
@@ -198,12 +202,12 @@ class LoginSheetMixin(BaseSheetMixin):
                 server_name=self._login_last_instance,
                 is_alt=self._login_instance_alt,
             )
-    
+
     def _merge_login_groups(self, ws) -> None:
         """Merge both Server and Instance cells for current server group."""
         # First merge the last instance group
         self._merge_login_instance(ws)
-        
+
         # Then merge the server group
         current_row = self._row_counters[LOGIN_CONFIG.name]
         if current_row > self._login_server_start_row:
@@ -223,13 +227,15 @@ class LoginSheetMixin(BaseSheetMixin):
             merged.fill = PatternFill(
                 start_color=color_main, end_color=color_main, fill_type="solid"
             )
-    
+
     def _add_login_dropdowns(self) -> None:
         """Add dropdown validations for status columns."""
         from autodbaudit.infrastructure.excel.base import (
-            add_dropdown_validation, add_review_status_conditional_formatting, STATUS_VALUES
+            add_dropdown_validation,
+            add_review_status_conditional_formatting,
+            STATUS_VALUES,
         )
-        
+
         ws = self._login_sheet
         # Enabled column (F) - column 6 (shifted +1 from E)
         add_dropdown_validation(ws, "F", ["✓ Yes", "✗ No"])
@@ -238,9 +244,8 @@ class LoginSheetMixin(BaseSheetMixin):
         # Review Status column (I) - column 9
         add_dropdown_validation(ws, "I", STATUS_VALUES.all())
         add_review_status_conditional_formatting(ws, "I")
-    
+
     def _finalize_logins(self) -> None:
         """Finalize login sheet - merge remaining groups."""
         if self._login_sheet and self._login_last_server:
             self._merge_login_groups(self._login_sheet)
-

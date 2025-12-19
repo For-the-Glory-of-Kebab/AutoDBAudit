@@ -1,6 +1,6 @@
 # Documentation Index
 
-> **Last Updated**: 2025-12-17  
+> **Last Updated**: 2025-12-19  
 > **Single source of truth** for AutoDBAudit project documentation.
 
 This folder contains all project documentation. README.md stays in the root as required.
@@ -12,10 +12,17 @@ This folder contains all project documentation. README.md stays in the root as r
 ### Core Reference
 | File | Purpose | Audience |
 |------|---------|----------|
-| [PROJECT_STATUS.md](PROJECT_STATUS.md) | Current implementation state, what works, what doesn't | Everyone |
+| [PROJECT_STATUS.md](PROJECT_STATUS.md) | Current implementation state | Everyone |
 | [TODO.md](TODO.md) | Task tracker and priorities | Developers |
 | [AI_RUNBOOK.md](AI_RUNBOOK.md) | Quick reference for AI assistants | AI agents |
-| [SESSION_HANDOFF_DEV_SWITCH.md](SESSION_HANDOFF_DEV_SWITCH.md) | **Critical Handoff Guide** (Read first on new machine) | Developers |
+
+### Sync Engine (Primary Focus Area)
+| File | Purpose |
+|------|---------|
+| [SYNC_ENGINE_MASTER_HANDOFF.md](SYNC_ENGINE_MASTER_HANDOFF.md) | **Master reference** - Start here |
+| [SYNC_ENGINE_ARCHITECTURE.md](SYNC_ENGINE_ARCHITECTURE.md) | Full architecture with diagrams |
+| [SYNC_ENGINE_REQUIREMENTS.md](SYNC_ENGINE_REQUIREMENTS.md) | Detailed requirements spec |
+| [E2E_STATE_MATRIX.md](E2E_STATE_MATRIX.md) | Exception/sync state transitions |
 
 ### Workflow & Usage
 | File | Purpose | Audience |
@@ -28,15 +35,13 @@ This folder contains all project documentation. README.md stays in the root as r
 |------|---------|----------|
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Codebase architecture with diagrams | Developers |
 | [SCHEMA_REFERENCE.md](SCHEMA_REFERENCE.md) | SQLite schema documentation | Developers |
-| [SCHEMA_ALIGNMENT_ANALYSIS.md](SCHEMA_ALIGNMENT_ANALYSIS.md) | Schema mismatch analysis and fixes | Developers |
-| [EXCEL_REPORT_LAYOUT.md](EXCEL_REPORT_LAYOUT.md) | Excel sheet structure (General) | Developers |
 | [EXCEL_COLUMNS.md](EXCEL_COLUMNS.md) | **Strict Schema** & Column Definitions | Developers |
-| [HOTFIX_ORCHESTRATION.md](HOTFIX_ORCHESTRATION.md) | Hotfix deployment design (pending) | Developers |
+| [E2E_TESTING_STATUS.md](E2E_TESTING_STATUS.md) | Test coverage and gaps | Developers |
 
 ### Archive
 | Folder | Purpose |
 |--------|---------|
-| [archive/](archive/) | Historical planning docs, chat transcripts, outdated designs |
+| [archive/](archive/) | Historical planning docs, outdated handoffs |
 
 ---
 

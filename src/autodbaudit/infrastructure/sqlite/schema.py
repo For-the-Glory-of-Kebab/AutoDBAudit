@@ -627,6 +627,10 @@ def set_annotation(
     Returns:
         Annotation ID
     """
+    # Normalize keys to lowercase for consistent matching
+    entity_type = entity_type.lower()
+    entity_key = entity_key.lower()
+
     now = datetime.now(timezone.utc).isoformat()
 
     # Check for existing annotation
@@ -737,11 +741,13 @@ def build_entity_key(*parts: str) -> str:
     """
     Build a composite entity key from parts.
 
+    All parts are normalized to lowercase for case-insensitive matching.
+
     Example:
         build_entity_key("PROD-SQL01", "INSTANCE1", "sa")
-        # Returns: "PROD-SQL01|INSTANCE1|sa"
+        # Returns: "prod-sql01|instance1|sa"
     """
-    return "|".join(str(p) for p in parts)
+    return "|".join(str(p).lower() for p in parts)
 
 
 def save_finding(

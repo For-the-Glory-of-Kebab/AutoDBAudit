@@ -8,6 +8,7 @@ Architecture Note:
     - Depends only on domain types and HistoryStore
     - No direct Excel or CLI coupling
     - Computes stats fresh each time (no caching)
+    - All key comparisons are case-insensitive (normalized to lowercase)
 """
 
 from __future__ import annotations
@@ -24,6 +25,7 @@ from autodbaudit.domain.state_machine import (
     classify_finding_transition,
     is_exception_eligible,
 )
+from autodbaudit.domain.entity_key import normalize_key_string
 
 logger = logging.getLogger(__name__)
 
@@ -32,9 +34,10 @@ logger = logging.getLogger(__name__)
 # Protocols (Interfaces)
 # =============================================================================
 
+
 class FindingsProvider(Protocol):
     """Protocol for providing findings data."""
-    
+
     def get_findings(self, run_id: int) -> list[dict[str, Any]]:
         """Get findings for a specific run."""
         ...
@@ -42,7 +45,7 @@ class FindingsProvider(Protocol):
 
 class AnnotationsProvider(Protocol):
     """Protocol for providing annotation data."""
-    
+
     def get_all_annotations(self) -> dict[str, dict[str, Any]]:
         """Get all annotations keyed by entity_key."""
         ...
@@ -50,7 +53,7 @@ class AnnotationsProvider(Protocol):
 
 class InstanceValidator(Protocol):
     """Protocol for validating instance availability."""
-    
+
     def get_scanned_instance_keys(self, run_id: int) -> set[str]:
         """Get set of 'Server|Instance' keys that were scanned."""
         ...
@@ -60,9 +63,11 @@ class InstanceValidator(Protocol):
 # Helper Classes
 # =============================================================================
 
+
 @dataclass
 class DiffResult:
     """Result of diffing two findings lists."""
+
     fixed: int = 0
     regressions: int = 0
     new_issues: int = 0
@@ -74,24 +79,25 @@ class DiffResult:
 # Stats Service
 # =============================================================================
 
+
 class StatsService:
     """
     Single source of truth for all sync statistics.
-    
+
     All consumers (CLI, Excel Cover, --finalize) use this service.
     This ensures consistent stats everywhere.
-    
+
     Usage:
         service = StatsService(store, annotation_provider)
         stats = service.calculate(baseline_id, current_id)
-        
+
         # For CLI
         print(f"Fixed: {stats.fixed_since_baseline}")
-        
+
         # For Excel Cover
         cover_data = stats.to_dict()
     """
-    
+
     def __init__(
         self,
         findings_provider: FindingsProvider,
@@ -100,7 +106,7 @@ class StatsService:
     ):
         """
         Initialize stats service.
-        
+
         Args:
             findings_provider: Source for findings data (usually HistoryStore)
             annotations_provider: Source for annotations (usually AnnotationSyncService)
@@ -109,7 +115,7 @@ class StatsService:
         self.findings = findings_provider
         self.annotations = annotations_provider
         self.instance_validator = instance_validator
-    
+
     def calculate(
         self,
         baseline_run_id: int,
@@ -118,12 +124,12 @@ class StatsService:
     ) -> SyncStats:
         """
         Calculate all statistics.
-        
+
         Args:
             baseline_run_id: Initial audit run ID
             current_run_id: Current sync run ID
             previous_run_id: Previous sync run ID (if exists)
-            
+
         Returns:
             SyncStats with all computed values
         """
@@ -131,19 +137,19 @@ class StatsService:
         baseline_findings = self.findings.get_findings(baseline_run_id)
         current_findings = self.findings.get_findings(current_run_id)
         annotations = self.annotations.get_all_annotations()
-        
+
         # Get valid instances for current run
         valid_instances: set[str] = set()
         if self.instance_validator:
             valid_instances = self.instance_validator.get_scanned_instance_keys(
                 current_run_id
             )
-        
+
         # Calculate current state
         active_issues = self._count_active_issues(current_findings, annotations)
         exceptions = self._count_exceptions(current_findings, annotations)
         compliant = self._count_compliant(current_findings)
-        
+
         # Calculate changes from baseline
         baseline_diff = self._diff_findings(
             old_findings=baseline_findings,
@@ -151,7 +157,7 @@ class StatsService:
             annotations=annotations,
             valid_instances=valid_instances,
         )
-        
+
         # Calculate changes from previous sync
         if previous_run_id and previous_run_id != baseline_run_id:
             prev_findings = self.findings.get_findings(previous_run_id)
@@ -163,7 +169,7 @@ class StatsService:
             )
         else:
             recent_diff = baseline_diff
-        
+
         return SyncStats(
             total_findings=len(current_findings),
             active_issues=active_issues,
@@ -178,7 +184,7 @@ class StatsService:
             new_issues_since_last=recent_diff.new_issues,
             exceptions_added_since_last=recent_diff.exceptions_added,
         )
-    
+
     def _count_active_issues(
         self,
         findings: list[dict],
@@ -186,7 +192,7 @@ class StatsService:
     ) -> int:
         """
         Count active issues (discrepant without exception).
-        
+
         Active = FAIL/WARN AND NOT exceptioned
         """
         count = 0
@@ -197,7 +203,7 @@ class StatsService:
                 if not self._is_exceptioned(entity_key, annotations):
                     count += 1
         return count
-    
+
     def _count_exceptions(
         self,
         findings: list[dict],
@@ -205,7 +211,7 @@ class StatsService:
     ) -> int:
         """
         Count documented exceptions (discrepant WITH exception).
-        
+
         Exception = FAIL/WARN AND exceptioned
         """
         count = 0
@@ -216,7 +222,7 @@ class StatsService:
                 if self._is_exceptioned(entity_key, annotations):
                     count += 1
         return count
-    
+
     def _count_compliant(self, findings: list[dict]) -> int:
         """Count compliant items (PASS status)."""
         count = 0
@@ -225,23 +231,69 @@ class StatsService:
             if status == FindingStatus.PASS:
                 count += 1
         return count
-    
+
     def _is_exceptioned(
         self,
         entity_key: str,
         annotations: dict[str, dict],
     ) -> bool:
-        """Check if entity has a valid exception."""
-        if entity_key not in annotations:
-            return False
-        
-        ann = annotations[entity_key]
-        return is_exception_eligible(
-            status=FindingStatus.FAIL,  # If we're checking, assume discrepant
-            has_justification=bool(ann.get("justification")),
-            review_status=ann.get("review_status"),
-        )
-    
+        """Check if entity has a valid exception.
+
+        Note: Annotations are keyed as 'entity_type|entity_key' but findings
+        only have 'entity_key'. We must try all known type prefixes.
+        All comparisons are case-insensitive (normalized to lowercase).
+        """
+        # Normalize the entity_key to lowercase for matching
+        normalized_entity_key = normalize_key_string(entity_key)
+
+        # Build a lowercase lookup map for annotations
+        # This is done each time for simplicity; could be cached if performance matters
+        normalized_annotations = {
+            normalize_key_string(k): v for k, v in annotations.items()
+        }
+
+        # Try direct lookup first (in case key already includes type prefix)
+        if normalized_entity_key in normalized_annotations:
+            ann = normalized_annotations[normalized_entity_key]
+            return is_exception_eligible(
+                status=FindingStatus.FAIL,
+                has_justification=bool(ann.get("justification")),
+                review_status=ann.get("review_status"),
+            )
+
+        # Try all known entity type prefixes
+        KNOWN_TYPES = [
+            "sa_account",
+            "login",
+            "server_role_member",
+            "config",
+            "service",
+            "database",
+            "db_user",
+            "db_role",
+            "permission",
+            "orphaned_user",
+            "trigger",
+            "protocol",
+            "backup",
+            "audit_settings",
+            "encryption",
+            "linked_server",
+            "instance",
+        ]
+
+        for etype in KNOWN_TYPES:
+            prefixed_key = f"{etype}|{normalized_entity_key}"
+            if prefixed_key in normalized_annotations:
+                ann = normalized_annotations[prefixed_key]
+                return is_exception_eligible(
+                    status=FindingStatus.FAIL,
+                    has_justification=bool(ann.get("justification")),
+                    review_status=ann.get("review_status"),
+                )
+
+        return False
+
     def _diff_findings(
         self,
         old_findings: list[dict],
@@ -251,44 +303,45 @@ class StatsService:
     ) -> DiffResult:
         """
         Diff two findings lists using the state machine.
-        
+
         Args:
             old_findings: Previous findings
             new_findings: Current findings
             annotations: Current annotation state
             valid_instances: Set of scanned instance keys
-            
+
         Returns:
             DiffResult with counts
         """
         result = DiffResult()
-        
+
         # Build maps for efficient lookup
         old_map = {f["entity_key"]: f for f in old_findings}
         new_map = {f["entity_key"]: f for f in new_findings}
-        
+
         # Check for instance validity
         check_validity = len(valid_instances) > 0
-        
+
         # Process old → new transitions
         for key, old_f in old_map.items():
             old_status = FindingStatus.from_string(old_f.get("status"))
-            
+
             # Check instance validity
             instance_scanned = True
             if check_validity:
                 instance_scanned = self._is_valid_instance_key(key, valid_instances)
-            
+
             if key in new_map:
                 new_f = new_map[key]
                 new_status = FindingStatus.from_string(new_f.get("status"))
             else:
                 new_status = None  # Item disappeared
-            
+
             # Get exception states
-            old_excepted = self._is_exceptioned(key, {})  # No old annotations
+            # Use same annotations for old check because annotations are persistent/timeless
+            old_excepted = self._is_exceptioned(key, annotations)
             new_excepted = self._is_exceptioned(key, annotations)
-            
+
             # Classify transition
             transition = classify_finding_transition(
                 old_status=old_status,
@@ -297,9 +350,10 @@ class StatsService:
                 new_has_exception=new_excepted,
                 instance_was_scanned=instance_scanned,
             )
-            
+
             # Count by type
             from autodbaudit.domain.change_types import ChangeType
+
             if transition.change_type == ChangeType.FIXED:
                 result.fixed += 1
             elif transition.change_type == ChangeType.REGRESSION:
@@ -309,7 +363,7 @@ class StatsService:
             elif transition.change_type == ChangeType.STILL_FAILING:
                 if not new_excepted:  # Only count if not exceptioned
                     result.still_failing += 1
-        
+
         # Check for new issues (in new but not in old)
         for key, new_f in new_map.items():
             if key not in old_map:
@@ -318,9 +372,9 @@ class StatsService:
                     # Only count if not already exceptioned
                     if not self._is_exceptioned(key, annotations):
                         result.new_issues += 1
-        
+
         return result
-    
+
     def _is_valid_instance_key(
         self,
         entity_key: str,
@@ -328,28 +382,28 @@ class StatsService:
     ) -> bool:
         """
         Check if entity key belongs to a scanned instance.
-        
+
         Keys typically have format: Type|Server|Instance|... or Server|Instance|...
         """
         if not valid_instances:
             return True  # If no validation, assume valid
-        
+
         key_lower = entity_key.lower()
         parts = key_lower.split("|")
-        
+
         for valid in valid_instances:
             valid_lower = valid.lower()
-            
+
             # Try Type|Server|Instance format
             if len(parts) >= 3:
                 if f"{parts[1]}|{parts[2]}" == valid_lower:
                     return True
-            
+
             # Try Server|Instance format
             if len(parts) >= 2:
                 if f"{parts[0]}|{parts[1]}" == valid_lower:
                     return True
-        
+
         return False
 
 
@@ -357,14 +411,15 @@ class StatsService:
 # CLI Output Formatting
 # =============================================================================
 
+
 def format_cli_stats(stats: SyncStats, use_color: bool = True) -> str:
     """
     Format stats for CLI output.
-    
+
     Args:
         stats: Computed SyncStats
         use_color: Whether to use ANSI colors
-        
+
     Returns:
         Formatted string for CLI display
     """
@@ -387,7 +442,7 @@ def format_cli_stats(stats: SyncStats, use_color: bool = True) -> str:
         WARN = "[!]"
         DOC = "[D]"
         CHART = "[S]"
-    
+
     lines = [
         f"\n{CHART} {CYAN}Sync Summary{RESET}",
         f"{'━' * 45}",
@@ -404,7 +459,7 @@ def format_cli_stats(stats: SyncStats, use_color: bool = True) -> str:
         "",
         f"{'━' * 45}",
     ]
-    
+
     return "\n".join(lines)
 
 
