@@ -140,3 +140,19 @@ This document captures high-level concerns, architectural goals, and feature req
 
 *Reference: Originally captured in `docs/the Human Dev Thoughts.txt`*
 
+---
+
+## 12. Architecture Evolution & Web API 🌐
+
+*   **Goal:** Externalize core logic to support two distinct deployment modes:
+    1.  **On-Premise (Current):** PyInstaller, SQLite, Excel reporting, local execution.
+    2.  **Centralized Web API (Future):** A sophisticated monitoring layer.
+*   **Web App Vision:**
+    *   **Centralization:** Monitor SQL servers across different organizations from one dashboard.
+    *   **Evolution:** Transition from Excel-based reporting to a full-fledged Web App.
+    *   **Features:**
+        *   User inputs for exceptions/justifications via Web Sheets.
+        *   Automatic updates, health checks, backups.
+        *   Management and monitoring scenarios beyond simple auditing.
+    *   **Smart Features:** Auto-apply fixes, generate smart reports.
+

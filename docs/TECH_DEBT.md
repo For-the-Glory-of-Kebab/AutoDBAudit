@@ -1,17 +1,22 @@
 # Technical Debt & Known Issues
 
-**Last Updated:** 2025-12-20 01:45
+**Last Updated:** 2025-12-20 17:15
 
 ---
 
 ## 🔴 CRITICAL (Causing Active Bugs)
 
-### 1. Tests Don't Call sync_service.sync()
+### 1. ~~Tests Don't Call sync_service.sync()~~ 
+**STATUS: PARTIALLY RESOLVED** ✅
 
-Current E2E tests only test annotation_sync methods in isolation.
-They don't test actual CLI flow which is broken.
+Created `test_ultimate_e2e.py` with 5 comprehensive tests covering all 16 sheets.
+- All sheets annotation persistence (16/16 pass)
+- Multi-sync stability verified
+- Exception state transitions verified
+- CLI stats match detected exceptions
+- Per-sheet exception detection (15/16 support exceptions)
 
-**Fix:** Create test that calls sync_service.sync() with real data.
+**Remaining:** Full integration test calling `sync_service.sync()` with mock SQL Server data.
 
 ### 2. Sheet Config Mismatches (Possibly)
 
@@ -20,6 +25,12 @@ Need to audit ALL sheets:
 - Excel writer columns
 - annotation_sync config
 - EXCEL_COLUMNS.md docs
+
+### 3. Triggers Sheet Missing "Purpose" Column
+
+E2E robust tests expect "Purpose" column but Triggers only has "Notes".
+Tests `test_triggers_purpose_persistence` and `test_all_sheet_columns_exist` fail.
+**Fix:** Either add Purpose column to Triggers or update tests.
 
 ---
 

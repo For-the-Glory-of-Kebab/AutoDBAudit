@@ -63,6 +63,9 @@ class InstanceValidator(Protocol):
 # Helper Classes
 # =============================================================================
 
+from collections import defaultdict, Counter
+from dataclasses import field
+
 
 @dataclass
 class DiffResult:
@@ -73,6 +76,13 @@ class DiffResult:
     new_issues: int = 0
     still_failing: int = 0
     exceptions_added: int = 0
+    exceptions_removed: int = 0
+    exceptions_updated: int = 0
+    docs_added: int = 0
+    docs_updated: int = 0
+    docs_removed: int = 0
+    # sheet_name -> stat_name -> count
+    sheet_stats: dict[str, dict[str, int]] = field(default_factory=dict)
 
 
 # =============================================================================
@@ -151,20 +161,41 @@ class StatsService:
         compliant = self._count_compliant(current_findings)
 
         # Calculate changes from baseline
+        # NOTE: For baseline comparison, we ideally need baseline annotations.
+        # However, annotations are typically "current state" of the UI.
+        # If we want true history of docs, we'd need to fetch historical annotations.
+        # For now, we assume annotations are compared "Last Sync vs Current".
+        # Baseline comparison uses current annotations for both sides to filter exceptions,
+        # but doesn't track "Docs Changed Since Baseline" (that's too noisy/hard).
         baseline_diff = self._diff_findings(
             old_findings=baseline_findings,
             new_findings=current_findings,
-            annotations=annotations,
+            old_annotations=annotations,  # Use current as proxy? Or empty?
+            # Actually, "Docs Changed" only makes sense for "Recent Sync".
+            # For Baseline, we just want exception counts.
+            new_annotations=annotations,
             valid_instances=valid_instances,
         )
 
         # Calculate changes from previous sync
         if previous_run_id and previous_run_id != baseline_run_id:
             prev_findings = self.findings.get_findings(previous_run_id)
+
+            # TODO: We need PREVIOUS annotations to diff docs!
+            # If we don't have them, we can't count docs_added/updated correctly.
+            # HistoryStore doesn't currently version annotations (they are just persistent).
+            # This is a limitation: Annotations are overwrites.
+            # To fix this properly, we'd need to load "Annotation State at Run X".
+            # Since we can't do that yet without schema change, we might need to skip doc diffs
+            # OR rely on Action Log 'update_annotation' events if we had them.
+
+            # WORKAROUND: For now, we only track exceptions via findings diff.
+            # Doc changes will be 0 until we have versioned annotations.
             recent_diff = self._diff_findings(
                 old_findings=prev_findings,
                 new_findings=current_findings,
-                annotations=annotations,
+                old_annotations=annotations,  # Limitation: using current
+                new_annotations=annotations,
                 valid_instances=valid_instances,
             )
         else:
@@ -183,6 +214,12 @@ class StatsService:
             regressions_since_last=recent_diff.regressions,
             new_issues_since_last=recent_diff.new_issues,
             exceptions_added_since_last=recent_diff.exceptions_added,
+            exceptions_removed_since_last=recent_diff.exceptions_removed,
+            exceptions_updated_since_last=recent_diff.exceptions_updated,
+            docs_added_since_last=recent_diff.docs_added,
+            docs_updated_since_last=recent_diff.docs_updated,
+            docs_removed_since_last=recent_diff.docs_removed,
+            sheet_stats=recent_diff.sheet_stats,  # Propagate per-sheet stats
         )
 
     def _count_active_issues(
@@ -298,7 +335,8 @@ class StatsService:
         self,
         old_findings: list[dict],
         new_findings: list[dict],
-        annotations: dict[str, dict],
+        old_annotations: dict[str, dict],
+        new_annotations: dict[str, dict],
         valid_instances: set[str],
     ) -> DiffResult:
         """
@@ -307,7 +345,8 @@ class StatsService:
         Args:
             old_findings: Previous findings
             new_findings: Current findings
-            annotations: Current annotation state
+            old_annotations: Annotations at previous state (limit: often same as new)
+            new_annotations: Current annotations
             valid_instances: Set of scanned instance keys
 
         Returns:
@@ -339,8 +378,8 @@ class StatsService:
 
             # Get exception states
             # Use same annotations for old check because annotations are persistent/timeless
-            old_excepted = self._is_exceptioned(key, annotations)
-            new_excepted = self._is_exceptioned(key, annotations)
+            old_excepted = self._is_exceptioned(key, old_annotations)
+            new_excepted = self._is_exceptioned(key, new_annotations)
 
             # Classify transition
             transition = classify_finding_transition(
@@ -354,15 +393,92 @@ class StatsService:
             # Count by type
             from autodbaudit.domain.change_types import ChangeType
 
+            # Resolve sheet name once
+            sheet_name = self._get_sheet_name_from_key(key)
+            if sheet_name:
+                if sheet_name not in result.sheet_stats:
+                    result.sheet_stats[sheet_name] = defaultdict(int)
+                stats = result.sheet_stats[sheet_name]
+
             if transition.change_type == ChangeType.FIXED:
                 result.fixed += 1
+                if sheet_name:
+                    stats["fixed"] += 1
             elif transition.change_type == ChangeType.REGRESSION:
                 result.regressions += 1
+                if sheet_name:
+                    stats["regressions"] += 1
             elif transition.change_type == ChangeType.EXCEPTION_ADDED:
                 result.exceptions_added += 1
+                if sheet_name:
+                    stats["exceptions_added"] += 1
+            elif transition.change_type == ChangeType.EXCEPTION_REMOVED:
+                result.exceptions_removed += 1
+                if sheet_name:
+                    stats["exceptions_removed"] += 1
+            elif transition.change_type == ChangeType.EXCEPTION_UPDATED:
+                result.exceptions_updated += 1
+                if sheet_name:
+                    stats["exceptions_updated"] += 1
             elif transition.change_type == ChangeType.STILL_FAILING:
                 if not new_excepted:  # Only count if not exceptioned
                     result.still_failing += 1
+                    if sheet_name:
+                        stats["active"] += 1
+
+        # Check for documentation changes (Notes/Dates) on ALL items
+        # This runs independently of status changes
+        if old_annotations and new_annotations:
+            for key, new_ann in new_annotations.items():
+                if check_validity and not self._is_valid_instance_key(
+                    key, valid_instances
+                ):
+                    continue
+
+        # Check for documentation changes (Notes/Dates) on ALL items
+        # This runs independently of status changes
+        if old_annotations and new_annotations:
+            # Check for Additions / Updates
+            for key, new_ann in new_annotations.items():
+                if check_validity and not self._is_valid_instance_key(
+                    key, valid_instances
+                ):
+                    continue
+
+                new_has = self._has_docs(new_ann)
+
+                if key not in old_annotations:
+                    # New annotation key
+                    if new_has:
+                        result.docs_added += 1
+                else:
+                    # Existing annotation key
+                    old_ann = old_annotations[key]
+                    old_has = self._has_docs(old_ann)
+
+                    if not old_has and new_has:
+                        # Existing key, but docs newly added
+                        result.docs_added += 1
+                    elif old_has and not new_has:
+                        # Existing key, docs cleared (counted as removed here or below?)
+                        # We handle removed keys below perfectly.
+                        # But if key stays and docs are cleared, we count removed here.
+                        result.docs_removed += 1
+                    elif old_has and new_has:
+                        # Both have docs, check if changed
+                        if self._has_docs_changed(old_ann, new_ann):
+                            result.docs_updated += 1
+
+            # Check for Removed Keys (where key itself disappears)
+            for key, old_ann in old_annotations.items():
+                if check_validity and not self._is_valid_instance_key(
+                    key, valid_instances
+                ):
+                    continue
+
+                if key not in new_annotations:
+                    if self._has_docs(old_ann):
+                        result.docs_removed += 1
 
         # Check for new issues (in new but not in old)
         for key, new_f in new_map.items():
@@ -370,10 +486,75 @@ class StatsService:
                 new_status = FindingStatus.from_string(new_f.get("status"))
                 if new_status and new_status.is_discrepant():
                     # Only count if not already exceptioned
-                    if not self._is_exceptioned(key, annotations):
+                    if not self._is_exceptioned(key, new_annotations):
                         result.new_issues += 1
+                        # Track sheet stat for NEW ISSUE
+                        sheet_name = self._get_sheet_name_from_key(key)
+                        if sheet_name:
+                            if sheet_name not in result.sheet_stats:
+                                result.sheet_stats[sheet_name] = defaultdict(int)
+                            result.sheet_stats[sheet_name]["new_issues"] += 1
 
         return result
+
+    def _get_sheet_name_from_key(self, key: str) -> str:
+        """Derive readable sheet name from entity key prefix."""
+        # This mapping should match SHEET_ANNOTATION_CONFIG keys in annotation_sync
+        # or be readable enough for the user.
+        parts = key.split("|")
+        if not parts:
+            return "Unknown"
+
+        etype = parts[0].lower()
+        mapping = {
+            "instance": "Instances",
+            "sa_account": "SA Account",
+            "login": "Server Logins",
+            "server_role_member": "Sensitive Roles",
+            "config": "Configuration",
+            "service": "Services",
+            "database": "Databases",
+            "db_user": "Database Users",
+            "db_role": "Database Roles",
+            "permission": "Permission Grants",
+            "orphaned_user": "Orphaned Users",
+            "linked_server": "Linked Servers",
+            "trigger": "Triggers",
+            "protocol": "Client Protocols",
+            "backup": "Backups",
+            "audit_settings": "Audit Settings",
+            "encryption": "Encryption",
+        }
+        return mapping.get(etype, etype.capitalize())
+
+    def _has_docs(self, fields: dict) -> bool:
+        """Check if annotation has non-exception documentation (Notes/Date)."""
+        # Justification is for Exceptions. Notes/Dates are for docs.
+        # We only count Notes and Dates here.
+        if fields.get("notes") and str(fields["notes"]).strip():
+            return True
+
+        # Check date fields
+        for k, v in fields.items():
+            if "date" in k.lower() or "reviewed" in k.lower() or "revised" in k.lower():
+                if v and str(v).strip():
+                    return True
+        return False
+
+    def _has_docs_changed(self, old: dict, new: dict) -> bool:
+        """Check if documentation fields changed."""
+        # Check Notes
+        if str(old.get("notes", "")).strip() != str(new.get("notes", "")).strip():
+            return True
+
+        # Check Dates
+        # Iterate all keys in both
+        all_keys = set(old.keys()) | set(new.keys())
+        for k in all_keys:
+            if "date" in k.lower() or "reviewed" in k.lower() or "revised" in k.lower():
+                if str(old.get(k, "")).strip() != str(new.get(k, "")).strip():
+                    return True
+        return False
 
     def _is_valid_instance_key(
         self,

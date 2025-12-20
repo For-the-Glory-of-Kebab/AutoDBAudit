@@ -4,7 +4,7 @@ Triggers Sheet Module.
 Handles the Triggers worksheet for server and database trigger audit.
 Uses ServerGroupMixin for server/instance grouping.
 
-Per db-requirements.md Req 12: Triggers at all levels (server, database) 
+Per db-requirements.md Req 12: Triggers at all levels (server, database)
 should be reviewed periodically.
 """
 
@@ -21,7 +21,7 @@ from autodbaudit.infrastructure.excel.base import (
     SheetConfig,
     ACTION_COLUMN,
     STATUS_COLUMN,
-    LAST_REVISED_COLUMN,
+    LAST_REVIEWED_COLUMN,
     apply_action_needed_styling,
 )
 from autodbaudit.infrastructure.excel.server_group import ServerGroupMixin
@@ -35,14 +35,18 @@ TRIGGER_COLUMNS = (
     ColumnDef("Server", 18, Alignments.LEFT),
     ColumnDef("Instance", 15, Alignments.LEFT),
     ColumnDef("Scope", 10, Alignments.CENTER),  # "SERVER" or "DATABASE"
-    ColumnDef("Database", 20, Alignments.LEFT),  # Database name (empty for SERVER scope)
+    ColumnDef(
+        "Database", 20, Alignments.LEFT
+    ),  # Database name (empty for SERVER scope)
     ColumnDef("Trigger Name", 28, Alignments.LEFT),
     ColumnDef("Event", 18, Alignments.LEFT),
     ColumnDef("Enabled", 10, Alignments.CENTER),
     STATUS_COLUMN,  # Review Status dropdown
-    ColumnDef("Notes", 40, Alignments.LEFT, is_manual=True),  # Purpose/notes for trigger
+    ColumnDef(
+        "Notes", 40, Alignments.LEFT, is_manual=True
+    ),  # Purpose/notes for trigger
     ColumnDef("Justification", 40, Alignments.LEFT, is_manual=True),
-    LAST_REVISED_COLUMN,
+    LAST_REVIEWED_COLUMN,
 )
 
 TRIGGER_CONFIG = SheetConfig(name="Triggers", columns=TRIGGER_COLUMNS)
@@ -64,7 +68,7 @@ class TriggerSheetMixin(ServerGroupMixin, BaseSheetMixin):
         database_name: str | None = None,
     ) -> None:
         """Add a trigger row.
-        
+
         Args:
             server_name: Server hostname
             instance_name: SQL Server instance name
@@ -86,11 +90,11 @@ class TriggerSheetMixin(ServerGroupMixin, BaseSheetMixin):
 
         # Normalize scope to uppercase
         scope = level.upper() if level else "DATABASE"
-        
+
         # Server-level triggers need review (unusual, potential security concern)
         is_server_trigger = scope == "SERVER"
         needs_action = is_server_trigger  # Server triggers should be reviewed
-        
+
         # Database display: show "(Server)" for server triggers, actual name otherwise
         db_display = database_name or ("" if scope == "DATABASE" else "")
 
@@ -103,10 +107,10 @@ class TriggerSheetMixin(ServerGroupMixin, BaseSheetMixin):
             trigger_name,
             event_type or "",
             None,  # Enabled (will be styled)
-            "",    # Review Status (column I = 9)
-            "",    # Notes (column J = 10)
-            "",    # Justification (column K = 11)
-            "",    # Last Revised (column L = 12)
+            "",  # Review Status (column I = 9)
+            "",  # Notes (column J = 10)
+            "",  # Justification (column K = 11)
+            "",  # Last Revised (column L = 12)
         ]
 
         row = self._write_row(ws, TRIGGER_CONFIG, data)
@@ -116,7 +120,7 @@ class TriggerSheetMixin(ServerGroupMixin, BaseSheetMixin):
 
         # Apply row color to data columns (shifted +1 for action column)
         self._apply_row_color(row, row_color, data_cols=[2, 3, 4, 5, 6, 7], ws=ws)
-        
+
         # Style Enabled column (column 8, shifted +1)
         apply_boolean_styling(ws.cell(row=row, column=8), is_enabled)
 

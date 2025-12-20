@@ -1,47 +1,58 @@
 # Documentation Index
 
-> **Last Updated**: 2025-12-19  
-> **Single source of truth** for AutoDBAudit project documentation.
-
-This folder contains all project documentation. README.md stays in the root as required.
+> **Last Updated**: 2025-12-21  
+> **Status**: Column matching fix applied, awaiting real-world verification
 
 ---
 
-## Current Documentation
+## 🎯 Start Here
 
-### Core Reference
-| File | Purpose | Audience |
-|------|---------|----------|
-| [PROJECT_STATUS.md](PROJECT_STATUS.md) | Current implementation state | Everyone |
-| [TODO.md](TODO.md) | Task tracker and priorities | Developers |
-| [AI_RUNBOOK.md](AI_RUNBOOK.md) | Quick reference for AI assistants | AI agents |
-
-### Sync Engine (Primary Focus Area)
 | File | Purpose |
 |------|---------|
-| [SYNC_ENGINE_MASTER_HANDOFF.md](SYNC_ENGINE_MASTER_HANDOFF.md) | **Master reference** - Start here |
+| [PROJECT_STATUS.md](PROJECT_STATUS.md) | Current status, pending verification |
+| [SESSION_HANDOFF_2025-12-21.md](SESSION_HANDOFF_2025-12-21.md) | Latest session handoff |
+
+---
+
+## Sync Engine
+
+| File | Purpose |
+|------|---------|
+| [SYNC_VERIFICATION_WALKTHROUGH.md](SYNC_VERIFICATION_WALKTHROUGH.md) | Test suite and fix status |
 | [SYNC_ENGINE_ARCHITECTURE.md](SYNC_ENGINE_ARCHITECTURE.md) | Full architecture with diagrams |
 | [SYNC_ENGINE_REQUIREMENTS.md](SYNC_ENGINE_REQUIREMENTS.md) | Detailed requirements spec |
 | [E2E_STATE_MATRIX.md](E2E_STATE_MATRIX.md) | Exception/sync state transitions |
 
-### Workflow & Usage
-| File | Purpose | Audience |
-|------|---------|----------|
-| [AUDIT_WORKFLOW.md](AUDIT_WORKFLOW.md) | Complete audit lifecycle design | Operators, Developers |
-| [CLI_REFERENCE.md](CLI_REFERENCE.md) | CLI command documentation | Operators |
+---
 
-### Technical Reference
-| File | Purpose | Audience |
-|------|---------|----------|
-| [ARCHITECTURE.md](ARCHITECTURE.md) | Codebase architecture with diagrams | Developers |
-| [SCHEMA_REFERENCE.md](SCHEMA_REFERENCE.md) | SQLite schema documentation | Developers |
-| [EXCEL_COLUMNS.md](EXCEL_COLUMNS.md) | **Strict Schema** & Column Definitions | Developers |
-| [E2E_TESTING_STATUS.md](E2E_TESTING_STATUS.md) | Test coverage and gaps | Developers |
+## Workflow & Usage
 
-### Archive
-| Folder | Purpose |
-|--------|---------|
-| [archive/](archive/) | Historical planning docs, outdated handoffs |
+| File | Purpose |
+|------|---------|
+| [AUDIT_WORKFLOW.md](AUDIT_WORKFLOW.md) | Complete audit lifecycle |
+| [CLI_REFERENCE.md](CLI_REFERENCE.md) | CLI command documentation |
+| [AI_RUNBOOK.md](AI_RUNBOOK.md) | Quick reference for AI assistants |
+
+---
+
+## Technical Reference
+
+| File | Purpose |
+|------|---------|
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Codebase architecture |
+| [SCHEMA_REFERENCE.md](SCHEMA_REFERENCE.md) | SQLite schema |
+| [EXCEL_COLUMNS.md](EXCEL_COLUMNS.md) | **Strict Schema** - Column definitions |
+| [E2E_TESTING_GUIDE.md](E2E_TESTING_GUIDE.md) | Test coverage |
+
+---
+
+## Other
+
+| File | Purpose |
+|------|---------|
+| [TODO.md](TODO.md) | Task tracker |
+| [TECH_DEBT.md](TECH_DEBT.md) | Technical debt |
+| [archive/](archive/) | Historical documents |
 
 ---
 
@@ -49,30 +60,6 @@ This folder contains all project documentation. README.md stays in the root as r
 
 | File | Location | Purpose |
 |------|----------|---------|
-| `README.md` | Root | Quick start, project overview |
-| `db-requirements.md` | Root | **28 security requirements (source of truth)** |
-| `config/sql_targets.json` | `config/` | Target server configuration |
-| `config/audit_config.json` | `config/` | Audit thresholds and settings |
-
----
-
-## Naming Conventions
-
-- **UPPERCASE.md** - Active documentation
-- **archive/** - Historical documents, not current
-
----
-
-## Keeping Docs Updated
-
-| Document | When to Update |
-|----------|----------------|
-| `PROJECT_STATUS.md` | After any feature completion or major status change |
-| `TODO.md` | When adding or completing tasks |
-| `AI_RUNBOOK.md` | When architecture or key decisions change |
-| `CLI_REFERENCE.md` | When CLI commands are added/modified |
-| Other docs | When the relevant feature changes |
-
----
-
-*Keep this index updated when adding or removing documentation.*
+| `README.md` | Root | Quick start |
+| `db-requirements.md` | Root | **28 security requirements** |
+| `scripts/verify_sync.py` | scripts/ | Run all 8 test suites |

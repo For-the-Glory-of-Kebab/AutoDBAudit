@@ -46,6 +46,13 @@ class CoverSheetMixin(BaseSheetMixin):
     started_at: datetime | None = None
     ended_at: datetime | None = None
 
+    # Granular change stats (default 0)
+    _stats_fixed: int = 0
+    _stats_regressed: int = 0
+    _stats_new: int = 0
+    _stats_docs: int = 0
+    _stats_exceptions_changed: int = 0
+
     def set_audit_info(
         self,
         run_id: int,
@@ -75,27 +82,48 @@ class CoverSheetMixin(BaseSheetMixin):
         active_issues: int,
         documented_exceptions: int,
         compliant_items: int,
+        # Optional granular stats (kwargs to be safe, or explicit)
+        fixed: int = 0,
+        regressed: int = 0,
+        new_issues: int = 0,
+        docs_changed: int = 0,
+        exceptions_changed: int = 0,
     ) -> None:
         """
         Set Cover sheet stats from StatsService (unified source of truth).
 
-        This overrides the internal _issue_count, _warn_count, _pass_count
-        with values from StatsService to ensure CLI and Cover sheet match.
+        This overrides the internal counters with values from StatsService
+        to ensure CLI and Cover sheet match exactly.
 
         Args:
-            active_issues: FAIL/WARN without exception (shown as Critical)
-            documented_exceptions: FAIL/WARN with exception (shown as Warnings)
+            active_issues: FAIL/WARN without exception
+            documented_exceptions: FAIL/WARN with exception
             compliant_items: PASS items
+            fixed: Items fixed since baseline/last sync
+            regressed: Items regressed
+            new_issues: New violations
+            docs_changed: Count of doc additions/updates
+            exceptions_changed: Count of exception additions/removals/updates
         """
-        # Override internal counters with StatsService values
+        # Override internal counters
         self._issue_count = active_issues
-        self._warn_count = documented_exceptions  # Exceptions shown as "Warnings Found"
+        self._warn_count = documented_exceptions
         self._pass_count = compliant_items
+
+        # Set granular stats
+        self._stats_fixed = fixed
+        self._stats_regressed = regressed
+        self._stats_new = new_issues
+        self._stats_docs = docs_changed
+        self._stats_exceptions_changed = exceptions_changed
+
         logger.info(
-            "Cover sheet stats set from StatsService: issues=%d, exceptions=%d, pass=%d",
+            "Cover stats set: issues=%d, exc=%d, pass=%d, fixed=%d, reg=%d",
             active_issues,
             documented_exceptions,
             compliant_items,
+            fixed,
+            regressed,
         )
 
     def create_cover_sheet(self) -> None:
@@ -197,10 +225,7 @@ class CoverSheetMixin(BaseSheetMixin):
         ws.row_dimensions[row].height = 30
         row += 1
 
-        # Stats Row (Icons)
-        # We'll use stronger colors
-
-        # Summary Items
+        # Stats Row (Current State)
         stats_start_row = row
         summary_items = [
             (
@@ -250,6 +275,95 @@ class CoverSheetMixin(BaseSheetMixin):
             )
             ws.row_dimensions[row].height = 25
             row += 1
+
+        # -------------------------------------------------------------------
+        # CHANGES SECTION (Dynamic)
+        # -------------------------------------------------------------------
+        # Calculate if we have any changes to show
+        has_changes = (
+            self._stats_fixed > 0
+            or self._stats_regressed > 0
+            or self._stats_new > 0
+            or self._stats_docs > 0
+            or self._stats_exceptions_changed > 0
+        )
+
+        if has_changes:
+            row += 1
+            # Header
+            draw_box_row(
+                row,
+                2,
+                4,
+                Colors.SUBHEADER_BG,  # Steel Blue
+                "  📈 RECENT ACTIVITY",
+                font_size=12,
+                bold=True,
+                text_color="FFFFFF",
+                align="center",
+            )
+            ws.row_dimensions[row].height = 25
+            row += 1
+
+            # Helper for change rows
+            def add_change_row(label, count, color="F2F2F2", text_color="000000"):
+                if count <= 0:
+                    return 0
+                nonlocal row
+                draw_box_row(
+                    row,
+                    2,
+                    3,
+                    color,
+                    label,
+                    font_size=11,
+                    bold=False,
+                    text_color=text_color,
+                    align="left",
+                )
+                draw_box_row(
+                    row,
+                    4,
+                    4,
+                    color,
+                    str(count),
+                    font_size=11,
+                    bold=True,
+                    text_color=text_color,
+                    align="center",
+                )
+                ws.row_dimensions[row].height = 22
+                row += 1
+                return 1
+
+            # Add rows
+            add_change_row(
+                f"  {Icons.PASS} Issues Fixed",
+                self._stats_fixed,
+                Colors.PASS_BG,
+                Colors.PASS_TEXT,
+            )
+            add_change_row(
+                f"  {Icons.FAIL} Regressions",
+                self._stats_regressed,
+                Colors.FAIL_BG,
+                Colors.FAIL_TEXT,
+            )
+            add_change_row(
+                f"  {Icons.WARN} New Issues",
+                self._stats_new,
+                Colors.WARN_BG,
+                Colors.WARN_TEXT,
+            )
+
+            # Group Exceptions + Docs
+            docs_total = self._stats_docs + self._stats_exceptions_changed
+            add_change_row(
+                f"  📋 Documentation Updates",
+                docs_total,
+                Colors.INFO_BG,
+                Colors.INFO_TEXT,
+            )
 
         row += 1
 

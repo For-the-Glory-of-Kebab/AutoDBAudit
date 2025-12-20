@@ -21,7 +21,7 @@ from autodbaudit.infrastructure.excel_styles import (
 from autodbaudit.infrastructure.excel.base import (
     BaseSheetMixin,
     SheetConfig,
-    LAST_REVISED_COLUMN,
+    LAST_REVIEWED_COLUMN,
     STATUS_COLUMN,
     ACTION_COLUMN,
     apply_action_needed_styling,
@@ -41,7 +41,7 @@ ROLE_COLUMNS = (
     ColumnDef("Enabled", 10, Alignments.CENTER),
     STATUS_COLUMN,  # Review Status dropdown
     ColumnDef("Justification", 40, Alignments.LEFT, is_manual=True),
-    LAST_REVISED_COLUMN,
+    LAST_REVIEWED_COLUMN,
 )
 
 ROLE_CONFIG = SheetConfig(name="Sensitive Roles", columns=ROLE_COLUMNS)
@@ -118,7 +118,9 @@ class RoleSheetMixin(BaseSheetMixin):
         is_safe = member_name.lower() in SAFE_NAMES or any(
             member_name.upper().startswith(p) for p in SAFE_PREFIXES
         )
-        needs_justification = role_name.lower() == "sysadmin" and is_enabled and not is_safe
+        needs_justification = (
+            role_name.lower() == "sysadmin" and is_enabled and not is_safe
+        )
 
         data = [
             None,  # Action indicator (column A)
@@ -203,7 +205,9 @@ class RoleSheetMixin(BaseSheetMixin):
     def _add_role_dropdowns(self) -> None:
         """Add dropdown validations for status columns."""
         from autodbaudit.infrastructure.excel.base import (
-            add_dropdown_validation, add_review_status_conditional_formatting, STATUS_VALUES
+            add_dropdown_validation,
+            add_review_status_conditional_formatting,
+            STATUS_VALUES,
         )
 
         ws = self._role_sheet
@@ -212,4 +216,3 @@ class RoleSheetMixin(BaseSheetMixin):
         # Review Status column (H) - column 8
         add_dropdown_validation(ws, "H", STATUS_VALUES.all())
         add_review_status_conditional_formatting(ws, "H")
-

@@ -36,6 +36,7 @@ SHEET_ANNOTATION_CONFIG = {
         "key_cols": ["Server", "Instance"],
         "editable_cols": {
             "Notes": "notes",
+            "Last Reviewed": "last_reviewed",
         },
     },
     "SA Account": {
@@ -54,7 +55,7 @@ SHEET_ANNOTATION_CONFIG = {
         "editable_cols": {
             "Review Status": "review_status",
             "Justification": "justification",
-            "Last Revised": "last_reviewed",
+            "Last Reviewed": "last_reviewed",
             "Notes": "notes",
         },
     },
@@ -65,7 +66,7 @@ SHEET_ANNOTATION_CONFIG = {
         "editable_cols": {
             "Review Status": "review_status",
             "Justification": "justification",
-            "Last Revised": "last_reviewed",
+            "Last Reviewed": "last_reviewed",
         },
     },
     "Configuration": {
@@ -121,7 +122,15 @@ SHEET_ANNOTATION_CONFIG = {
     "Permission Grants": {
         "entity_type": "permission",
         # Key includes Database + Entity Name to disambiguate same permission on different objects
-        "key_cols": ["Server", "Instance", "Scope", "Database", "Grantee", "Permission", "Entity Name"],
+        "key_cols": [
+            "Server",
+            "Instance",
+            "Scope",
+            "Database",
+            "Grantee",
+            "Permission",
+            "Entity Name",
+        ],
         "editable_cols": {
             "Review Status": "review_status",
             "Justification": "justification",
@@ -135,30 +144,45 @@ SHEET_ANNOTATION_CONFIG = {
         "editable_cols": {
             "Review Status": "review_status",
             "Justification": "justification",
-            "Last Revised": "last_reviewed",
+            "Last Reviewed": "last_reviewed",
             # No Notes column in Excel for this sheet
         },
     },
     "Linked Servers": {
         "entity_type": "linked_server",
-        "key_cols": ["Server", "Instance", "Linked Server"],
+        # Include logins to prevent collision if multiple mappings exist per LS
+        "key_cols": [
+            "Server",
+            "Instance",
+            "Linked Server",
+            "Local Login",
+            "Remote Login",
+        ],
         "editable_cols": {
             "Review Status": "review_status",
             "Purpose": "purpose",
             "Justification": "justification",
-            "Last Revised": "last_reviewed",
+            "Last Reviewed": "last_reviewed",
             # No Notes column in Excel for this sheet
         },
     },
     "Triggers": {
         "entity_type": "trigger",
         # Key includes Scope to distinguish SERVER vs DATABASE level triggers
-        "key_cols": ["Server", "Instance", "Scope", "Database", "Trigger Name"],
+        # Added Event to distinguish multiple events for same trigger
+        "key_cols": [
+            "Server",
+            "Instance",
+            "Scope",
+            "Database",
+            "Trigger Name",
+            "Event",
+        ],
         "editable_cols": {
             "Review Status": "review_status",
             "Notes": "notes",  # Purpose/notes for this trigger
             "Justification": "justification",
-            "Last Revised": "last_reviewed",
+            "Last Reviewed": "last_reviewed",
         },
     },
     "Client Protocols": {
@@ -167,7 +191,7 @@ SHEET_ANNOTATION_CONFIG = {
         "editable_cols": {
             "Review Status": "review_status",
             "Justification": "justification",
-            "Last Revised": "last_reviewed",
+            "Last Reviewed": "last_reviewed",
         },
     },
     "Backups": {
@@ -265,7 +289,7 @@ class AnnotationSyncService:
 
             for entity_key, fields in sheet_annotations.items():
                 # Prefix with entity type for uniqueness (lowercase for consistency)
-                entity_type = config["entity_type"].lower()
+                entity_type = str(config["entity_type"]).lower()
                 full_key = f"{entity_type}|{entity_key}"
                 all_annotations[full_key] = fields
 
@@ -313,12 +337,22 @@ class AnnotationSyncService:
                 key_indices.append(header_map[key_col])
                 found = True
             else:
-                # Try partial match
+                # Try EXACT match first (case-insensitive)
+                exact_found = False
                 for h, idx in header_map.items():
-                    if key_col.lower() in h.lower():
+                    if key_col.lower() == h.lower():
                         key_indices.append(idx)
                         found = True
+                        exact_found = True
                         break
+                # Only use partial match if exact match failed
+                if not exact_found:
+                    for h, idx in header_map.items():
+                        # Partial match but avoid substring collisions
+                        if key_col.lower() in h.lower() and len(key_col) >= len(h) // 2:
+                            key_indices.append(idx)
+                            found = True
+                            break
             if found:
                 found_keys += 1
 
@@ -367,16 +401,24 @@ class AnnotationSyncService:
         missing_cols = []
         for col_name, field_name in config["editable_cols"].items():
             found = False
+            # Try EXACT match first (case-sensitive)
             if col_name in header_map:
                 editable_indices[field_name] = header_map[col_name]
                 found = True
             else:
-                # Try partial match
+                # Try EXACT match (case-insensitive)
                 for h, idx in header_map.items():
-                    if col_name.lower() in h.lower():
+                    if col_name.lower() == h.lower():
                         editable_indices[field_name] = idx
                         found = True
                         break
+                # Only use partial match if exact match failed
+                if not found:
+                    for h, idx in header_map.items():
+                        if col_name.lower() in h.lower():
+                            editable_indices[field_name] = idx
+                            found = True
+                            break
             if not found:
                 missing_cols.append(col_name)
 
@@ -620,10 +662,20 @@ class AnnotationSyncService:
         # Find key column indices
         key_indices = []
         for key_col in config["key_cols"]:
+            # Try EXACT match first
+            exact_found = False
             for h, idx in header_map.items():
-                if key_col.lower() in h.lower():
+                if key_col.lower() == h.lower():
                     key_indices.append(idx)
+                    exact_found = True
                     break
+            # Only use partial match if exact match failed
+            if not exact_found:
+                for h, idx in header_map.items():
+                    # Partial match but avoid substring collisions
+                    if key_col.lower() in h.lower() and len(key_col) >= len(h) // 2:
+                        key_indices.append(idx)
+                        break
 
         if len(key_indices) != len(config["key_cols"]):
             logger.warning(f"DEBUG: Header mismatch in {ws.title}. Start Search.")
@@ -631,10 +683,19 @@ class AnnotationSyncService:
         # Find editable column indices (1-indexed)
         editable_indices = {}
         for col_name, field_name in config["editable_cols"].items():
+            # Try EXACT match first
+            exact_found = False
             for h, idx in header_map.items():
-                if col_name.lower() in h.lower():
+                if col_name.lower() == h.lower():
                     editable_indices[field_name] = idx
+                    exact_found = True
                     break
+            # Only use partial match if exact match failed
+            if not exact_found:
+                for h, idx in header_map.items():
+                    if col_name.lower() in h.lower():
+                        editable_indices[field_name] = idx
+                        break
 
         # Find action indicator column (usually column 1 with header "⏳")
         action_col_idx = None

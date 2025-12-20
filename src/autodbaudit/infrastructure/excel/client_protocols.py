@@ -24,7 +24,7 @@ from autodbaudit.infrastructure.excel.base import (
     SheetConfig,
     ACTION_COLUMN,
     STATUS_COLUMN,
-    LAST_REVISED_COLUMN,
+    LAST_REVIEWED_COLUMN,
     apply_action_needed_styling,
 )
 from autodbaudit.infrastructure.excel.server_group import ServerGroupMixin
@@ -34,16 +34,20 @@ __all__ = ["ClientProtocolSheetMixin", "CLIENT_PROTOCOL_CONFIG"]
 
 
 # Acceptable protocols that don't need justification
-ACCEPTABLE_PROTOCOLS = frozenset({
-    "shared memory",
-    "tcp/ip",
-})
+ACCEPTABLE_PROTOCOLS = frozenset(
+    {
+        "shared memory",
+        "tcp/ip",
+    }
+)
 
 # Protocols that need justification if enabled
-DISCREPANT_PROTOCOLS = frozenset({
-    "named pipes",
-    "via",
-})
+DISCREPANT_PROTOCOLS = frozenset(
+    {
+        "named pipes",
+        "via",
+    }
+)
 
 
 CLIENT_PROTOCOL_COLUMNS = (
@@ -57,17 +61,19 @@ CLIENT_PROTOCOL_COLUMNS = (
     ColumnDef("Notes", 30, Alignments.LEFT),
     STATUS_COLUMN,  # Review Status dropdown
     ColumnDef("Justification", 40, Alignments.LEFT, is_manual=True),
-    LAST_REVISED_COLUMN,
+    LAST_REVIEWED_COLUMN,
 )
 
-CLIENT_PROTOCOL_CONFIG = SheetConfig(name="Client Protocols", columns=CLIENT_PROTOCOL_COLUMNS)
+CLIENT_PROTOCOL_CONFIG = SheetConfig(
+    name="Client Protocols", columns=CLIENT_PROTOCOL_COLUMNS
+)
 
 
 class ClientProtocolSheetMixin(ServerGroupMixin, BaseSheetMixin):
     """Mixin for Client Protocols sheet with server/instance grouping."""
-    
+
     _client_protocol_sheet = None
-    
+
     def add_client_protocol(
         self,
         server_name: str,
@@ -78,7 +84,7 @@ class ClientProtocolSheetMixin(ServerGroupMixin, BaseSheetMixin):
         notes: str = "",
     ) -> None:
         """Add a client protocol row.
-        
+
         Args:
             server_name: Server hostname
             instance_name: Instance name
@@ -91,20 +97,22 @@ class ClientProtocolSheetMixin(ServerGroupMixin, BaseSheetMixin):
             self._client_protocol_sheet = self._ensure_sheet(CLIENT_PROTOCOL_CONFIG)
             self._init_grouping(self._client_protocol_sheet, CLIENT_PROTOCOL_CONFIG)
             self._add_protocol_dropdowns()
-        
+
         ws = self._client_protocol_sheet
-        
+
         # Track grouping and get row color
-        row_color = self._track_group(server_name, instance_name, CLIENT_PROTOCOL_CONFIG.name)
-        
+        row_color = self._track_group(
+            server_name, instance_name, CLIENT_PROTOCOL_CONFIG.name
+        )
+
         # Determine discrepancy status
         protocol_lower = protocol_name.lower().strip()
         is_acceptable = protocol_lower in ACCEPTABLE_PROTOCOLS
         is_discrepant = protocol_lower in DISCREPANT_PROTOCOLS
-        
+
         # Needs action if: enabled AND not an acceptable protocol
         needs_action = is_enabled and not is_acceptable
-        
+
         # Determine status
         if is_acceptable and is_enabled:
             status = "✅ Compliant"
@@ -116,7 +124,7 @@ class ClientProtocolSheetMixin(ServerGroupMixin, BaseSheetMixin):
             status = "ℹ️ Disabled"  # Acceptable but turned off
         else:
             status = "—"
-        
+
         data = [
             None,  # Action indicator (column A)
             server_name,
@@ -126,18 +134,18 @@ class ClientProtocolSheetMixin(ServerGroupMixin, BaseSheetMixin):
             str(port) if port else "—",
             None,  # Status - styled separately
             notes or "",
-            "",    # Justification
-            "",    # Last Revised
+            "",  # Justification
+            "",  # Last Revised
         ]
-        
+
         row = self._write_row(ws, CLIENT_PROTOCOL_CONFIG, data)
-        
+
         # Apply action indicator (column 1)
         apply_action_needed_styling(ws.cell(row=row, column=1), needs_action)
-        
+
         # Apply row color to data columns
         self._apply_row_color(row, row_color, data_cols=[2, 3, 4, 6, 8], ws=ws)
-        
+
         # Style Enabled column (column 5)
         enabled_cell = ws.cell(row=row, column=5)
         if is_enabled:
@@ -150,8 +158,10 @@ class ClientProtocolSheetMixin(ServerGroupMixin, BaseSheetMixin):
                 enabled_cell.font = Fonts.WARN
         else:
             enabled_cell.value = "✗ No"
-            enabled_cell.fill = PatternFill(start_color="F5F5F5", end_color="F5F5F5", fill_type="solid")
-        
+            enabled_cell.fill = PatternFill(
+                start_color="F5F5F5", end_color="F5F5F5", fill_type="solid"
+            )
+
         # Style Status column (column 7)
         status_cell = ws.cell(row=row, column=7)
         status_cell.value = status
@@ -164,23 +174,29 @@ class ClientProtocolSheetMixin(ServerGroupMixin, BaseSheetMixin):
             self._increment_warn()
         else:
             pass  # No special styling for neutral status
-    
+
     def _finalize_client_protocols(self) -> None:
         """Finalize client protocols sheet - merge remaining groups."""
         if self._client_protocol_sheet:
             self._finalize_grouping(CLIENT_PROTOCOL_CONFIG.name)
-    
+
     def _add_protocol_dropdowns(self) -> None:
         """Add dropdown validations for choice columns."""
         from autodbaudit.infrastructure.excel.base import (
-            add_dropdown_validation, add_review_status_conditional_formatting, STATUS_VALUES
+            add_dropdown_validation,
+            add_review_status_conditional_formatting,
+            STATUS_VALUES,
         )
-        
+
         ws = self._client_protocol_sheet
         # Enabled column (F) - column 6 (Action=A, Server=B, Instance=C, Protocol=D, Order=E)
         add_dropdown_validation(ws, "F", ["✓ Yes", "✗ No"])
         # Status column (H) - column 8 (after Enabled=F, Connection=G)
-        add_dropdown_validation(ws, "H", ["✅ Compliant", "✅ Disabled", "⚠️ Needs Review", "ℹ️ Disabled", "—"])
+        add_dropdown_validation(
+            ws,
+            "H",
+            ["✅ Compliant", "✅ Disabled", "⚠️ Needs Review", "ℹ️ Disabled", "—"],
+        )
         # Review Status column (I) - column 9
         add_dropdown_validation(ws, "I", STATUS_VALUES.all())
         add_review_status_conditional_formatting(ws, "I")

@@ -306,6 +306,20 @@ class SyncService:
                 active_issues=stats.active_issues,
                 documented_exceptions=stats.documented_exceptions,
                 compliant_items=stats.compliant_items,
+                # Granular stats (Change Stats)
+                fixed=stats.fixed_since_last,
+                regressed=stats.regressions_since_last,
+                new_issues=stats.new_issues_since_last,
+                docs_changed=(
+                    stats.docs_added_since_last
+                    + stats.docs_updated_since_last
+                    + stats.docs_removed_since_last
+                ),
+                exceptions_changed=(
+                    stats.exceptions_added_since_last
+                    + stats.exceptions_removed_since_last
+                    + stats.exceptions_updated_since_last
+                ),
             )
 
         # Add actions to writer
@@ -334,8 +348,8 @@ class SyncService:
 
         logger.info("Sync complete. Report: %s", final_excel)
 
-        # Print CLI stats
-        print(format_cli_stats(stats))
+        # Print CLI stats - REMOVED (Handled by CLI now)
+        # print(format_cli_stats(stats))
 
         # ─────────────────────────────────────────────────────────────
         # Return Result
@@ -345,6 +359,7 @@ class SyncService:
             "initial_run_id": initial_run_id,
             "current_run_id": current_run_id,
             "stats": stats.to_dict(),
+            "stats_obj": stats,  # Return object for CLI renderer
             "report_path": str(final_excel),
             "actions_recorded": recorded,
             # Legacy compatibility fields

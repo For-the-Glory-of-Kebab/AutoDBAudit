@@ -130,7 +130,7 @@ This document provides a **strict and precise definition** of all worksheets and
 | G | Enabled | BOOL | `✓ Yes` / `✗ No`. |
 | H | Review Status | STATUS | User review dropdown. |
 | I | Justification | MANUAL | Justification for high privilege. |
-| J | Last Revised | DATE | Date of review. |
+| J | Last Reviewed | DATE | Date of review. |
 
 ---
 
@@ -235,7 +235,7 @@ This document provides a **strict and precise definition** of all worksheets and
 | G | Status | STATUS | `⚠️ Orphaned` / `✓ Fixed` / `❌ Removed`. |
 | H | Review Status | STATUS | User review dropdown. |
 | I | Justification | MANUAL | Justification. |
-| J | Last Revised | DATE | Date of review. |
+| J | Last Reviewed | DATE | Date of review. |
 
 ---
 
@@ -326,7 +326,7 @@ This document provides a **strict and precise definition** of all worksheets and
 | H | Enabled | BOOL | `✓` / `✗`. |
 | I | Review Status | STATUS | User review dropdown. |
 | J | Justification | MANUAL | Justification for trigger existence. |
-| K | Last Revised | DATE | Date of review. |
+| K | Last Reviewed | DATE | Date of review. |
 
 ---
 
@@ -368,7 +368,7 @@ This document provides a **strict and precise definition** of all worksheets and
 | H | Notes | TEXT | Configuration notes. |
 | I | Review Status | STATUS | User review dropdown. |
 | J | Justification | MANUAL | Justification. |
-| K | Last Revised | DATE | Date of review. |
+| K | Last Reviewed | DATE | Date of review. |
 
 ---
 

@@ -10,8 +10,9 @@ import json
 from pathlib import Path
 
 # Ensure src is in python path
-PROJECT_ROOT = Path(__file__).parents[3]
+PROJECT_ROOT = Path(__file__).parents[2]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
+sys.path.insert(0, str(PROJECT_ROOT))  # So 'tests' can be imported
 
 from tests.e2e_robust import config
 

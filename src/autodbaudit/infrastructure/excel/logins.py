@@ -23,7 +23,7 @@ from autodbaudit.infrastructure.excel_styles import (
 from autodbaudit.infrastructure.excel.base import (
     BaseSheetMixin,
     SheetConfig,
-    LAST_REVISED_COLUMN,
+    LAST_REVIEWED_COLUMN,
     STATUS_COLUMN,
     ACTION_COLUMN,
     apply_action_needed_styling,
@@ -44,7 +44,7 @@ LOGIN_COLUMNS = (
     ColumnDef("Default Database", 18, Alignments.LEFT),
     STATUS_COLUMN,  # Review Status dropdown
     ColumnDef("Justification", 35, Alignments.LEFT, is_manual=True),
-    LAST_REVISED_COLUMN,  # Last Reviewed (was Last Revised)
+    LAST_REVIEWED_COLUMN,  # Last Reviewed (was Last Revised)
     ColumnDef("Notes", 25, Alignments.LEFT, is_manual=True),
 )
 
