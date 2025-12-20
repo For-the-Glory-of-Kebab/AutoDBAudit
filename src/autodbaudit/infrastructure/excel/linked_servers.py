@@ -90,13 +90,15 @@ class LinkedServerSheetMixin(ServerGroupMixin, BaseSheetMixin):
             linked_server_name,
             provider or "",
             data_source or "",
-            None,       # RPC Out - styled
+            None,       # RPC Out - styled separately
             local_login or "",
             remote_login or "",
-            None,       # Impersonate - styled
-            None,       # Risk - styled
-            "",         # Purpose
-            "",         # Last Revised
+            None,       # Impersonate - styled separately
+            None,       # Risk - styled separately
+            "",         # Review Status (column L = 12)
+            "",         # Purpose (column M = 13)
+            "",         # Justification (column N = 14)
+            "",         # Last Revised (column O = 15)
         ]
         
         row = self._write_row(ws, LINKED_SERVER_CONFIG, data)

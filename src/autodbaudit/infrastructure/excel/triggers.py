@@ -3,6 +3,9 @@ Triggers Sheet Module.
 
 Handles the Triggers worksheet for server and database trigger audit.
 Uses ServerGroupMixin for server/instance grouping.
+
+Per db-requirements.md Req 12: Triggers at all levels (server, database) 
+should be reviewed periodically.
 """
 
 from __future__ import annotations
@@ -16,6 +19,10 @@ from autodbaudit.infrastructure.excel_styles import (
 from autodbaudit.infrastructure.excel.base import (
     BaseSheetMixin,
     SheetConfig,
+    ACTION_COLUMN,
+    STATUS_COLUMN,
+    LAST_REVISED_COLUMN,
+    apply_action_needed_styling,
 )
 from autodbaudit.infrastructure.excel.server_group import ServerGroupMixin
 
@@ -24,15 +31,18 @@ __all__ = ["TriggerSheetMixin", "TRIGGER_CONFIG"]
 
 
 TRIGGER_COLUMNS = (
+    ACTION_COLUMN,  # Column A: Action indicator for discrepant triggers
     ColumnDef("Server", 18, Alignments.LEFT),
     ColumnDef("Instance", 15, Alignments.LEFT),
-    ColumnDef("Level", 12, Alignments.CENTER),  # Scope - SERVER or Database name
-    ColumnDef("Database", 20, Alignments.LEFT),
-    ColumnDef("Trigger Name", 30, Alignments.LEFT),
-    ColumnDef("Event", 20, Alignments.LEFT),
+    ColumnDef("Scope", 10, Alignments.CENTER),  # "SERVER" or "DATABASE"
+    ColumnDef("Database", 20, Alignments.LEFT),  # Database name (empty for SERVER scope)
+    ColumnDef("Trigger Name", 28, Alignments.LEFT),
+    ColumnDef("Event", 18, Alignments.LEFT),
     ColumnDef("Enabled", 10, Alignments.CENTER),
-    ColumnDef("Purpose", 45, Alignments.LEFT, is_manual=True),  # User documentation
-    ColumnDef("Last Revised", 14, Alignments.CENTER, is_manual=True),  # Date
+    STATUS_COLUMN,  # Review Status dropdown
+    ColumnDef("Notes", 40, Alignments.LEFT, is_manual=True),  # Purpose/notes for trigger
+    ColumnDef("Justification", 40, Alignments.LEFT, is_manual=True),
+    LAST_REVISED_COLUMN,
 )
 
 TRIGGER_CONFIG = SheetConfig(name="Triggers", columns=TRIGGER_COLUMNS)
@@ -47,13 +57,23 @@ class TriggerSheetMixin(ServerGroupMixin, BaseSheetMixin):
         self,
         server_name: str,
         instance_name: str,
-        level: str,
-        database_name: str | None,
         trigger_name: str,
         event_type: str,
         is_enabled: bool,
+        level: str = "DATABASE",  # "SERVER" or "DATABASE"
+        database_name: str | None = None,
     ) -> None:
-        """Add a trigger row."""
+        """Add a trigger row.
+        
+        Args:
+            server_name: Server hostname
+            instance_name: SQL Server instance name
+            trigger_name: Name of the trigger
+            event_type: Event that fires the trigger
+            is_enabled: Whether trigger is enabled
+            level: "SERVER" for server-level triggers, "DATABASE" for database-level
+            database_name: Database containing the trigger (required for DATABASE scope)
+        """
         if self._trigger_sheet is None:
             self._trigger_sheet = self._ensure_sheet(TRIGGER_CONFIG)
             self._init_grouping(self._trigger_sheet, TRIGGER_CONFIG)
@@ -64,26 +84,45 @@ class TriggerSheetMixin(ServerGroupMixin, BaseSheetMixin):
         # Track grouping and get row color
         row_color = self._track_group(server_name, instance_name, TRIGGER_CONFIG.name)
 
+        # Normalize scope to uppercase
+        scope = level.upper() if level else "DATABASE"
+        
+        # Server-level triggers need review (unusual, potential security concern)
+        is_server_trigger = scope == "SERVER"
+        needs_action = is_server_trigger  # Server triggers should be reviewed
+        
+        # Database display: show "(Server)" for server triggers, actual name otherwise
+        db_display = database_name or ("" if scope == "DATABASE" else "")
+
         data = [
+            None,  # Action indicator (column A)
             server_name,
             instance_name or "(Default)",
-            level,
-            database_name or "",
+            scope,  # "SERVER" or "DATABASE"
+            db_display,
             trigger_name,
             event_type or "",
             None,  # Enabled (will be styled)
-            "",  # Purpose
-            "",  # Last Revised
+            "",    # Review Status (column I = 9)
+            "",    # Notes (column J = 10)
+            "",    # Justification (column K = 11)
+            "",    # Last Revised (column L = 12)
         ]
 
         row = self._write_row(ws, TRIGGER_CONFIG, data)
 
-        self._apply_row_color(row, row_color, data_cols=[1, 2, 3, 4, 5, 6], ws=ws)
-        apply_boolean_styling(ws.cell(row=row, column=7), is_enabled)
+        # Apply action indicator
+        apply_action_needed_styling(ws.cell(row=row, column=1), needs_action)
 
-        # Highlight server-level triggers
-        if level.upper() == "SERVER":
-            for col in [3, 4, 5, 6]:
+        # Apply row color to data columns (shifted +1 for action column)
+        self._apply_row_color(row, row_color, data_cols=[2, 3, 4, 5, 6, 7], ws=ws)
+        
+        # Style Enabled column (column 8, shifted +1)
+        apply_boolean_styling(ws.cell(row=row, column=8), is_enabled)
+
+        # Highlight server-level triggers with info color
+        if is_server_trigger:
+            for col in [4, 5, 6, 7]:  # Scope, Database, Trigger Name, Event
                 ws.cell(row=row, column=col).fill = Fills.INFO
 
     def _finalize_triggers(self) -> None:
@@ -93,8 +132,17 @@ class TriggerSheetMixin(ServerGroupMixin, BaseSheetMixin):
 
     def _add_trigger_dropdowns(self) -> None:
         """Add dropdown validations for status columns."""
-        from autodbaudit.infrastructure.excel.base import add_dropdown_validation
+        from autodbaudit.infrastructure.excel.base import (
+            add_dropdown_validation,
+            add_review_status_conditional_formatting,
+            STATUS_VALUES,
+        )
 
         ws = self._trigger_sheet
-        # Enabled column (G) - column 7
-        add_dropdown_validation(ws, "G", ["✓", "✗"])
+        # Scope column (D) - column 4
+        add_dropdown_validation(ws, "D", ["SERVER", "DATABASE"])
+        # Enabled column (H) - column 8
+        add_dropdown_validation(ws, "H", ["✓", "✗"])
+        # Review Status column (I) - column 9
+        add_dropdown_validation(ws, "I", STATUS_VALUES.all())
+        add_review_status_conditional_formatting(ws, "I")

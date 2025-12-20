@@ -186,6 +186,24 @@ class HistoryStore:
         """
         )
 
+        # Annotations table (for sync)
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS annotations (
+                id INTEGER PRIMARY KEY,
+                entity_type TEXT NOT NULL,
+                entity_key TEXT NOT NULL,
+                field_name TEXT NOT NULL,
+                field_value TEXT,
+                status_override TEXT,
+                created_at TEXT NOT NULL,
+                modified_at TEXT,
+                modified_by TEXT,
+                UNIQUE(entity_type, entity_key, field_name)
+            )
+        """
+        )
+
         # Store schema version
         conn.execute(
             """

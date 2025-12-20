@@ -277,13 +277,15 @@ class TestAllSheetsAnnotations(unittest.TestCase):
         )
 
     def test_triggers_sheet_notes_preserved(self):
-        """Test Triggers sheet preserves Purpose and Notes fields."""
+        """Test Triggers sheet preserves Notes fields with new Scope-based schema."""
         print("\n=== Testing Triggers Sheet Notes Preservation ===")
 
         config = SHEET_ANNOTATION_CONFIG["Triggers"]
 
-        # Create Excel with Triggers data (no exception columns - just Purpose and Notes)
-        headers = ["Server", "Instance", "Database", "Trigger Name", "Purpose", "Notes"]
+        # Create Excel with Triggers data using NEW schema with Scope column
+        # key_cols: ["Server", "Instance", "Scope", "Database", "Trigger Name"]
+        # editable_cols: ["Review Status", "Notes", "Justification", "Last Revised"]
+        headers = ["Server", "Instance", "Scope", "Database", "Trigger Name", "Event", "Enabled", "Review Status", "Notes", "Justification", "Last Revised"]
         wb = Workbook()
         ws = wb.active
         ws.title = "Triggers"
@@ -292,19 +294,29 @@ class TestAllSheetsAnnotations(unittest.TestCase):
             [
                 "localhost",
                 "TestInstance",
+                "DATABASE",  # Scope column
                 "AppDB",
                 "trg_audit",
-                "Audit logging trigger",
-                "Created 2024",
+                "DDL",
+                "Yes",
+                "",
+                "Audit logging trigger",  # Notes
+                "",
+                "",
             ]
         )
         ws.append(
             [
                 "localhost",
                 "TestInstance",
+                "DATABASE",  # Scope column
                 "AppDB",
                 "trg_validation",
-                "Data validation",
+                "DML",
+                "Yes",
+                "",
+                "Data validation",  # Notes
+                "",
                 "",
             ]
         )
@@ -317,10 +329,10 @@ class TestAllSheetsAnnotations(unittest.TestCase):
         print(f"Read {len(annotations)} Trigger annotations")
         for key, fields in annotations.items():
             print(
-                f"  {key}: purpose='{fields.get('purpose', '')}' notes='{fields.get('notes', '')}'"
+                f"  {key}: notes='{fields.get('notes', '')}'"
             )
 
-        # Should have 2 entries with purpose/notes
+        # Should have 2 entries with notes
         self.assertEqual(len(annotations), 2, "Should read 2 trigger annotations")
 
         # Verify lowercase keys
@@ -331,10 +343,11 @@ class TestAllSheetsAnnotations(unittest.TestCase):
         """Test Sensitive Roles sheet exception detection."""
         print("\n=== Testing Sensitive Roles Sheet ===")
 
-        # Create Excel
+        # Create Excel - key_cols: ["Server", "Instance", "Role", "Member"]
         headers = [
             "Server",
             "Instance",
+            "Role",  # Added - required for key matching
             "Member",
             "Status",
             "Review Status",
@@ -350,6 +363,7 @@ class TestAllSheetsAnnotations(unittest.TestCase):
             [
                 "localhost",
                 "TestInstance",
+                "sysadmin",  # Role value
                 "sysadmin_user",
                 "FAIL",
                 "✓ Exception",
@@ -360,8 +374,8 @@ class TestAllSheetsAnnotations(unittest.TestCase):
         )
         wb.save(self.excel_path)
 
-        # Create finding
-        entity_key = build_entity_key("localhost", "testinstance", "sysadmin_user")
+        # Create finding - include Role in key for matching
+        entity_key = build_entity_key("localhost", "testinstance", "sysadmin", "sysadmin_user")
         save_finding(
             self.conn,
             self.run_id,

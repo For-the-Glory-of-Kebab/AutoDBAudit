@@ -312,22 +312,21 @@ This document provides a **strict and precise definition** of all worksheets and
 
 ## 15. Triggers
 **Purpose**: Audit of Server and Database triggers.
-*Compliance*: WARN on all enabled triggers (informational risk).
+*Compliance*: Server-level triggers need review. Database triggers for reference.
 
 | Col | Header | Type | Description |
 | :--- | :--- | :--- | :--- |
-| A | (Action) | ACTION | `⏳` if Enabled (needs review). |
+| A | (Action) | ACTION | `⏳` if SERVER-level trigger (needs review). |
 | B | Server | TEXT | Server Name. |
 | C | Instance | TEXT | Instance Name. |
-| D | Scope | TEXT | `SERVER` / `UseDbName`. |
-| E | Trigger Name | TEXT | Trigger Name. |
-| F | Type | TEXT | `LOGON` / `DDL` / `DML`. |
-| G | Enabled | STATUS | `✓ ON` (Warn) / `⛔ Disabled`. |
-| H | Is MS Shipped | BOOL | `✓` / `✗`. |
-| I | Created | DATE | Creation Date. |
-| J | Review Status | STATUS | User review dropdown. |
-| K | Justification | MANUAL | Justification. |
-| L | Last Reviewed | DATE | Date of review. |
+| D | Scope | TEXT | `SERVER` or `DATABASE` - trigger level. |
+| E | Database | TEXT | Database name for DATABASE scope (empty for SERVER). |
+| F | Trigger Name | TEXT | Trigger Name. |
+| G | Event | TEXT | Event type (LOGON, DDL, DML). |
+| H | Enabled | BOOL | `✓` / `✗`. |
+| I | Review Status | STATUS | User review dropdown. |
+| J | Justification | MANUAL | Justification for trigger existence. |
+| K | Last Revised | DATE | Date of review. |
 
 ---
 

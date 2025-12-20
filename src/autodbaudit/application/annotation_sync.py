@@ -60,12 +60,12 @@ SHEET_ANNOTATION_CONFIG = {
     },
     "Sensitive Roles": {
         "entity_type": "server_role_member",
-        "key_cols": ["Server", "Instance", "Member"],
+        # Key includes Role to disambiguate same member in multiple roles
+        "key_cols": ["Server", "Instance", "Role", "Member"],
         "editable_cols": {
             "Review Status": "review_status",
             "Justification": "justification",
             "Last Revised": "last_reviewed",
-            # No Notes column in Excel for this sheet
         },
     },
     "Configuration": {
@@ -120,11 +120,12 @@ SHEET_ANNOTATION_CONFIG = {
     },
     "Permission Grants": {
         "entity_type": "permission",
-        "key_cols": ["Server", "Instance", "Scope", "Grantee", "Permission"],
+        # Key includes Database + Entity Name to disambiguate same permission on different objects
+        "key_cols": ["Server", "Instance", "Scope", "Database", "Grantee", "Permission", "Entity Name"],
         "editable_cols": {
             "Review Status": "review_status",
             "Justification": "justification",
-            "Last Reviewed": "last_reviewed",  # Excel has 'Last Reviewed'
+            "Last Reviewed": "last_reviewed",
             "Notes": "notes",
         },
     },
@@ -151,18 +152,22 @@ SHEET_ANNOTATION_CONFIG = {
     },
     "Triggers": {
         "entity_type": "trigger",
-        "key_cols": ["Server", "Instance", "Database", "Trigger Name"],
+        # Key includes Scope to distinguish SERVER vs DATABASE level triggers
+        "key_cols": ["Server", "Instance", "Scope", "Database", "Trigger Name"],
         "editable_cols": {
-            "Purpose": "purpose",
+            "Review Status": "review_status",
+            "Notes": "notes",  # Purpose/notes for this trigger
+            "Justification": "justification",
             "Last Revised": "last_reviewed",
-            # Triggers are informational only - no Review Status or Justification
         },
     },
     "Client Protocols": {
         "entity_type": "protocol",
         "key_cols": ["Server", "Instance", "Protocol"],
         "editable_cols": {
+            "Review Status": "review_status",
             "Justification": "justification",
+            "Last Revised": "last_reviewed",
         },
     },
     "Backups": {
@@ -187,7 +192,8 @@ SHEET_ANNOTATION_CONFIG = {
     },
     "Encryption": {
         "entity_type": "encryption",
-        "key_cols": ["Server", "Instance", "Type", "Name"],
+        # Column names match writer: "Key Type" and "Key Name"
+        "key_cols": ["Server", "Instance", "Key Type", "Key Name"],
         "editable_cols": {
             "Notes": "notes",
         },

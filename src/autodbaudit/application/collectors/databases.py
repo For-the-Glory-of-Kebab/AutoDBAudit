@@ -265,11 +265,11 @@ class DatabaseCollector(BaseCollector):
                 self.writer.add_trigger(
                     server_name=self.ctx.server_name,
                     instance_name=self.ctx.instance_name,
-                    level="SERVER",
-                    database_name="(Server)",
                     trigger_name=t.get("TriggerName", ""),
                     event_type=t.get("EventType", ""),
                     is_enabled=not bool(t.get("IsDisabled")),
+                    level="SERVER",
+                    database_name=None,  # Server triggers have no database
                 )
                 count += 1
         except Exception as e:
@@ -288,11 +288,11 @@ class DatabaseCollector(BaseCollector):
                     self.writer.add_trigger(
                         server_name=self.ctx.server_name,
                         instance_name=self.ctx.instance_name,
-                        database_name=db_name,
                         trigger_name=t.get("TriggerName", ""),
                         event_type=t.get("TriggerType", ""),
                         is_enabled=not bool(t.get("IsDisabled")),
                         level="DATABASE",
+                        database_name=db_name,
                     )
                     count += 1
             except Exception:
