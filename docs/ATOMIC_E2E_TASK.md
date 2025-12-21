@@ -17,6 +17,11 @@
    - Fixed `review_status == "Exception"` → `"Exception" in str(review_status)`
    - Was failing to match `"✓ Exception"` emoji format
    - Exception counts now accurate in stats
+   
+3. **Action Log Entity Type** (`action_detector.py`)
+   - Fixed "Exception Documented" appearing as `entity_type`
+   - Implemented dynamic `EntityType` resolution from key prefix
+   - Verified by `test_linked_servers_actions_stats.py`
 
 ### Test Suite Status
 - **20/20 tests passing** for Linked Servers

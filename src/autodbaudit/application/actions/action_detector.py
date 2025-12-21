@@ -132,6 +132,7 @@ def create_exception_action(
     change_type: ChangeType = ChangeType.EXCEPTION_ADDED,
     server: str = "",
     instance: str = "",
+    entity_type: EntityType | str | None = None,
 ) -> DetectedChange:
     """
     Create an exception change action.
@@ -142,23 +143,68 @@ def create_exception_action(
         change_type: EXCEPTION_ADDED, EXCEPTION_REMOVED, or EXCEPTION_UPDATED
         server: Server name
         instance: Instance name
+        entity_type: Explicit entity type (override derivation)
         
     Returns:
         DetectedChange for the exception
     """
-    # Derive entity type from key
-    parts = entity_key.split("|")
-    entity_type = EntityType.CONFIGURATION
-    if parts:
-        type_map = {
-            "sa_account": EntityType.SA_ACCOUNT,
-            "login": EntityType.LOGIN,
-            "config": EntityType.CONFIGURATION,
-            "service": EntityType.SERVICE,
-            "database": EntityType.DATABASE,
-            "backup": EntityType.BACKUP,
-        }
-        entity_type = type_map.get(parts[0].lower(), EntityType.CONFIGURATION)
+    # Derive entity type if not provided
+    final_type = EntityType.CONFIGURATION
+    
+    if entity_type:
+        if isinstance(entity_type, EntityType):
+            final_type = entity_type
+        else:
+            # Try to resolve string to enum
+            try:
+                # Try explicit lookup first (e.g. "linked_server" -> "Linked Server")
+                # Normalize input to lowercase for mapping check
+                t_str = str(entity_type).lower()
+                
+                # Check known mappings (Sync config uses snake_case keys)
+                for e in EntityType:
+                    if e.value.lower() == t_str or e.name.lower() == t_str:
+                        final_type = e
+                        break
+                    # Handle "linked_server" -> "Linked Server"
+                    if e.value.lower().replace(" ", "_") == t_str:
+                        final_type = e
+                        break
+            except Exception:
+                pass
+
+    if not entity_type:
+        parts = entity_key.split("|")
+        if parts:
+            p0 = parts[0].lower()
+            # Dynamic lookup from Enum values
+            found = False
+            for e in EntityType:
+                if e.value.lower().replace(" ", "_") == p0:
+                    final_type = e
+                    found = True
+                    break
+            
+            if not found:
+                # Fallback to map for legacy/special cases
+                type_map = {
+                    "sa_account": EntityType.SA_ACCOUNT,
+                    "login": EntityType.LOGIN,
+                    "config": EntityType.CONFIGURATION,
+                    "service": EntityType.SERVICE,
+                    "database": EntityType.DATABASE,
+                    "backup": EntityType.BACKUP,
+                    "linked_server": EntityType.LINKED_SERVER,
+                    "db_user": EntityType.DATABASE_USER,
+                    "db_role": EntityType.DATABASE_ROLE,
+                    "orphaned_user": EntityType.ORPHANED_USER,
+                    "trigger": EntityType.TRIGGER,
+                    "protocol": EntityType.PROTOCOL,
+                    "encryption": EntityType.ENCRYPTION,
+                    "audit_settings": EntityType.AUDIT_SETTING,
+                    # Add more as needed
+                }
+                final_type = type_map.get(p0, EntityType.CONFIGURATION)
     
     # Truncate justification for description
     truncated = justification[:50] + "..." if len(justification) > 50 else justification
@@ -171,7 +217,7 @@ def create_exception_action(
         description = f"Exception Documented: {truncated}"
     
     return DetectedChange(
-        entity_type=entity_type,
+        entity_type=final_type,
         entity_key=entity_key,
         change_type=change_type,
         description=description,

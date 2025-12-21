@@ -329,6 +329,11 @@ class ActionRecorder:
                     "backup",
                     "trigger",
                     "protocol",
+                    "linked_server",
+                    "db_role_member",
+                    "db_user",
+                    "orphaned_user",
+                    "db_permission",
                 }
                 if parts[0].lower() in known_types:
                     server = parts[1]

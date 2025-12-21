@@ -257,6 +257,7 @@ class SyncService:
                         entity_key=ex["full_key"],
                         justification=ex.get("justification", ""),
                         change_type=ct,
+                        entity_type=ex.get("entity_type"),  # Pass explicitly
                     )
                 )
 

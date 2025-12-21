@@ -1,0 +1,10 @@
+============================= test session starts =============================
+platform win32 -- Python 3.14.0, pytest-9.0.2, pluggy-1.6.0 -- F:\Raja-Initiative\venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: F:\Raja-Initiative
+configfile: pyproject.toml
+collecting ... collected 1 item
+
+tests/atomic_e2e/sheets/test_linked_servers_actions_stats.py::TestLinkedServersActionsStats::test_L6_action_logging_cycle PASSED [100%]
+
+============================== 1 passed in 1.01s ==============================

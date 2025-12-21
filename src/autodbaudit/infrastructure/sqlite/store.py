@@ -204,6 +204,49 @@ class HistoryStore:
         """
         )
 
+        # Annotation History table (for audit trail of documentation)
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS annotation_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                annotation_id INTEGER NOT NULL,
+                old_value TEXT,
+                new_value TEXT,
+                old_status TEXT,
+                new_status TEXT,
+                changed_at TEXT NOT NULL,
+                changed_by TEXT,
+                audit_run_id INTEGER,
+                FOREIGN KEY (annotation_id) REFERENCES annotations(id) ON DELETE CASCADE,
+                FOREIGN KEY (audit_run_id) REFERENCES audit_runs(id)
+            )
+        """
+        )
+
+        # Findings table (for persistent audit results)
+        # Note: This table is expected by update_finding_status and ActionRecorder
+        # but was missing from schema.
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS findings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                audit_run_id INTEGER NOT NULL,
+                instance_id INTEGER,
+                entity_key TEXT NOT NULL,
+                finding_type TEXT,
+                entity_name TEXT,
+                status TEXT,
+                risk_level TEXT,
+                finding_description TEXT,
+                recommendation TEXT,
+                details TEXT,
+                collected_at TEXT,
+                FOREIGN KEY (audit_run_id) REFERENCES audit_runs(id) ON DELETE CASCADE,
+                UNIQUE(audit_run_id, entity_key)
+            )
+        """
+        )
+
         # Store schema version
         conn.execute(
             """
