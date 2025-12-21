@@ -467,6 +467,11 @@ class BaseSheetMixin:
     Provides common functionality for sheet creation and data writing.
     Each sheet mixin inherits from this and implements sheet-specific
     add_* methods.
+    
+    UUID Support (v3):
+        - Every sheet has a hidden Column A with stable UUID
+        - UUID is generated on row creation, never changes
+        - UUID enables reliable Excel ↔ SQLite synchronization
     """
 
     # Subclasses must define these
@@ -495,6 +500,46 @@ class BaseSheetMixin:
         freeze_panes(ws, row=2, col=1)
         add_autofilter(ws, list(config.columns), header_row=1)
 
+        return ws
+    
+    def _ensure_sheet_with_uuid(self, config: SheetConfig) -> Worksheet:
+        """
+        Get or create a worksheet with UUID column support.
+        
+        Like _ensure_sheet but:
+        - Prepends hidden UUID column as Column A
+        - Applies sheet protection with UUID locked
+        - Shifts all other columns by +1
+        
+        Args:
+            config: Sheet configuration (without UUID column)
+            
+        Returns:
+            Worksheet with UUID column as first column
+        """
+        from autodbaudit.infrastructure.excel.row_uuid import (
+            UUID_COLUMN,
+            hide_uuid_column,
+        )
+        
+        if config.name in self.wb.sheetnames:
+            return self.wb[config.name]
+        
+        # Build new column tuple with UUID first
+        uuid_columns = (UUID_COLUMN,) + config.columns
+        
+        # Remove default "Sheet" if present
+        if "Sheet" in self.wb.sheetnames and len(self.wb.sheetnames) == 1:
+            del self.wb["Sheet"]
+        
+        ws = self.wb.create_sheet(config.name)
+        apply_header_row(ws, list(uuid_columns), row=1)
+        freeze_panes(ws, row=2, col=2)  # Freeze after UUID column
+        add_autofilter(ws, list(uuid_columns), header_row=1)
+        
+        # Hide UUID column
+        hide_uuid_column(ws)
+        
         return ws
 
     def _write_row(
@@ -528,6 +573,75 @@ class BaseSheetMixin:
 
         self._row_counters[config.name] += 1
         return row
+    
+    def _write_row_with_uuid(
+        self,
+        ws: Worksheet,
+        config: SheetConfig,
+        data: list[Any],
+        row_uuid: str | None = None,
+    ) -> tuple[int, str]:
+        """
+        Write a row with automatic UUID generation.
+        
+        Writes UUID to Column A, then data starting at Column B.
+        
+        Args:
+            ws: Target worksheet
+            config: Sheet configuration (original, without UUID in definition)
+            data: List of values to write (will be shifted to start at column B)
+            row_uuid: Optional pre-generated UUID. If None, generates new one.
+            
+        Returns:
+            Tuple of (row_number, row_uuid)
+        """
+        from autodbaudit.infrastructure.excel.row_uuid import (
+            generate_row_uuid,
+            write_row_uuid,
+        )
+        
+        row = self._row_counters[config.name]
+        
+        # Generate UUID if not provided
+        if row_uuid is None:
+            row_uuid = generate_row_uuid()
+        
+        # Write UUID to Column A
+        write_row_uuid(ws, row, row_uuid, uuid_column=1, apply_protection=True)
+        
+        # Write data starting at Column B (index 2)
+        for col, (value, col_def) in enumerate(zip(data, config.columns), start=2):
+            cell = ws.cell(row=row, column=col)
+            cell.value = value
+            cell.font = Fonts.DATA
+            cell.border = Borders.THIN
+            cell.alignment = col_def.alignment
+            
+            if col_def.is_manual:
+                cell.fill = Fills.MANUAL
+        
+        self._row_counters[config.name] += 1
+        return row, row_uuid
+    
+    def _finalize_sheet_with_uuid(self, ws: Worksheet) -> None:
+        """
+        Finalize a sheet with UUID protection.
+        
+        Call after all rows are written to apply sheet protection
+        that locks UUID column while allowing edits to annotation columns.
+        
+        Args:
+            ws: Worksheet to finalize
+        """
+        from autodbaudit.infrastructure.excel.row_uuid import (
+            apply_uuid_column_protection,
+        )
+        
+        # Get max row for protection range
+        max_row = ws.max_row or 1000
+        
+        # Apply protection (locks UUID column, allows editing others)
+        apply_uuid_column_protection(ws, max_row=max_row)
 
     def _increment_pass(self) -> None:
         """Increment pass count."""

@@ -3,6 +3,11 @@ Audit Settings Sheet Module.
 
 Handles the Audit Settings worksheet for login audit configuration.
 Uses ServerGroupMixin for server/instance grouping.
+
+
+UUID Support (v3):
+    - Column A: Hidden UUID for stable row identification
+    - All other columns shifted +1 from original positions
 """
 
 from __future__ import annotations
@@ -58,7 +63,7 @@ class AuditSettingSheetMixin(ServerGroupMixin, BaseSheetMixin):
     ) -> None:
         """Add an audit setting row."""
         if self._audit_setting_sheet is None:
-            self._audit_setting_sheet = self._ensure_sheet(AUDIT_SETTING_CONFIG)
+            self._audit_setting_sheet = self._ensure_sheet_with_uuid(AUDIT_SETTING_CONFIG)
             self._init_grouping(self._audit_setting_sheet, AUDIT_SETTING_CONFIG)
             self._add_audit_dropdowns()
         
@@ -88,13 +93,13 @@ class AuditSettingSheetMixin(ServerGroupMixin, BaseSheetMixin):
             "",    # Notes
         ]
         
-        row = self._write_row(ws, AUDIT_SETTING_CONFIG, data)
+        row, row_uuid = self._write_row_with_uuid(ws, AUDIT_SETTING_CONFIG, data)
         
         # Apply action indicator (column 1)
-        apply_action_needed_styling(ws.cell(row=row, column=1), needs_action)
+        apply_action_needed_styling(ws.cell(row=row, column=2), needs_action)
         
         # Apply row color (shifted +1 for action column)
-        self._apply_row_color(row, row_color, data_cols=[2, 3, 4, 5, 6], ws=ws)
+        self._apply_row_color(row, row_color, data_cols=[3, 4, 5, 6, 7], ws=ws)
         
         # Status column (column 7, shifted +1)
         apply_status_styling(ws.cell(row=row, column=7), status)
@@ -103,6 +108,7 @@ class AuditSettingSheetMixin(ServerGroupMixin, BaseSheetMixin):
         """Finalize audit settings sheet - merge remaining groups."""
         if self._audit_setting_sheet:
             self._finalize_grouping(AUDIT_SETTING_CONFIG.name)
+            self._finalize_sheet_with_uuid(self._audit_setting_sheet)
     
     def _add_audit_dropdowns(self) -> None:
         """Add dropdown validations for status columns."""
@@ -112,7 +118,7 @@ class AuditSettingSheetMixin(ServerGroupMixin, BaseSheetMixin):
         
         ws = self._audit_setting_sheet
         # Status column (G = 7, shifted +1)
-        add_dropdown_validation(ws, "G", ["PASS", "FAIL"])
+        add_dropdown_validation(ws, "H", ["PASS", "FAIL"])
         # Review Status column (H) - column 8
-        add_dropdown_validation(ws, "H", STATUS_VALUES.all())
-        add_review_status_conditional_formatting(ws, "H")
+        add_dropdown_validation(ws, "I", STATUS_VALUES.all())
+        add_review_status_conditional_formatting(ws, "I")

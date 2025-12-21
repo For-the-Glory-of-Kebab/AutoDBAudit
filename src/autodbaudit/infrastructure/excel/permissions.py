@@ -4,6 +4,11 @@ Permission Grants Sheet Module.
 Handles the Permission Grants worksheet for explicit GRANT/DENY audits.
 Uses ServerGroupMixin for server/instance grouping.
 Highlights risky permissions and DENY states.
+
+
+UUID Support (v3):
+    - Column A: Hidden UUID for stable row identification
+    - All other columns shifted +1 from original positions
 """
 
 from __future__ import annotations
@@ -82,7 +87,7 @@ class PermissionSheetMixin(ServerGroupMixin, BaseSheetMixin):
     ) -> None:
         """Add a permission grant/deny row."""
         if self._permission_sheet is None:
-            self._permission_sheet = self._ensure_sheet(PERMISSION_CONFIG)
+            self._permission_sheet = self._ensure_sheet_with_uuid(PERMISSION_CONFIG)
             self._init_grouping(self._permission_sheet, PERMISSION_CONFIG)
             self._add_permission_dropdowns()
 
@@ -186,13 +191,13 @@ class PermissionSheetMixin(ServerGroupMixin, BaseSheetMixin):
             "",    # Notes
         ]
 
-        row = self._write_row(ws, PERMISSION_CONFIG, data)
+        row, row_uuid = self._write_row_with_uuid(ws, PERMISSION_CONFIG, data)
         
         # Apply action indicator (column 1)
-        apply_action_needed_styling(ws.cell(row=row, column=1), needs_action)
+        apply_action_needed_styling(ws.cell(row=row, column=2), needs_action)
 
         # Apply row color to data columns (shifted +1)
-        self._apply_row_color(row, row_color, data_cols=[2, 3, 4, 5, 6, 8, 9], ws=ws)
+        self._apply_row_color(row, row_color, data_cols=[3, 4, 5, 6, 7, 9, 10], ws=ws)
 
         # Style State Column (Col 8, shifted +1)
         state_cell = ws.cell(row=row, column=8)
@@ -224,6 +229,7 @@ class PermissionSheetMixin(ServerGroupMixin, BaseSheetMixin):
         """Finalize permissions sheet."""
         if self._permission_sheet:
             self._finalize_grouping(PERMISSION_CONFIG.name)
+            self._finalize_sheet_with_uuid(self._permission_sheet)
 
     def _add_permission_dropdowns(self) -> None:
         """Add validation dropdowns."""
@@ -235,7 +241,7 @@ class PermissionSheetMixin(ServerGroupMixin, BaseSheetMixin):
         # Scope (C)
         add_dropdown_validation(ws, "C", ["SERVER", "DATABASE"])
         # State (G)
-        add_dropdown_validation(ws, "G", ["✅ GRANT", "⛔ DENY", "⚠️ GRANT w/ OPT"])
+        add_dropdown_validation(ws, "N", ["✅ GRANT", "⛔ DENY", "⚠️ GRANT w/ OPT"])
         # Review Status column (L) - column 12
-        add_dropdown_validation(ws, "L", STATUS_VALUES.all())
-        add_review_status_conditional_formatting(ws, "L")
+        add_dropdown_validation(ws, "J", STATUS_VALUES.all())
+        add_review_status_conditional_formatting(ws, "J")

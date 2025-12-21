@@ -7,6 +7,11 @@ Groups by Server with color rotation.
 Discrepancy Logic:
 - Essential services (Database Engine, SQL Agent): Only check account compliance
 - Non-essential services (Browser, Integration, Analysis, etc.): Need justification
+
+
+UUID Support (v3):
+    - Column A: Hidden UUID for stable row identification
+    - All other columns shifted +1 from original positions
 """
 
 from __future__ import annotations
@@ -117,7 +122,7 @@ class ServiceSheetMixin(BaseSheetMixin):
     ) -> None:
         """Add a SQL service row."""
         if self._service_sheet is None:
-            self._service_sheet = self._ensure_sheet(SERVICE_CONFIG)
+            self._service_sheet = self._ensure_sheet_with_uuid(SERVICE_CONFIG)
             self._svc_last_server = ""
             self._svc_last_instance = ""
             self._svc_server_start_row = 2
@@ -206,10 +211,10 @@ class ServiceSheetMixin(BaseSheetMixin):
             "",    # Justification
         ]
         
-        row = self._write_row(ws, SERVICE_CONFIG, data)
+        row, row_uuid = self._write_row_with_uuid(ws, SERVICE_CONFIG, data)
         
         # Apply action indicator (column 1)
-        apply_action_needed_styling(ws.cell(row=row, column=1), needs_action)
+        apply_action_needed_styling(ws.cell(row=row, column=2), needs_action)
         
         # Apply color to data columns (shifted +1 for action column)
         fill = PatternFill(start_color=row_color, end_color=row_color, fill_type="solid")
@@ -286,6 +291,7 @@ class ServiceSheetMixin(BaseSheetMixin):
         """Finalize services sheet."""
         if self._service_sheet and self._svc_last_server:
             self._merge_svc_groups(self._service_sheet)
+            self._finalize_sheet_with_uuid(self._service_sheet)
     
     def _add_service_dropdowns(self) -> None:
         """Add dropdown validations for status columns."""
@@ -294,12 +300,9 @@ class ServiceSheetMixin(BaseSheetMixin):
         )
         
         ws = self._service_sheet
-        # Status column (F) - column 6 (shifted +1)
-        add_dropdown_validation(ws, "F", ["✓ Running", "✗ Stopped", "Unknown"])
-        # Startup column (G) - column 7 (shifted +1)
-        add_dropdown_validation(ws, "G", ["⚡ Auto", "🔧 Manual", "⛔ Disabled"])
-        # Compliant column (I) - column 9 (shifted +1)
-        add_dropdown_validation(ws, "I", ["✓", "✗"])
-        # Review Status column (J) - column 10
-        add_dropdown_validation(ws, "J", STATUS_VALUES.all())
-        add_review_status_conditional_formatting(ws, "J")
+        # With UUID: A=UUID, B=Action, C=Server, D=Instance, E=ServiceName, F=Type, G=Status, H=Startup, I=Account, J=Compliant, K=ReviewStatus
+        add_dropdown_validation(ws, "G", ["✓ Running", "✗ Stopped", "Unknown"])  # Status
+        add_dropdown_validation(ws, "H", ["⚡ Auto", "🔧 Manual", "⛔ Disabled"])  # Startup
+        add_dropdown_validation(ws, "J", ["✓", "✗"])  # Compliant
+        add_dropdown_validation(ws, "K", STATUS_VALUES.all())  # Review Status
+        add_review_status_conditional_formatting(ws, "K")

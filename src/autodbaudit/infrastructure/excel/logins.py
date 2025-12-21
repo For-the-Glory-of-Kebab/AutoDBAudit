@@ -5,6 +5,11 @@ Visual Features:
     - Server column merged with main color
     - Instance column merged with alternating shade within server
     - Enabled/Policy columns keep status colors (green/red/yellow)
+
+
+UUID Support (v3):
+    - Column A: Hidden UUID for stable row identification
+    - All other columns shifted +1 from original positions
 """
 
 from __future__ import annotations
@@ -75,7 +80,7 @@ class LoginSheetMixin(BaseSheetMixin):
         """Add a login row with server/instance grouping."""
         # Lazy-initialize
         if self._login_sheet is None:
-            self._login_sheet = self._ensure_sheet(LOGIN_CONFIG)
+            self._login_sheet = self._ensure_sheet_with_uuid(LOGIN_CONFIG)
             self._login_last_server = ""
             self._login_last_instance = ""
             self._login_server_start_row = 2
@@ -132,7 +137,7 @@ class LoginSheetMixin(BaseSheetMixin):
             "",  # Last Revised
         ]
 
-        row = self._write_row(ws, LOGIN_CONFIG, data)
+        row, row_uuid = self._write_row_with_uuid(ws, LOGIN_CONFIG, data)
 
         # Determine if this is a system/internal login (Q1 decision)
         # ##...## pattern logins are SQL Server internal accounts - exclude from discrepancy
@@ -156,7 +161,7 @@ class LoginSheetMixin(BaseSheetMixin):
             # Only SQL logins with password policy disabled need action
             # Disabled logins WITH NO POLICY are still findings (defense in depth)
             needs_action = pwd_policy is not None and not pwd_policy
-        apply_action_needed_styling(ws.cell(row=row, column=1), needs_action)
+        apply_action_needed_styling(ws.cell(row=row, column=2), needs_action)
 
         # Apply shade to informational columns (not status)
         fill = PatternFill(
@@ -237,15 +242,14 @@ class LoginSheetMixin(BaseSheetMixin):
         )
 
         ws = self._login_sheet
-        # Enabled column (F) - column 6 (shifted +1 from E)
-        add_dropdown_validation(ws, "F", ["✓ Yes", "✗ No"])
-        # Password Policy column (G) - column 7 (shifted +1 from F)
-        add_dropdown_validation(ws, "G", ["✓ Yes", "✗ No", "N/A"])
-        # Review Status column (I) - column 9
-        add_dropdown_validation(ws, "I", STATUS_VALUES.all())
-        add_review_status_conditional_formatting(ws, "I")
+        # With UUID: A=UUID, B=Action, C=Server, D=Instance, E=Login, F=Type, G=Enabled, H=Policy, I=DefaultDB, J=Status
+        add_dropdown_validation(ws, "G", ["✓ Yes", "✗ No"])  # Enabled
+        add_dropdown_validation(ws, "H", ["✓ Yes", "✗ No", "N/A"])  # Password Policy
+        add_dropdown_validation(ws, "J", STATUS_VALUES.all())  # Review Status
+        add_review_status_conditional_formatting(ws, "J")
 
     def _finalize_logins(self) -> None:
         """Finalize login sheet - merge remaining groups."""
         if self._login_sheet and self._login_last_server:
             self._merge_login_groups(self._login_sheet)
+            self._finalize_sheet_with_uuid(self._login_sheet)

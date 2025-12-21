@@ -3,6 +3,11 @@ Instances Sheet Module.
 
 Handles the Instances worksheet for SQL Server instance properties.
 Visual grouping with rotating colors for different servers.
+
+
+UUID Support (v3):
+    - Column A: Hidden UUID for stable row identification
+    - All other columns shifted +1 from original positions
 """
 
 from __future__ import annotations
@@ -88,7 +93,7 @@ class InstanceSheetMixin(BaseSheetMixin):
         from autodbaudit.infrastructure.excel_styles import apply_status_styling
 
         if self._instance_sheet is None:
-            self._instance_sheet = self._ensure_sheet(INSTANCE_CONFIG)
+            self._instance_sheet = self._ensure_sheet_with_uuid(INSTANCE_CONFIG)
             self._instance_last_server = ""
             self._instance_last_instance = ""
             self._instance_group_mixed = False
@@ -155,7 +160,7 @@ class InstanceSheetMixin(BaseSheetMixin):
             "",  # Col 17: Last Reviewed
         ]
 
-        row = self._write_row(ws, INSTANCE_CONFIG, data)
+        row, row_uuid = self._write_row_with_uuid(ws, INSTANCE_CONFIG, data)
 
         fill = PatternFill(
             start_color=color_light, end_color=color_light, fill_type="solid"
@@ -219,13 +224,14 @@ class InstanceSheetMixin(BaseSheetMixin):
         """Finalize instances sheet - merge remaining server group."""
         if self._instance_sheet and self._instance_last_server:
             self._merge_instance_server(self._instance_sheet)
+            self._finalize_sheet_with_uuid(self._instance_sheet)
 
     def _add_instance_dropdowns(self) -> None:
         """Add dropdown validations for boolean columns."""
         from autodbaudit.infrastructure.excel.base import add_dropdown_validation
 
         ws = self._instance_sheet
-        # Clustered column (J) - column 10
-        add_dropdown_validation(ws, "J", ["✓", "✗"])
-        # HADR column (K) - column 11
-        add_dropdown_validation(ws, "K", ["✓", "✗"])
+        # Clustered column (L) - column 12 (shifted +1 from K)
+        add_dropdown_validation(ws, "L", ["✓", "✗"])
+        # HADR column (M) - column 13 (shifted +1 from L)
+        add_dropdown_validation(ws, "M", ["✓", "✗"])

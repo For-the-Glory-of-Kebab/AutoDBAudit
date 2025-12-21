@@ -15,6 +15,7 @@ Usage:
 
 Modules:
     base.py         - Shared utilities, column definitions, base classes
+    row_uuid.py     - Row UUID utilities for stable synchronization (v3)
     writer.py       - Main EnhancedReportWriter class
     cover.py        - Cover sheet with summary
     instances.py    - SQL Server instances
@@ -36,9 +37,23 @@ Modules:
 
 from autodbaudit.infrastructure.excel.writer import EnhancedReportWriter
 from autodbaudit.infrastructure.excel.base import SheetConfig, ColumnDef
+from autodbaudit.infrastructure.excel.row_uuid import (
+    UUID_COLUMN,
+    generate_row_uuid,
+    is_valid_uuid,
+    read_row_uuid,
+    write_row_uuid,
+)
 
 __all__ = [
     "EnhancedReportWriter",
     "SheetConfig",
     "ColumnDef",
+    # Row UUID utilities
+    "UUID_COLUMN",
+    "generate_row_uuid",
+    "is_valid_uuid",
+    "read_row_uuid",
+    "write_row_uuid",
 ]
+

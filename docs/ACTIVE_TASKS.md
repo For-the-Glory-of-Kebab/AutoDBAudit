@@ -2,64 +2,52 @@
 
 ## Current Focus: Row UUID Architecture
 
-### Session 2025-12-21 (Afternoon) ✅
+### Commit Ready: UUID Infrastructure Complete ✅
 
-**Bugs Fixed:**
-1. Linked Server collector column names (`LinkedServerName`, `Provider`, `Product`)
-2. Added `get_linked_server_logins()` call for login/risk data
-3. Exception status check: `"Exception" in str(...)` for emoji matching
+**What's Done:**
+- ✅ **Core Infrastructure** - `row_uuid.py`, `row_uuid_schema.py`
+- ✅ **Base Methods** - `_ensure_sheet_with_uuid()`, `_write_row_with_uuid()`, `_finalize_sheet_with_uuid()`
+- ✅ **All 18 Sheet Modules** - Migrated to UUID-aware methods
+- ✅ **Protection Fixed** - Only UUID column locked, all others editable
+- ✅ **Documentation** - `SCHEMA_REFERENCE.md`, `EXCEL_COLUMNS.md` updated
 
-**Status:** 20/20 atomic E2E tests passing
-
----
-
-## Next: Row UUID Implementation
-
-**Decision:** Implement stable Row UUIDs to fix sync issues
-
-### Checklist
-
-#### Phase 1: SQLite Schema
-- [ ] Add `row_uuid`, `status`, `first_seen_at`, `last_seen_at` columns
-- [ ] Create migration script
-- [ ] Update `store.py` with UUID CRUD
-
-#### Phase 2: Excel Column Infrastructure
-- [ ] Add UUID column (hidden, locked) to base
-- [ ] Update all 20 sheet modules
-- [ ] Implement sheet protection
-
-#### Phase 3: Annotation Sync Rewrite
-- [ ] Read by UUID instead of entity_key
-- [ ] Write by UUID
-- [ ] Handle edge cases (new, deleted, duplicate)
-
-#### Phase 4: Stats Service
-- [ ] Update to use UUID matching
-- [ ] Remove entity_key normalization complexity
-
-#### Phase 5: Testing
-- [ ] Update test harness for UUID
-- [ ] Verify 20 Linked Server tests still pass
-- [ ] Manual E2E verification
+**What's NOT Done (Phase 4-5):**
+- ⏳ `annotation_sync.py` - Still uses entity_key for matching
+- ⏳ `stats_service.py` - Still uses entity_key for exception lookup
+- ⏳ E2E testing - Only Linked Servers tested, other sheets pending
 
 ---
 
-## Paused: E2E Test Suite
+## Test Results
 
-**Reason:** Entity key-based sync fundamentally flawed
+```
+=== Module Imports ===
+18/18 Excel modules: PASS ✓
 
-**Resume after:** Row UUID implementation complete
+=== Atomic E2E Tests ===
+20/20 Linked Servers tests: PASS ✓
 
-**Status at pause:**
-- Infrastructure: ✅ Complete
-- Linked Servers: ✅ 20/20 passing
-- Remaining sheets: ⏸️ Paused
+=== Protection Test ===
+Column A: locked=True (UUID)
+Column B+: locked=False (editable)
+```
 
 ---
 
-## Documentation Trail
-- `docs/ROW_UUID_DESIGN.md` - Architecture design
-- `docs/ROW_UUID_IMPLEMENTATION_PLAN.md` - Implementation phases
-- `docs/SESSION_HANDOFF_2025-12-21_PM.md` - Session summary
-- `docs/ATOMIC_E2E_TASK.md` - E2E test status
+## Next: Fix Linked Servers Sheet Issues
+
+Per original plan, work sheet-by-sheet:
+1. **Fix Linked Server sheet E2E issues** (if any remaining)
+2. Move to next sheet
+3. Update annotation_sync to use UUID (Phase 4)
+
+---
+
+## Files Changed
+
+| Category | Files |
+|----------|-------|
+| **NEW** | `row_uuid.py`, `row_uuid_schema.py` |
+| **Core** | `base.py`, `__init__.py`, `server_group.py` |
+| **Sheets** | All 18 sheet modules |
+| **Docs** | `SCHEMA_REFERENCE.md`, `EXCEL_COLUMNS.md` |

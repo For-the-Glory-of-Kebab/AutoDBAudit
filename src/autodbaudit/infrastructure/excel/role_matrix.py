@@ -3,6 +3,11 @@ Role Matrix Sheet Module.
 
 Handles the Role Matrix worksheet for a pivoted view of database role memberships.
 Requirement #27: Visual Matrix of Login-to-Role Mapping.
+
+
+UUID Support (v3):
+    - Column A: Hidden UUID for stable row identification
+    - All other columns shifted +1 from original positions
 """
 
 from __future__ import annotations
@@ -88,7 +93,7 @@ class RoleMatrixSheetMixin(ServerGroupMixin, BaseSheetMixin):
             roles: List of role names this user belongs to
         """
         if self._role_matrix_sheet is None:
-            self._role_matrix_sheet = self._ensure_sheet(ROLE_MATRIX_CONFIG)
+            self._role_matrix_sheet = self._ensure_sheet_with_uuid(ROLE_MATRIX_CONFIG)
             self._init_grouping(self._role_matrix_sheet, ROLE_MATRIX_CONFIG)
 
         ws = self._role_matrix_sheet
@@ -146,7 +151,7 @@ class RoleMatrixSheetMixin(ServerGroupMixin, BaseSheetMixin):
         else:
             row_data.append("—")
 
-        row = self._write_row(ws, ROLE_MATRIX_CONFIG, row_data)
+        row, row_uuid = self._write_row_with_uuid(ws, ROLE_MATRIX_CONFIG, row_data)
 
         # Apply row color (no action column now, Server is column 1)
         # Meta columns: 1=Server, 2=Instance, 3=Database, 4=Principal, 5=Type, last=Risk
@@ -181,3 +186,4 @@ class RoleMatrixSheetMixin(ServerGroupMixin, BaseSheetMixin):
         """Finalize permissions sheet."""
         if self._role_matrix_sheet:
             self._finalize_grouping(ROLE_MATRIX_CONFIG.name)
+            self._finalize_sheet_with_uuid(self._role_matrix_sheet)

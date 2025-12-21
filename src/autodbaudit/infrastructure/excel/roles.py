@@ -3,6 +3,11 @@ Sensitive Roles Sheet Module.
 
 Handles the Sensitive Roles worksheet for server role membership audit.
 Server and Instance columns are merged with color rotation.
+
+
+UUID Support (v3):
+    - Column A: Hidden UUID for stable row identification
+    - All other columns shifted +1 from original positions
 """
 
 from __future__ import annotations
@@ -73,7 +78,7 @@ class RoleSheetMixin(BaseSheetMixin):
     ) -> None:
         """Add a server role membership row."""
         if self._role_sheet is None:
-            self._role_sheet = self._ensure_sheet(ROLE_CONFIG)
+            self._role_sheet = self._ensure_sheet_with_uuid(ROLE_CONFIG)
             self._role_last_server = ""
             self._role_last_instance = ""
             self._role_server_start_row = 2
@@ -134,10 +139,10 @@ class RoleSheetMixin(BaseSheetMixin):
             "",  # Last Revised
         ]
 
-        row = self._write_row(ws, ROLE_CONFIG, data)
+        row, row_uuid = self._write_row_with_uuid(ws, ROLE_CONFIG, data)
 
         # Apply action indicator - show ⏳ for sysadmin members needing justification
-        apply_action_needed_styling(ws.cell(row=row, column=1), needs_justification)
+        apply_action_needed_styling(ws.cell(row=row, column=2), needs_justification)
 
         # Apply shade to informational columns (shifted +1)
         fill = PatternFill(
@@ -201,6 +206,7 @@ class RoleSheetMixin(BaseSheetMixin):
         """Finalize roles sheet - merge remaining groups."""
         if self._role_sheet and self._role_last_server:
             self._merge_role_groups(self._role_sheet)
+            self._finalize_sheet_with_uuid(self._role_sheet)
 
     def _add_role_dropdowns(self) -> None:
         """Add dropdown validations for status columns."""
@@ -212,7 +218,7 @@ class RoleSheetMixin(BaseSheetMixin):
 
         ws = self._role_sheet
         # Enabled column (G) - column 7 (shifted +1 from F)
-        add_dropdown_validation(ws, "G", ["✓ Yes", "✗ No"])
+        add_dropdown_validation(ws, "H", ["✓ Yes", "✗ No"])
         # Review Status column (H) - column 8
-        add_dropdown_validation(ws, "H", STATUS_VALUES.all())
-        add_review_status_conditional_formatting(ws, "H")
+        add_dropdown_validation(ws, "I", STATUS_VALUES.all())
+        add_review_status_conditional_formatting(ws, "I")

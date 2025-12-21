@@ -4,6 +4,11 @@ Encryption Sheet Module.
 Handles the Encryption worksheet for encryption key status audit.
 Covers SMK (instance-level), DMK (database-level), and TDE status.
 Uses ServerGroupMixin for server/instance grouping.
+
+
+UUID Support (v3):
+    - Column A: Hidden UUID for stable row identification
+    - All other columns shifted +1 from original positions
 """
 
 from __future__ import annotations
@@ -67,7 +72,7 @@ class EncryptionSheetMixin(ServerGroupMixin, BaseSheetMixin):
     ) -> None:
         """Add an encryption row."""
         if self._encryption_sheet is None:
-            self._encryption_sheet = self._ensure_sheet(ENCRYPTION_CONFIG)
+            self._encryption_sheet = self._ensure_sheet_with_uuid(ENCRYPTION_CONFIG)
             self._init_grouping(self._encryption_sheet, ENCRYPTION_CONFIG)
             self._add_encryption_dropdowns()
         
@@ -97,10 +102,10 @@ class EncryptionSheetMixin(ServerGroupMixin, BaseSheetMixin):
             "",    # Notes
         ]
         
-        row = self._write_row(ws, ENCRYPTION_CONFIG, data)
+        row, row_uuid = self._write_row_with_uuid(ws, ENCRYPTION_CONFIG, data)
         
         # Apply row color to data columns
-        self._apply_row_color(row, row_color, data_cols=[1, 2, 3, 4, 5, 6, 7], ws=ws)
+        self._apply_row_color(row, row_color, data_cols=[2, 3, 4, 5, 6, 7, 8], ws=ws)
         
         # Style Backup Status column (column 8)
         backup_cell = ws.cell(row=row, column=8)

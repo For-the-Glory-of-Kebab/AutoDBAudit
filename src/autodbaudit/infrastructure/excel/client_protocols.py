@@ -7,6 +7,11 @@ Uses ServerGroupMixin for server/instance grouping.
 Discrepancy Logic:
 - Acceptable: Shared Memory + TCP/IP (enabled by default for network connectivity)
 - Discrepant: Named Pipes, VIA, or other protocols (need justification if enabled)
+
+
+UUID Support (v3):
+    - Column A: Hidden UUID for stable row identification
+    - All other columns shifted +1 from original positions
 """
 
 from __future__ import annotations
@@ -94,7 +99,7 @@ class ClientProtocolSheetMixin(ServerGroupMixin, BaseSheetMixin):
             notes: Additional notes about configuration
         """
         if self._client_protocol_sheet is None:
-            self._client_protocol_sheet = self._ensure_sheet(CLIENT_PROTOCOL_CONFIG)
+            self._client_protocol_sheet = self._ensure_sheet_with_uuid(CLIENT_PROTOCOL_CONFIG)
             self._init_grouping(self._client_protocol_sheet, CLIENT_PROTOCOL_CONFIG)
             self._add_protocol_dropdowns()
 
@@ -138,13 +143,13 @@ class ClientProtocolSheetMixin(ServerGroupMixin, BaseSheetMixin):
             "",  # Last Revised
         ]
 
-        row = self._write_row(ws, CLIENT_PROTOCOL_CONFIG, data)
+        row, row_uuid = self._write_row_with_uuid(ws, CLIENT_PROTOCOL_CONFIG, data)
 
         # Apply action indicator (column 1)
-        apply_action_needed_styling(ws.cell(row=row, column=1), needs_action)
+        apply_action_needed_styling(ws.cell(row=row, column=2), needs_action)
 
         # Apply row color to data columns
-        self._apply_row_color(row, row_color, data_cols=[2, 3, 4, 6, 8], ws=ws)
+        self._apply_row_color(row, row_color, data_cols=[3, 4, 5, 7, 9], ws=ws)
 
         # Style Enabled column (column 5)
         enabled_cell = ws.cell(row=row, column=5)
@@ -179,6 +184,7 @@ class ClientProtocolSheetMixin(ServerGroupMixin, BaseSheetMixin):
         """Finalize client protocols sheet - merge remaining groups."""
         if self._client_protocol_sheet:
             self._finalize_grouping(CLIENT_PROTOCOL_CONFIG.name)
+            self._finalize_sheet_with_uuid(self._client_protocol_sheet)
 
     def _add_protocol_dropdowns(self) -> None:
         """Add dropdown validations for choice columns."""
@@ -189,14 +195,14 @@ class ClientProtocolSheetMixin(ServerGroupMixin, BaseSheetMixin):
         )
 
         ws = self._client_protocol_sheet
-        # Enabled column (F) - column 6 (Action=A, Server=B, Instance=C, Protocol=D, Order=E)
+        # Enabled column (F) - column 6 (Action=B, Server=C, Instance=D, Protocol=E)
         add_dropdown_validation(ws, "F", ["✓ Yes", "✗ No"])
-        # Status column (H) - column 8 (after Enabled=F, Connection=G)
+        # Status column (H) - column 8
         add_dropdown_validation(
             ws,
             "H",
             ["✅ Compliant", "✅ Disabled", "⚠️ Needs Review", "ℹ️ Disabled", "—"],
         )
-        # Review Status column (I) - column 9
-        add_dropdown_validation(ws, "I", STATUS_VALUES.all())
-        add_review_status_conditional_formatting(ws, "I")
+        # Review Status column (J) - column 10 (Notes=I)
+        add_dropdown_validation(ws, "J", STATUS_VALUES.all())
+        add_review_status_conditional_formatting(ws, "J")

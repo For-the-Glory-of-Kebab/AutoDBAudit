@@ -3,6 +3,11 @@ Configuration Sheet Module.
 
 Handles the Configuration worksheet for sp_configure security settings.
 Uses ServerGroupMixin for server/instance grouping.
+
+
+UUID Support (v3):
+    - Column A: Hidden UUID for stable row identification
+    - All other columns shifted +1 from original positions
 """
 
 from __future__ import annotations
@@ -60,7 +65,7 @@ class ConfigSheetMixin(ServerGroupMixin, BaseSheetMixin):
     ) -> None:
         """Add a configuration setting row."""
         if self._config_sheet is None:
-            self._config_sheet = self._ensure_sheet(CONFIG_CONFIG)
+            self._config_sheet = self._ensure_sheet_with_uuid(CONFIG_CONFIG)
             self._init_grouping(self._config_sheet, CONFIG_CONFIG)
             self._add_config_dropdowns()
 
@@ -88,14 +93,14 @@ class ConfigSheetMixin(ServerGroupMixin, BaseSheetMixin):
             "",  # Exception Reason
         ]
 
-        row = self._write_row(ws, CONFIG_CONFIG, data)
+        row, row_uuid = self._write_row_with_uuid(ws, CONFIG_CONFIG, data)
 
         # Apply action indicator (column A) - show ⏳ for FAIL items
         needs_action = status != "pass"
-        apply_action_needed_styling(ws.cell(row=row, column=1), needs_action)
+        apply_action_needed_styling(ws.cell(row=row, column=2), needs_action)
 
         # Apply row color to data columns (shifted +1: Server=2, Instance=3, Setting=4, etc.)
-        self._apply_row_color(row, row_color, data_cols=[2, 3, 4, 5, 6], ws=ws)
+        self._apply_row_color(row, row_color, data_cols=[3, 4, 5, 6, 7], ws=ws)
 
         # Apply status styling (Status is now column 7, shifted +1)
         apply_status_styling(ws.cell(row=row, column=7), status)
@@ -110,6 +115,8 @@ class ConfigSheetMixin(ServerGroupMixin, BaseSheetMixin):
         """Finalize config sheet - merge remaining groups."""
         if self._config_sheet:
             self._finalize_grouping(CONFIG_CONFIG.name)
+            self._finalize_sheet_with_uuid(self._config_sheet)
+
 
     def _add_config_dropdowns(self) -> None:
         """Add dropdown validations for status columns."""
@@ -119,9 +126,9 @@ class ConfigSheetMixin(ServerGroupMixin, BaseSheetMixin):
 
         ws = self._config_sheet
         # Status column (G) - column 7 (shifted +1 from F)
-        add_dropdown_validation(ws, "G", ["✅ PASS", "❌ FAIL"])
+        add_dropdown_validation(ws, "H", ["✅ PASS", "❌ FAIL"])
         # Risk column (H) - column 8 (shifted +1 from G)
-        add_dropdown_validation(ws, "H", ["Critical", "High", "Medium", "Low"])
+        add_dropdown_validation(ws, "I", ["Critical", "High", "Medium", "Low"])
         # Review Status column (I) - column 9
-        add_dropdown_validation(ws, "I", STATUS_VALUES.all())
-        add_review_status_conditional_formatting(ws, "I")
+        add_dropdown_validation(ws, "J", STATUS_VALUES.all())
+        add_review_status_conditional_formatting(ws, "J")

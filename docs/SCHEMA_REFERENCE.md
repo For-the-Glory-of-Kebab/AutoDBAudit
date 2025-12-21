@@ -182,6 +182,75 @@ These store raw audit data for reference:
 
 ---
 
+## Row UUID Tables (Schema v3)
+
+> [!IMPORTANT]
+> Row UUID provides stable identifiers for Excel ↔ SQLite synchronization.
+> Added in schema v3 to fix entity_key matching issues.
+
+### Excel Column A: `_UUID`
+
+Every data sheet has a hidden, locked Column A containing an 8-character hex UUID:
+
+| Property | Value |
+|----------|-------|
+| Column | A (always first) |
+| Format | 8-char hex (e.g., `A7F3B2C1`) |
+| Width | 0 (hidden) |
+| Protection | Locked (user cannot edit) |
+| Immutable | Never changes after creation |
+
+### `row_annotations` (v3)
+
+Primary table for annotation storage using stable UUID.
+
+```sql
+CREATE TABLE row_annotations (
+    id INTEGER PRIMARY KEY,
+    row_uuid TEXT UNIQUE NOT NULL,       -- 8-char hex from Excel Column A
+    sheet_name TEXT NOT NULL,            -- 'Linked Servers', 'Logins', etc.
+    entity_type TEXT NOT NULL,           -- 'linked_server', 'login', etc.
+    entity_key TEXT,                     -- Legacy reference (display only)
+    
+    status TEXT DEFAULT 'active',        -- 'active', 'resolved', 'orphaned'
+    first_seen_at TEXT NOT NULL,
+    last_seen_at TEXT,
+    resolved_at TEXT,
+    
+    purpose TEXT,                        -- User annotation
+    notes TEXT,                          -- User annotation
+    justification TEXT,                  -- Exception reason
+    review_status TEXT,                  -- '✓ Exception', '⏳ Needs Review'
+    last_reviewed TEXT,                  -- Date last reviewed
+    
+    created_at TEXT NOT NULL,
+    modified_at TEXT
+);
+```
+
+**Status values:**
+- `active`: Row exists in current Excel
+- `resolved`: Row was removed (issue fixed)
+- `orphaned`: Row no longer in Excel but kept for history
+
+### `row_annotation_history` (v3)
+
+Tracks changes to annotations per UUID.
+
+```sql
+CREATE TABLE row_annotation_history (
+    id INTEGER PRIMARY KEY,
+    row_uuid TEXT NOT NULL,
+    field_name TEXT NOT NULL,
+    old_value TEXT,
+    new_value TEXT,
+    changed_at TEXT NOT NULL,
+    sync_run_id INTEGER REFERENCES audit_runs(id)
+);
+```
+
+---
+
 ## Relationships
 
 ```
@@ -193,12 +262,14 @@ audit_runs (1) ─────┬───── (N) findings
 
 servers (1) ───── (N) instances (1) ───── (N) findings
 
-annotations ───── (N) annotation_history
+row_annotations (row_uuid) ───── (N) row_annotation_history
 ```
 
 ---
 
-## Helper Functions (schema.py)
+## Helper Functions
+
+### schema.py (v2)
 
 | Function | Purpose |
 |----------|---------|
@@ -208,6 +279,17 @@ annotations ───── (N) annotation_history
 | `upsert_annotation()` | Insert/update annotation |
 | `get_annotations_for_entity()` | Get all notes for an entity |
 
+### row_uuid_schema.py (v3)
+
+| Function | Purpose |
+|----------|---------|
+| `migrate_to_v3()` | Migrate DB to v3 schema |
+| `get_row_annotation()` | Get annotation by UUID |
+| `upsert_row_annotation()` | Insert/update by UUID |
+| `get_all_row_annotations()` | Get all for a sheet |
+| `mark_row_resolved()` | Mark UUID as resolved |
+| `mark_rows_orphaned_if_missing()` | Detect deleted rows |
+
 ---
 
-*Document Version: 1.0 | Last Updated: 2025-12-09*
+*Document Version: 2.0 | Last Updated: 2025-12-21 (Row UUID support)*

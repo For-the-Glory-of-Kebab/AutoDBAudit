@@ -9,8 +9,15 @@ This document provides a **strict and precise definition** of all worksheets and
 *   **INT**: Integer numbers.
 *   **SIZE**: Data size (formatted as MB/GB).
 *   **DATE**: Date/Time strings.
-*   **ACTION**: Special visual indicator (⏳/✅). *Usually Column A*.
+*   **ACTION**: Special visual indicator (⏳/✅). *Usually Column B*.
 *   **MANUAL**: Gray background column intended for user input.
+
+> [!IMPORTANT]
+> **UUID Column (v3)**: Every data sheet has a hidden **Column A** containing an 8-character hex UUID.
+> - This column is **hidden** (width=0) and **locked** (user cannot edit)
+> - UUID provides stable row identification for Excel ↔ SQLite synchronization
+> - Column letters in this document reflect the visible columns (starting at B)
+> - If viewing hidden columns in Excel, all indices shift +1
 
 ---
 

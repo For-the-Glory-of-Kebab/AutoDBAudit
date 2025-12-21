@@ -4,6 +4,11 @@ Databases Sheet Module.
 Handles the Databases worksheet for database properties audit.
 Uses ServerGroupMixin for server/instance grouping.
 Enhanced with visual icons for State and Recovery Model.
+
+
+UUID Support (v3):
+    - Column A: Hidden UUID for stable row identification
+    - All other columns shifted +1 from original positions
 """
 
 from __future__ import annotations
@@ -73,7 +78,7 @@ class DatabaseSheetMixin(ServerGroupMixin, BaseSheetMixin):
     ) -> None:
         """Add a database row."""
         if self._database_sheet is None:
-            self._database_sheet = self._ensure_sheet(DATABASE_CONFIG)
+            self._database_sheet = self._ensure_sheet_with_uuid(DATABASE_CONFIG)
             self._init_grouping(self._database_sheet, DATABASE_CONFIG)
             self._add_database_dropdowns()
         
@@ -102,13 +107,13 @@ class DatabaseSheetMixin(ServerGroupMixin, BaseSheetMixin):
             "",    # Notes
         ]
         
-        row = self._write_row(ws, DATABASE_CONFIG, data)
+        row, row_uuid = self._write_row_with_uuid(ws, DATABASE_CONFIG, data)
         
         # Apply action indicator (column 1)
-        apply_action_needed_styling(ws.cell(row=row, column=1), needs_action)
+        apply_action_needed_styling(ws.cell(row=row, column=2), needs_action)
         
         # Apply row color to data columns (shifted +1 for action column)
-        self._apply_row_color(row, row_color, data_cols=[2, 3, 4, 5, 8, 9], ws=ws)
+        self._apply_row_color(row, row_color, data_cols=[3, 4, 5, 6, 9, 10], ws=ws)
         
         # Style Recovery Model column (column 6, shifted +1)
         recovery_cell = ws.cell(row=row, column=6)
@@ -168,6 +173,7 @@ class DatabaseSheetMixin(ServerGroupMixin, BaseSheetMixin):
         """Finalize databases sheet - merge remaining groups."""
         if self._database_sheet:
             self._finalize_grouping(DATABASE_CONFIG.name)
+            self._finalize_sheet_with_uuid(self._database_sheet)
     
     def _add_database_dropdowns(self) -> None:
         """Add dropdown validations for status columns."""
@@ -185,3 +191,4 @@ class DatabaseSheetMixin(ServerGroupMixin, BaseSheetMixin):
         # Review Status column (K) - column 11
         add_dropdown_validation(ws, "K", STATUS_VALUES.all())
         add_review_status_conditional_formatting(ws, "K")
+

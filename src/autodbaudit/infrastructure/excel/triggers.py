@@ -6,6 +6,11 @@ Uses ServerGroupMixin for server/instance grouping.
 
 Per db-requirements.md Req 12: Triggers at all levels (server, database)
 should be reviewed periodically.
+
+
+UUID Support (v3):
+    - Column A: Hidden UUID for stable row identification
+    - All other columns shifted +1 from original positions
 """
 
 from __future__ import annotations
@@ -79,7 +84,7 @@ class TriggerSheetMixin(ServerGroupMixin, BaseSheetMixin):
             database_name: Database containing the trigger (required for DATABASE scope)
         """
         if self._trigger_sheet is None:
-            self._trigger_sheet = self._ensure_sheet(TRIGGER_CONFIG)
+            self._trigger_sheet = self._ensure_sheet_with_uuid(TRIGGER_CONFIG)
             self._init_grouping(self._trigger_sheet, TRIGGER_CONFIG)
             self._add_trigger_dropdowns()
 
@@ -113,13 +118,13 @@ class TriggerSheetMixin(ServerGroupMixin, BaseSheetMixin):
             "",  # Last Revised (column L = 12)
         ]
 
-        row = self._write_row(ws, TRIGGER_CONFIG, data)
+        row, row_uuid = self._write_row_with_uuid(ws, TRIGGER_CONFIG, data)
 
         # Apply action indicator
-        apply_action_needed_styling(ws.cell(row=row, column=1), needs_action)
+        apply_action_needed_styling(ws.cell(row=row, column=2), needs_action)
 
         # Apply row color to data columns (shifted +1 for action column)
-        self._apply_row_color(row, row_color, data_cols=[2, 3, 4, 5, 6, 7], ws=ws)
+        self._apply_row_color(row, row_color, data_cols=[3, 4, 5, 6, 7, 8], ws=ws)
 
         # Style Enabled column (column 8, shifted +1)
         apply_boolean_styling(ws.cell(row=row, column=8), is_enabled)
@@ -133,6 +138,7 @@ class TriggerSheetMixin(ServerGroupMixin, BaseSheetMixin):
         """Finalize triggers sheet - merge remaining groups."""
         if self._trigger_sheet:
             self._finalize_grouping(TRIGGER_CONFIG.name)
+            self._finalize_sheet_with_uuid(self._trigger_sheet)
 
     def _add_trigger_dropdowns(self) -> None:
         """Add dropdown validations for status columns."""
@@ -144,9 +150,9 @@ class TriggerSheetMixin(ServerGroupMixin, BaseSheetMixin):
 
         ws = self._trigger_sheet
         # Scope column (D) - column 4
-        add_dropdown_validation(ws, "D", ["SERVER", "DATABASE"])
+        add_dropdown_validation(ws, "E", ["SERVER", "DATABASE"])
         # Enabled column (H) - column 8
-        add_dropdown_validation(ws, "H", ["✓", "✗"])
+        add_dropdown_validation(ws, "I", ["✓", "✗"])
         # Review Status column (I) - column 9
-        add_dropdown_validation(ws, "I", STATUS_VALUES.all())
-        add_review_status_conditional_formatting(ws, "I")
+        add_dropdown_validation(ws, "J", STATUS_VALUES.all())
+        add_review_status_conditional_formatting(ws, "J")

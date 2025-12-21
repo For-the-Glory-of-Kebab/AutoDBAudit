@@ -4,6 +4,11 @@ Database Roles Sheet Module.
 Handles the Database Roles worksheet for per-database role membership audit.
 Uses ServerGroupMixin for server/instance grouping.
 Enhanced with visual icons for sensitive roles.
+
+
+UUID Support (v3):
+    - Column A: Hidden UUID for stable row identification
+    - All other columns shifted +1 from original positions
 """
 
 from __future__ import annotations
@@ -82,7 +87,7 @@ class DBRoleSheetMixin(ServerGroupMixin, BaseSheetMixin):
     ) -> None:
         """Add a database role membership row with risk assessment."""
         if self._db_role_sheet is None:
-            self._db_role_sheet = self._ensure_sheet(DB_ROLE_CONFIG)
+            self._db_role_sheet = self._ensure_sheet_with_uuid(DB_ROLE_CONFIG)
             self._init_grouping(self._db_role_sheet, DB_ROLE_CONFIG)
             self._add_db_role_dropdowns()
         
@@ -139,13 +144,13 @@ class DBRoleSheetMixin(ServerGroupMixin, BaseSheetMixin):
             "",    # Justification
         ]
         
-        row = self._write_row(ws, DB_ROLE_CONFIG, data)
+        row, row_uuid = self._write_row_with_uuid(ws, DB_ROLE_CONFIG, data)
         
         # Apply action indicator (column 1)
-        apply_action_needed_styling(ws.cell(row=row, column=1), needs_action)
+        apply_action_needed_styling(ws.cell(row=row, column=2), needs_action)
         
         # Apply row color to data columns (shifted +1 for action column)
-        self._apply_row_color(row, row_color, data_cols=[2, 3, 4, 6, 7], ws=ws)
+        self._apply_row_color(row, row_color, data_cols=[3, 4, 5, 7, 8], ws=ws)
         
         # Style Role column (column 5) based on risk
         role_cell = ws.cell(row=row, column=5)
@@ -178,6 +183,7 @@ class DBRoleSheetMixin(ServerGroupMixin, BaseSheetMixin):
         """Finalize db roles sheet - merge remaining groups."""
         if self._db_role_sheet:
             self._finalize_grouping(DB_ROLE_CONFIG.name)
+            self._finalize_sheet_with_uuid(self._db_role_sheet)
     
     def _add_db_role_dropdowns(self) -> None:
         """Add dropdown validations for role/status columns."""
@@ -187,16 +193,17 @@ class DBRoleSheetMixin(ServerGroupMixin, BaseSheetMixin):
         
         ws = self._db_role_sheet
         # Role column (E) - column 5 (Action=A, Server=B, Instance=C, DB=D)
-        add_dropdown_validation(ws, "E", [
+        add_dropdown_validation(ws, "F", [
             "👑 db_owner", "⚙️ db_securityadmin", "⚙️ db_accessadmin",
             "⚙️ db_backupoperator", "⚙️ db_ddladmin",
             "📖 db_datareader", "✏️ db_datawriter",
             "db_denydatareader", "db_denydatawriter", "public", "(Custom)"
         ])
         # Member Type column (G) - column 7 (after Role=E, Member=F)
-        add_dropdown_validation(ws, "G", ["🪟 Windows", "🔑 SQL", "📦 Role"])
+        add_dropdown_validation(ws, "H", ["🪟 Windows", "🔑 SQL", "📦 Role"])
         # Risk column (H) - column 8
-        add_dropdown_validation(ws, "H", ["🔴 High", "🟡 Medium", "🟢 Low", "—"])
+        add_dropdown_validation(ws, "I", ["🔴 High", "🟡 Medium", "🟢 Low", "—"])
         # Review Status column (I) - column 9
-        add_dropdown_validation(ws, "I", STATUS_VALUES.all())
-        add_review_status_conditional_formatting(ws, "I")
+        add_dropdown_validation(ws, "J", STATUS_VALUES.all())
+        add_review_status_conditional_formatting(ws, "J")
+
