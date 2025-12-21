@@ -72,41 +72,94 @@ class InfrastructureCollector(BaseCollector):
             return 0
 
     def _collect_linked_servers(self) -> int:
-        """Collect linked servers."""
+        """Collect linked servers with login mappings."""
         try:
+            # Get linked server base info
             linked = self.conn.execute_query(self.prov.get_linked_servers())
+            
+            # Get linked server login mappings (contains risk_level!)
+            logins = self.conn.execute_query(self.prov.get_linked_server_logins())
+            
+            # Build lookup: linked_server_name -> list of login mappings
+            login_map: dict[str, list[dict]] = {}
+            for lg in logins:
+                ls_name = lg.get("LinkedServerName", "")
+                if ls_name:
+                    if ls_name not in login_map:
+                        login_map[ls_name] = []
+                    login_map[ls_name].append(lg)
+            
+            count = 0
             for ls in linked:
-                srv_name = ls.get("ServerName", "")
-                provider = ls.get("ProviderName", "")
-                product = ls.get("ProductName", "")
-                # Unused in current Excel report spec:
-                # is_remote_login_enabled = bool(ls.get("IsRemoteLoginEnabled"))
-                is_rpc_out_enabled = bool(ls.get("IsRpcOutEnabled"))
-                # is_data_access_enabled = bool(ls.get("IsDataAccessEnabled"))
-
-                # Data extraction
-                # Data extraction
-                self.writer.add_linked_server(
-                    server_name=self.ctx.server_name,
-                    instance_name=self.ctx.instance_name,
-                    linked_server_name=srv_name,
-                    product=product,
-                    provider=provider,
-                    data_source=ls.get("DataSource", ""),
-                    rpc_out=is_rpc_out_enabled,
-                )
-
-                # Security check
-                if is_rpc_out_enabled:
-                    self.save_finding(
-                        finding_type="linked_server",
-                        entity_name=srv_name,
-                        status="WARN",
-                        risk_level="medium",
-                        description=f"Linked server '{srv_name}' has RPC Out enabled",
-                        recommendation="Disable RPC Out unless required",
+                # FIXED: Query returns LinkedServerName, not ServerName
+                ls_name = ls.get("LinkedServerName", "")
+                # FIXED: Query returns Provider and Product, not ProviderName/ProductName
+                provider = ls.get("Provider", "")
+                product = ls.get("Product", "")
+                data_source = ls.get("DataSource", "")
+                is_rpc_out_enabled = bool(ls.get("RpcOutEnabled"))
+                
+                # Get login mappings for this linked server
+                mappings = login_map.get(ls_name, [])
+                
+                if mappings:
+                    # One row per login mapping (can be multiple per linked server)
+                    for mapping in mappings:
+                        local_login = mapping.get("LocalLogin", "")
+                        remote_login = mapping.get("RemoteLogin", "")
+                        impersonate = bool(mapping.get("Impersonate"))
+                        risk_level = mapping.get("RiskLevel", "")
+                        
+                        self.writer.add_linked_server(
+                            server_name=self.ctx.server_name,
+                            instance_name=self.ctx.instance_name,
+                            linked_server_name=ls_name,
+                            product=product,
+                            provider=provider,
+                            data_source=data_source,
+                            rpc_out=is_rpc_out_enabled,
+                            local_login=local_login,
+                            remote_login=remote_login,
+                            impersonate=impersonate,
+                            risk_level=risk_level,
+                        )
+                        count += 1
+                        
+                        # Security check: High privilege = discrepant
+                        if risk_level == "HIGH_PRIVILEGE":
+                            self.save_finding(
+                                finding_type="linked_server",
+                                entity_name=f"{ls_name}|{local_login}|{remote_login}",
+                                status="FAIL",
+                                risk_level="high",
+                                description=f"Linked server '{ls_name}' uses high-privilege remote login '{remote_login}'",
+                                recommendation="Use least-privilege credentials for linked server connections",
+                            )
+                else:
+                    # No login mappings - still add the linked server
+                    self.writer.add_linked_server(
+                        server_name=self.ctx.server_name,
+                        instance_name=self.ctx.instance_name,
+                        linked_server_name=ls_name,
+                        product=product,
+                        provider=provider,
+                        data_source=data_source,
+                        rpc_out=is_rpc_out_enabled,
                     )
-            return len(linked)
+                    count += 1
+                    
+                    # Warn if RPC Out is enabled (less critical than high-priv creds)
+                    if is_rpc_out_enabled:
+                        self.save_finding(
+                            finding_type="linked_server",
+                            entity_name=ls_name,
+                            status="WARN",
+                            risk_level="medium",
+                            description=f"Linked server '{ls_name}' has RPC Out enabled",
+                            recommendation="Disable RPC Out unless required",
+                        )
+            
+            return count
         except Exception as e:
             logger.warning("Linked servers failed: %s", e)
             return 0

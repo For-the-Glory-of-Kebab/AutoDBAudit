@@ -1,0 +1,34 @@
+STDOUT:
+Linked Servers config:
+  entity_type: linked_server
+  key_cols: ['Server', 'Instance', 'Linked Server', 'Local Login', 'Remote Login']
+  editable_cols: {'Review Status': 'review_status', 'Purpose': 'purpose', 'Justification': 'justification', 'Last Reviewed': 'last_reviewed'}
+
+=== READING FROM EXCEL ===
+
+Found 0 total annotations
+Found 0 Linked Server annotations:
+
+
+=== LOADING FROM DB ===
+Found 3 Linked Server annotations in DB:
+
+Key: 'linked_server|localhost|:1434|||'
+  purpose: 'p2'
+
+Key: 'linked_server|localhost|intheend|||'
+  purpose: 'p8'
+
+Key: 'linked_server|localhost|legacy|||'
+
+
+=== KEY COMPARISON ===
+Excel-only keys: set()
+DB-only keys: {'linked_server|localhost|intheend|||', 'linked_server|localhost|:1434|||', 'linked_server|localhost|legacy|||'}
+Common keys: 0
+
+
+STDERR:
+INFO:autodbaudit.application.annotation_sync:AnnotationSyncService initialized
+WARNING:autodbaudit.application.annotation_sync:Excel file not found: output\Audit_Latest.xlsx
+INFO:autodbaudit.application.annotation_sync:Loaded 522 annotation entries from database

@@ -275,7 +275,7 @@ class ExceptionInfo:
         An exception is valid if it has justification OR
         the review status is set to "Exception".
         """
-        return self.has_justification or self.review_status == "Exception"
+        return self.has_justification or (self.review_status is not None and "Exception" in str(self.review_status))
 
 
 @dataclass

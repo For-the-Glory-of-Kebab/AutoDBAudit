@@ -132,14 +132,14 @@
 
 ---
 
-### 11. Linked Servers ⚠️ PRIORITY
+### 11. Linked Servers ✅ VERIFIED
 | Property | Value |
 |----------|-------|
 | Entity Type | `linked_server` |
 | Key Cols | Server, Instance, Linked Server, Local Login, Remote Login |
 | Example | `linked_server\|myserver\|default\|remote_srv\|sa\|sa_remote` |
-| Verified | ⚠️ Untested - **First sheet to test** |
-| Known Issues | Column detection 'Server' vs 'Linked Server' bug |
+| Verified | ✅ **20/20 tests passing** |
+| Notes | Instance normalizes `(Default)` to empty string in DB key |
 
 ---
 

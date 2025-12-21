@@ -320,7 +320,8 @@ def is_exception_eligible(
         return False
     
     # Must have exception documentation
-    has_exception_status = review_status == "Exception"
+    # Note: review_status may include emoji prefix like "✓ Exception"
+    has_exception_status = review_status is not None and "Exception" in str(review_status)
     return has_justification or has_exception_status
 
 
@@ -344,7 +345,8 @@ def should_clear_exception_status(
         True if review_status should be cleared
     """
     if status is None or status == FindingStatus.PASS:
-        if review_status == "Exception":
+        # Note: review_status may include emoji prefix like "✓ Exception"
+        if review_status is not None and "Exception" in str(review_status):
             return True
     return False
 

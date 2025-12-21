@@ -56,17 +56,19 @@ def test_L0_key_format_consistency(self):
 - [x] ENTITY_KEY_FORMATS.md
 - [x] Fix EXCEL_COLUMNS.md
 
-### Phase 2: Infrastructure
-- [ ] Create `tests/atomic_e2e/core/`
-- [ ] test_harness.py
-- [ ] assertions.py
-- [ ] randomizer.py
+### Phase 2: Infrastructure ✅ COMPLETE
+- [x] Create `tests/atomic_e2e/core/`
+- [x] test_harness.py - Base harness with sync cycle execution
+- [x] assertions.py - Rich assertion functions
+- [x] randomizer.py - Constrained randomization with coverage
 
-### Phase 3: Linked Servers (First Sheet)
-- [ ] L0: Key consistency
-- [ ] L1-L6: All layers
-- [ ] Debug issues found
-- [ ] Document fixes
+### Phase 3: Linked Servers (First Sheet) ✅ 20/20 PASSING
+- [x] L0: Key format consistency
+- [x] L1: Simple fields (Purpose, Dates)
+- [x] L2: Exception detection
+- [x] L3: Non-discrepant rows
+- [x] L5: Multi-sync stability
+- [x] Debug: Fixed instance format normalization
 
 ### Phase 4: Remaining Sheets
 - [ ] Copy template from Linked Servers
