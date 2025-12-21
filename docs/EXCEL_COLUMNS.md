@@ -298,15 +298,17 @@ This document provides a **strict and precise definition** of all worksheets and
 | B | Server | TEXT | Server Name. |
 | C | Instance | TEXT | Instance Name. |
 | D | Linked Server | TEXT | Linked Server Name. |
-| E | Product | TEXT | Product Name (SQL Server, Oracle, etc). |
-| F | Provider | TEXT | Provider String. |
-| G | Remote Login | BOOL | `✓ User` (Mapped) / `✗ SQL User` (Static). |
-| H | RPC Out | BOOL | `✓` / `✗`. |
-| I | Data Access | BOOL | `✓` / `✗`. |
-| J | Status | STATUS | `✅ Secure` / `❌ Insecure Credentials`. |
-| K | Review Status | STATUS | User review dropdown. |
-| L | Justification | MANUAL | Justification. |
-| M | Last Reviewed | DATE | Date of review. |
+| E | Provider | TEXT | Provider String. |
+| F | Data Source | TEXT | Connection data source. |
+| G | RPC Out | BOOL | `✓ Yes` / `✗ No`. |
+| H | Local Login | TEXT | Local login for mapping. |
+| I | Remote Login | TEXT | Remote login for mapping. |
+| J | Impersonate | BOOL | `✓ Yes` / `✗ No`. |
+| K | Risk | STATUS | `🔴 High` / `🟢 Normal`. |
+| L | Review Status | STATUS | User review dropdown. |
+| M | Purpose | MANUAL | Purpose/reason for linked server. |
+| N | Justification | MANUAL | Justification for exception. |
+| O | Last Reviewed | DATE | Date of review. |
 
 ---
 
