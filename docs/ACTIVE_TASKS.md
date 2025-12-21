@@ -1,53 +1,51 @@
-# AutoDBAudit Active Tasks
+# Active Tasks
 
-## Current Focus: Row UUID Architecture
-
-### Commit Ready: UUID Infrastructure Complete ✅
-
-**What's Done:**
-- ✅ **Core Infrastructure** - `row_uuid.py`, `row_uuid_schema.py`
-- ✅ **Base Methods** - `_ensure_sheet_with_uuid()`, `_write_row_with_uuid()`, `_finalize_sheet_with_uuid()`
-- ✅ **All 18 Sheet Modules** - Migrated to UUID-aware methods
-- ✅ **Protection Fixed** - Only UUID column locked, all others editable
-- ✅ **Documentation** - `SCHEMA_REFERENCE.md`, `EXCEL_COLUMNS.md` updated
-
-**What's NOT Done (Phase 4-5):**
-- ⏳ `annotation_sync.py` - Still uses entity_key for matching
-- ⏳ `stats_service.py` - Still uses entity_key for exception lookup
-- ⏳ E2E testing - Only Linked Servers tested, other sheets pending
+**Last Updated:** 2025-12-21 23:00
 
 ---
 
-## Test Results
+## 🚨 Priority 1: Linked Servers Comprehensive Test
 
-```
-=== Module Imports ===
-18/18 Excel modules: PASS ✓
+**Status:** Not Started  
+**Goal:** Create exhaustive test suite for ONE sheet before expanding to all
 
-=== Atomic E2E Tests ===
-20/20 Linked Servers tests: PASS ✓
+### Test Categories Needed:
 
-=== Protection Test ===
-Column A: locked=True (UUID)
-Column B+: locked=False (editable)
-```
+1. **Exception Lifecycle**
+   - [ ] Add exception → verify CLI/Actions/Excel
+   - [ ] Update exception → verify CLI/Actions  
+   - [ ] Remove exception → verify reversion
+
+2. **Stats Accuracy**
+   - [ ] Exception count in compliance state
+   - [ ] Recent activity counts
+   - [ ] Baseline comparison
+
+3. **Actions Sheet**
+   - [ ] No duplicates
+   - [ ] Correct entity types
+   - [ ] Correct descriptions
+
+4. **Multi-Sync Stability**
+   - [ ] Persistence across syncs
+   - [ ] No data loss/corruption
+
+### Files to Create:
+- `tests/test_linked_servers_comprehensive.py`
 
 ---
 
-## Next: Fix Linked Servers Sheet Issues
+## ✅ Completed This Session
 
-Per original plan, work sheet-by-sheet:
-1. **Fix Linked Server sheet E2E issues** (if any remaining)
-2. Move to next sheet
-3. Update annotation_sync to use UUID (Phase 4)
+- [x] Fix "No recent changes detected" in CLI
+- [x] Fix duplicate actions (8 → 4)
+- [x] All 16 E2E tests passing
+- [x] Documentation updated
 
 ---
 
-## Files Changed
+## 📝 Notes
 
-| Category | Files |
-|----------|-------|
-| **NEW** | `row_uuid.py`, `row_uuid_schema.py` |
-| **Core** | `base.py`, `__init__.py`, `server_group.py` |
-| **Sheets** | All 18 sheet modules |
-| **Docs** | `SCHEMA_REFERENCE.md`, `EXCEL_COLUMNS.md` |
+- Linked Servers sheet NOT manually verified yet
+- Use Linked Servers as template for all other sheets
+- Focus on comprehensive single-sheet testing first

@@ -124,6 +124,17 @@ class SyncService:
 
         logger.info("Sync: baseline run ID = %d", initial_run_id)
 
+        # Check if Excel file is locked (open in Excel)
+        if input_excel and input_excel.exists():
+            try:
+                with open(input_excel, "r+b"):
+                    pass  # File is not locked
+            except PermissionError:
+                msg = f"Excel file is open: {input_excel.name}. Please close it and retry."
+                logger.error(msg)
+                print(f"\n{RED}⛔ {msg}{RESET}")
+                return {"error": "Excel file is locked"}
+
         # ─────────────────────────────────────────────────────────────
         # PHASE 2: Read Annotations from Excel
         # ─────────────────────────────────────────────────────────────

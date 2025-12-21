@@ -189,17 +189,21 @@ class StatsService:
             # Since we can't do that yet without schema change, we might need to skip doc diffs
             # OR rely on Action Log 'update_annotation' events if we had them.
 
-            # WORKAROUND: For now, we only track exceptions via findings diff.
-            # Doc changes will be 0 until we have versioned annotations.
+            # WORKAROUND: Use Actions recorded this sync for exception counts
+            # instead of broken annotation diff (which uses same annotations for both)
             recent_diff = self._diff_findings(
                 old_findings=prev_findings,
                 new_findings=current_findings,
-                old_annotations=annotations,  # Limitation: using current
+                old_annotations=annotations,
                 new_annotations=annotations,
                 valid_instances=valid_instances,
             )
         else:
             recent_diff = baseline_diff
+
+        # Get exception counts from RECORDED ACTIONS (the correct source)
+        # This fixes the "No recent documentation changes detected" issue
+        action_counts = self._count_recent_actions(baseline_run_id, current_run_id)
 
         return SyncStats(
             total_findings=len(current_findings),
@@ -213,14 +217,78 @@ class StatsService:
             fixed_since_last=recent_diff.fixed,
             regressions_since_last=recent_diff.regressions,
             new_issues_since_last=recent_diff.new_issues,
-            exceptions_added_since_last=recent_diff.exceptions_added,
-            exceptions_removed_since_last=recent_diff.exceptions_removed,
-            exceptions_updated_since_last=recent_diff.exceptions_updated,
-            docs_added_since_last=recent_diff.docs_added,
-            docs_updated_since_last=recent_diff.docs_updated,
-            docs_removed_since_last=recent_diff.docs_removed,
-            sheet_stats=recent_diff.sheet_stats,  # Propagate per-sheet stats
+            # Use action log counts instead of broken diff counts
+            exceptions_added_since_last=action_counts.get("exceptions_added", 0),
+            exceptions_removed_since_last=action_counts.get("exceptions_removed", 0),
+            exceptions_updated_since_last=action_counts.get("exceptions_updated", 0),
+            docs_added_since_last=action_counts.get("docs_added", 0),
+            docs_updated_since_last=action_counts.get("docs_updated", 0),
+            docs_removed_since_last=action_counts.get("docs_removed", 0),
+            sheet_stats=recent_diff.sheet_stats,
         )
+
+    def _count_recent_actions(
+        self,
+        initial_run_id: int,
+        current_run_id: int,
+    ) -> dict[str, int]:
+        """
+        Count recent actions from the action log.
+
+        This uses the actual recorded actions instead of trying to diff
+        annotations (which are not versioned and thus always appear identical).
+
+        Args:
+            initial_run_id: Baseline run ID
+            current_run_id: Current sync run ID
+
+        Returns:
+            Dict with counts: exceptions_added, exceptions_removed, etc.
+        """
+        counts = {
+            "exceptions_added": 0,
+            "exceptions_removed": 0,
+            "exceptions_updated": 0,
+            "docs_added": 0,
+            "docs_updated": 0,
+            "docs_removed": 0,
+        }
+
+        # Get actions for this baseline, filter by current sync run
+        if not hasattr(self.findings, "get_actions_for_run"):
+            return counts
+
+        try:
+            all_actions = self.findings.get_actions_for_run(initial_run_id)
+        except Exception:
+            return counts
+
+        # Filter to actions recorded in this sync run
+        for action in all_actions:
+            if action.get("sync_run_id") != current_run_id:
+                continue
+
+            action_type = action.get("action_type", "").lower()
+
+            # Map action types to counts
+            # Actual values: "Exception Documented", "Exception Removed", "Exception Updated"
+            # Also handle legacy: "exception_added", etc.
+            if "exception" in action_type:
+                if "documented" in action_type or "added" in action_type:
+                    counts["exceptions_added"] += 1
+                elif "removed" in action_type:
+                    counts["exceptions_removed"] += 1
+                elif "updated" in action_type:
+                    counts["exceptions_updated"] += 1
+            elif "doc" in action_type or "note" in action_type:
+                if "added" in action_type:
+                    counts["docs_added"] += 1
+                elif "removed" in action_type:
+                    counts["docs_removed"] += 1
+                elif "updated" in action_type:
+                    counts["docs_updated"] += 1
+
+        return counts
 
     def _count_active_issues(
         self,

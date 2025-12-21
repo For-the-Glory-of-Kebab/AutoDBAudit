@@ -35,44 +35,46 @@ def detect_all_actions(
 ) -> list[DetectedChange]:
     """
     Consolidate all detected actions from various sources.
-    
+
     This is the main entry point for action detection.
     It combines findings changes, exception changes, and entity mutations
     into a single list of actions to record.
-    
+
     Args:
         findings_diff: Result from diff_findings()
         exception_changes: Changes detected by annotation sync
         entity_changes: Changes detected by entity diff
         detected_at: Timestamp for all actions (default: now)
-        
+
     Returns:
         List of DetectedChange objects ready for recording
     """
     detected_at = detected_at or datetime.now(timezone.utc)
     exception_changes = exception_changes or []
     entity_changes = entity_changes or []
-    
+
     all_actions: list[DetectedChange] = []
-    
-    # Add findings changes
+
+    # Add findings changes (fix/regression/new_issue)
     all_actions.extend(findings_diff.fixed)
     all_actions.extend(findings_diff.regressions)
     all_actions.extend(findings_diff.new_issues)
-    all_actions.extend(findings_diff.exception_changes)
-    
+    # NOTE: Don't add findings_diff.exception_changes here -
+    # annotation sync (exception_changes param) is the authoritative source
+    # Adding both would create duplicates with different key formats
+
     # Add external exception changes (from annotation sync)
     all_actions.extend(exception_changes)
-    
+
     # Add entity changes
     all_actions.extend(entity_changes)
-    
+
     # Update timestamps if not set
     for action in all_actions:
         if action.detected_at is None:
             # Create new dataclass with updated timestamp
-            object.__setattr__(action, 'detected_at', detected_at)
-    
+            object.__setattr__(action, "detected_at", detected_at)
+
     return all_actions
 
 
@@ -81,10 +83,10 @@ def consolidate_actions(
 ) -> list[DetectedChange]:
     """
     Consolidate actions for the same entity (priority resolution).
-    
+
     When multiple changes are detected for the same entity_key,
     apply priority rules to determine the final action.
-    
+
     Priority order:
     1. FIXED (highest)
     2. REGRESSION
@@ -93,10 +95,10 @@ def consolidate_actions(
     5. EXCEPTION_REMOVED
     6. ENTITY_* changes
     7. STILL_FAILING (lowest, usually not logged)
-    
+
     Args:
         actions: List of detected actions
-        
+
     Returns:
         Consolidated list with one action per entity_key
     """
@@ -107,7 +109,7 @@ def consolidate_actions(
         if key not in by_key:
             by_key[key] = []
         by_key[key].append(action)
-    
+
     # Resolve conflicts
     result: list[DetectedChange] = []
     for key, key_actions in by_key.items():
@@ -115,14 +117,11 @@ def consolidate_actions(
             result.append(key_actions[0])
         else:
             # Sort by priority (lower = higher priority)
-            sorted_actions = sorted(
-                key_actions,
-                key=lambda a: a.change_type.priority
-            )
+            sorted_actions = sorted(key_actions, key=lambda a: a.change_type.priority)
             # Take highest priority action
             winner = sorted_actions[0]
             result.append(winner)
-    
+
     return result
 
 
@@ -136,7 +135,7 @@ def create_exception_action(
 ) -> DetectedChange:
     """
     Create an exception change action.
-    
+
     Args:
         entity_key: The entity key
         justification: The justification text
@@ -144,13 +143,13 @@ def create_exception_action(
         server: Server name
         instance: Instance name
         entity_type: Explicit entity type (override derivation)
-        
+
     Returns:
         DetectedChange for the exception
     """
     # Derive entity type if not provided
     final_type = EntityType.CONFIGURATION
-    
+
     if entity_type:
         if isinstance(entity_type, EntityType):
             final_type = entity_type
@@ -160,7 +159,7 @@ def create_exception_action(
                 # Try explicit lookup first (e.g. "linked_server" -> "Linked Server")
                 # Normalize input to lowercase for mapping check
                 t_str = str(entity_type).lower()
-                
+
                 # Check known mappings (Sync config uses snake_case keys)
                 for e in EntityType:
                     if e.value.lower() == t_str or e.name.lower() == t_str:
@@ -184,7 +183,7 @@ def create_exception_action(
                     final_type = e
                     found = True
                     break
-            
+
             if not found:
                 # Fallback to map for legacy/special cases
                 type_map = {
@@ -205,17 +204,17 @@ def create_exception_action(
                     # Add more as needed
                 }
                 final_type = type_map.get(p0, EntityType.CONFIGURATION)
-    
+
     # Truncate justification for description
     truncated = justification[:50] + "..." if len(justification) > 50 else justification
-    
+
     if change_type == ChangeType.EXCEPTION_REMOVED:
         description = f"Exception Removed (was: {truncated})"
     elif change_type == ChangeType.EXCEPTION_UPDATED:
         description = f"Exception Updated: {truncated}"
     else:
         description = f"Exception Documented: {truncated}"
-    
+
     return DetectedChange(
         entity_type=final_type,
         entity_key=entity_key,
@@ -237,13 +236,13 @@ def create_fix_action(
 ) -> DetectedChange:
     """
     Create a fix action.
-    
+
     Args:
         entity_key: The entity key
         reason: Description of what was fixed
         server: Server name
         instance: Instance name
-        
+
     Returns:
         DetectedChange for the fix
     """
@@ -257,7 +256,7 @@ def create_fix_action(
             "service": EntityType.SERVICE,
         }
         entity_type = type_map.get(parts[0].lower(), EntityType.CONFIGURATION)
-    
+
     return DetectedChange(
         entity_type=entity_type,
         entity_key=entity_key,
@@ -278,13 +277,13 @@ def create_regression_action(
 ) -> DetectedChange:
     """
     Create a regression action.
-    
+
     Args:
         entity_key: The entity key
         reason: Description of the regression
         server: Server name
         instance: Instance name
-        
+
     Returns:
         DetectedChange for the regression
     """
@@ -297,7 +296,7 @@ def create_regression_action(
             "config": EntityType.CONFIGURATION,
         }
         entity_type = type_map.get(parts[0].lower(), EntityType.CONFIGURATION)
-    
+
     return DetectedChange(
         entity_type=entity_type,
         entity_key=entity_key,

@@ -67,6 +67,19 @@ class FinalizeService:
                 "message": f"Run {run_id} is already finalized.",
             }
 
+        # 2b. Check if Excel file is locked (open in Excel)
+        src_path = (
+            Path(excel_path) if excel_path else (self.output_dir / "Audit_Latest.xlsx")
+        )
+        if src_path.exists():
+            try:
+                with open(src_path, "r+b"):
+                    pass  # File is not locked
+            except PermissionError:
+                return {
+                    "error": f"Excel file is open: {src_path.name}. Please close it and retry."
+                }
+
         # 3. Import Annotations (Sync Excel -> DB)
         # This ensures the DB (Source of Truth) has the final human inputs
         logger.info("Finalize: Importing annotations from Excel to DB...")

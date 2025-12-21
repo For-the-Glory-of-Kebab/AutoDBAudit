@@ -224,43 +224,10 @@ class ActionRecorder:
                     action.entity_key[:50],
                 )
 
-                # If Exception Added -> Update Finding Status in Database
-                if action.change_type in (
-                    ChangeType.EXCEPTION_ADDED,
-                    ChangeType.EXCEPTION_UPDATED,
-                ):
-                    # Strip type prefix from key (Action Key: type|server|instance|name -> Finding Key: server|instance|name)
-                    known_types = {
-                        "sa_account",
-                        "login",
-                        "config",
-                        "service",
-                        "database",
-                        "backup",
-                        "trigger",
-                        "protocol",
-                        "permission",
-                        "server_role_member",
-                    }
-
-                    parts = action.entity_key.split("|")
-                    finding_key = action.entity_key
-
-                    if len(parts) > 1 and parts[0].lower() in known_types:
-                        finding_key = "|".join(parts[1:])
-
-                    # Update status in the CURRENT sync run findings
-                    # Note: We assume the finding exists in the sync run (it should, as it was re-audited)
-                    self.store.update_finding_status(
-                        run_id=sync_run_id,
-                        entity_key=finding_key,
-                        status="Exception",
-                    )
-                    logger.debug(
-                        "Updated finding status to Exception for %s (Key: %s)",
-                        action.entity_key,
-                        finding_key,
-                    )
+                # NOTE: Exception state is tracked via annotations, NOT by modifying
+                # the finding's status column. The finding status should remain
+                # FAIL/WARN to ensure correct stats counting. The annotation's
+                # justification and review_status fields track the exception.
 
             except Exception as e:
                 logger.error("Failed to record action %s: %s", action.entity_key, e)
@@ -334,6 +301,12 @@ class ActionRecorder:
                     "db_user",
                     "orphaned_user",
                     "db_permission",
+                    "permission",
+                    "server_role_member",
+                    "db_role",
+                    "audit_settings",
+                    "encryption",
+                    "instance",
                 }
                 if parts[0].lower() in known_types:
                     server = parts[1]
