@@ -318,13 +318,22 @@ class ActionRecorder:
                     instance = parts[1]
                     finding = "|".join(parts[2:]) if len(parts) > 2 else entity_key
 
-            # Determine display status
+            # Determine display status - show descriptive type, not just Closed/Open
             status_db = action.get("status", "open").lower()
-            if status_db in ("fixed", "exception"):
-                display_status = "Closed"
+            action_type = action.get("action_type", "")
+            
+            # Map to user-friendly display
+            if status_db == "fixed":
+                display_status = "✓ Fixed"
                 risk = "Low"
+            elif status_db == "exception":
+                display_status = "✓ Exception"
+                risk = "Low"
+            elif status_db == "regression":
+                display_status = "⚠ Regression"
+                risk = "High"
             else:
-                display_status = "Open"
+                display_status = "⏳ Open"
                 risk = "High"
 
             # Parse date (prefer user override)

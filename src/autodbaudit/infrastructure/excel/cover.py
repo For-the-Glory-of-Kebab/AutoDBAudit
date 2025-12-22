@@ -356,11 +356,16 @@ class CoverSheetMixin(BaseSheetMixin):
                 Colors.WARN_TEXT,
             )
 
-            # Group Exceptions + Docs
-            docs_total = self._stats_docs + self._stats_exceptions_changed
+            # Exceptions and Docs as separate rows
             add_change_row(
-                f"  📋 Documentation Updates",
-                docs_total,
+                f"  🔖 Exception Changes",
+                self._stats_exceptions_changed,
+                Colors.INFO_BG,
+                Colors.INFO_TEXT,
+            )
+            add_change_row(
+                f"  📝 Note Updates",
+                self._stats_docs,
                 Colors.INFO_BG,
                 Colors.INFO_TEXT,
             )

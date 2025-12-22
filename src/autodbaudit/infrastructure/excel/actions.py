@@ -165,17 +165,30 @@ class ActionSheetMixin(BaseSheetMixin):
 
         row = self._write_row(ws, ACTION_CONFIG, data)
 
-        # Style Change Type cell (column 8)
+        # Style Change Type cell (column 8) - handle all status types
         status_cell = ws.cell(row=row, column=8)
-        status_lower = status.lower()
-        if status_lower == "open":
-            status_cell.value = f"{Icons.PENDING} Open"
-            status_cell.fill = Fills.WARN
-            status_cell.font = Fonts.WARN
+        status_lower = status.lower().replace("✓", "").replace("⚠", "").replace("⏳", "").strip()
+        
+        if status_lower == "fixed":
+            status_cell.value = f"{Icons.PASS} Fixed"
+            status_cell.fill = Fills.PASS
+            status_cell.font = Fonts.PASS
+        elif status_lower == "exception":
+            status_cell.value = f"{Icons.PASS} Exception"
+            status_cell.fill = Fills.PASS
+            status_cell.font = Fonts.PASS
+        elif status_lower == "regression":
+            status_cell.value = f"{Icons.FAIL} Regression"
+            status_cell.fill = Fills.FAIL
+            status_cell.font = Fonts.FAIL
         elif status_lower == "closed":
             status_cell.value = f"{Icons.PASS} Closed"
             status_cell.fill = Fills.PASS
             status_cell.font = Fonts.PASS
+        else:  # open, pending, or anything else
+            status_cell.value = f"{Icons.PENDING} Open"
+            status_cell.fill = Fills.WARN
+            status_cell.font = Fonts.WARN
 
         # Style risk level cell with severity colors
         risk_cell = ws.cell(row=row, column=6)
@@ -214,4 +227,6 @@ class ActionSheetMixin(BaseSheetMixin):
         # Risk Level column (F) - column 6
         add_dropdown_validation(ws, "F", ["Low", "Medium", "High"])
         # Change Type column (H) - column 8
-        add_dropdown_validation(ws, "H", ["⏳ Open", "✓ Closed"])
+        add_dropdown_validation(
+            ws, "H", ["⏳ Open", "✓ Fixed", "✓ Exception", "❌ Regression", "✓ Closed"]
+        )

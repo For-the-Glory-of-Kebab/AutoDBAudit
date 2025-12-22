@@ -99,41 +99,54 @@ class ConsoleRenderer:
 
     def render_stats_card(self, stats: Any):
         """
-        Render a beautiful statistics card.
+        Render a comprehensive statistics card.
+
+        Shows:
+        1. Current Compliance State
+        2. Changes Since Baseline (initial audit)
+        3. Changes Since Last Sync
+        4. Sheet-by-Sheet Breakdown
+        5. Recent Documentation Activity
 
         Args:
             stats: SyncStats object
         """
-        # We perform a runtime check for attributes to handle SyncStats safely
-        # Just in case an older version is passed.
-
         # Current State
         active = getattr(stats, "active_issues", 0)
         exceptions = getattr(stats, "documented_exceptions", 0)
         compliant = getattr(stats, "compliant_items", 0)
-        # total variable removed (unused)
+        total = getattr(stats, "total_findings", 0)
 
         # Changes Since Baseline
-        fixed = getattr(stats, "fixed_since_baseline", 0)
-        regressions = getattr(stats, "regressions_since_baseline", 0)
-        new_issues = getattr(stats, "new_issues_since_baseline", 0)
+        fixed_baseline = getattr(stats, "fixed_since_baseline", 0)
+        regressions_baseline = getattr(stats, "regressions_since_baseline", 0)
+        new_issues_baseline = getattr(stats, "new_issues_since_baseline", 0)
+        exc_added_baseline = getattr(stats, "exceptions_added_since_baseline", 0)
 
-        # Granular Exception Changes (Since Last)
-        exc_added = getattr(stats, "exceptions_added_since_last", 0)
-        exc_removed = getattr(stats, "exceptions_removed_since_last", 0)
-        exc_updated = getattr(stats, "exceptions_updated_since_last", 0)
+        # Changes Since Last Sync
+        fixed_last = getattr(stats, "fixed_since_last", 0)
+        regressions_last = getattr(stats, "regressions_since_last", 0)
+        new_issues_last = getattr(stats, "new_issues_since_last", 0)
+        exc_added_last = getattr(stats, "exceptions_added_since_last", 0)
+        exc_removed_last = getattr(stats, "exceptions_removed_since_last", 0)
+        exc_updated_last = getattr(stats, "exceptions_updated_since_last", 0)
 
         # Granular Doc Changes (Since Last)
         docs_added = getattr(stats, "docs_added_since_last", 0)
         docs_updated = getattr(stats, "docs_updated_since_last", 0)
         docs_removed = getattr(stats, "docs_removed_since_last", 0)
 
+        # Sheet-by-sheet breakdown
+        sheet_stats = getattr(stats, "sheet_stats", {})
+
         c = self._c
         colors = Colors
 
         self.header(f"{Icons.CHART} Audit Statistics Summary")
 
-        # ROW 1: High Level Status
+        # ═══════════════════════════════════════════════════════════════
+        # SECTION 1: Current Compliance State
+        # ═══════════════════════════════════════════════════════════════
         print(f"{c(colors.BOLD)}Current Compliance State:{c(colors.RESET)}")
         print(
             f"  {Icons.CROSS} Active Issues:      {c(colors.RED)}{active:>5}{c(colors.RESET)}"
@@ -144,81 +157,87 @@ class ConsoleRenderer:
         print(
             f"  {Icons.LOCK} Compliant Items:    {c(colors.GREEN)}{compliant:>5}{c(colors.RESET)}"
         )
+        if total > 0:
+            print(f"  {c(colors.DIM)}Total Findings:      {total:>5}{c(colors.RESET)}")
 
-        # ROW 2: Changes vs Baseline
-        print(f"\n{c(colors.BOLD)}Since Baseline:{c(colors.RESET)}")
-        print(
-            f"  {Icons.CHECK} Fixed:              {c(colors.GREEN)}{fixed:>5}{c(colors.RESET)}"
-        )
-        if regressions > 0:
-            print(
-                f"  {Icons.CROSS} Regressions:        {c(colors.BG_RED)}{c(colors.WHITE)} {regressions:>3} {c(colors.RESET)}"
-            )
+        # ═══════════════════════════════════════════════════════════════
+        # SECTION 2: Changes Since Baseline
+        # ═══════════════════════════════════════════════════════════════
+        print(f"\n{c(colors.BOLD)}📊 Since Baseline (Initial Audit):{c(colors.RESET)}")
+        has_baseline_changes = fixed_baseline > 0 or regressions_baseline > 0 or new_issues_baseline > 0 or exc_added_baseline > 0
+
+        if has_baseline_changes:
+            if fixed_baseline > 0:
+                print(f"  {Icons.CHECK} Fixed:              {c(colors.GREEN)}{fixed_baseline:>5}{c(colors.RESET)}")
+            if regressions_baseline > 0:
+                print(f"  {Icons.CROSS} Regressions:        {c(colors.BG_RED)}{c(colors.WHITE)} {regressions_baseline:>3} {c(colors.RESET)}")
+            if new_issues_baseline > 0:
+                print(f"  {Icons.WARN} New Issues:         {c(colors.YELLOW)}{new_issues_baseline:>5}{c(colors.RESET)}")
+            if exc_added_baseline > 0:
+                print(f"  {Icons.DOC} Exceptions Added:   {c(colors.CYAN)}{exc_added_baseline:>5}{c(colors.RESET)}")
         else:
-            print(
-                f"  {Icons.CROSS} Regressions:        {c(colors.DIM)}{0:>5}{c(colors.RESET)}"
-            )
+            print(f"  {c(colors.DIM)}No changes from baseline{c(colors.RESET)}")
 
-        if new_issues > 0:
-            print(
-                f"  {Icons.WARN} New Issues:         {c(colors.YELLOW)}{new_issues:>5}{c(colors.RESET)}"
-            )
-        else:
-            print(
-                f"  {Icons.WARN} New Issues:         {c(colors.DIM)}{0:>5}{c(colors.RESET)}"
-            )
-
-        # ROW 3: Recent Activity (Granular)
-        # Only show this section if there's actually recent activity
-        has_recent = (
-            sum(
-                [
-                    exc_added,
-                    exc_removed,
-                    exc_updated,
-                    docs_added,
-                    docs_updated,
-                    docs_removed,
-                ]
-            )
-            > 0
+        # ═══════════════════════════════════════════════════════════════
+        # SECTION 3: Changes Since Last Sync
+        # ═══════════════════════════════════════════════════════════════
+        print(f"\n{c(colors.BOLD)}📈 Since Last Sync:{c(colors.RESET)}")
+        has_last_changes = (
+            fixed_last > 0 or regressions_last > 0 or new_issues_last > 0 or
+            exc_added_last > 0 or exc_removed_last > 0 or exc_updated_last > 0
         )
 
-        if has_recent:
-            print(
-                f"\n{c(colors.BOLD)}{Icons.DOC} Recent Documentation Activity:{c(colors.RESET)}"
-            )
+        if has_last_changes:
+            if fixed_last > 0:
+                print(f"  {Icons.CHECK} Fixed:              {c(colors.GREEN)}{fixed_last:>5}{c(colors.RESET)}")
+            if regressions_last > 0:
+                print(f"  {Icons.CROSS} Regressions:        {c(colors.BG_RED)}{c(colors.WHITE)} {regressions_last:>3} {c(colors.RESET)}")
+            if new_issues_last > 0:
+                print(f"  {Icons.WARN} New Issues:         {c(colors.YELLOW)}{new_issues_last:>5}{c(colors.RESET)}")
+            if exc_added_last > 0:
+                print(f"  + Exceptions Added:   {c(colors.CYAN)}{exc_added_last:>5}{c(colors.RESET)}")
+            if exc_removed_last > 0:
+                print(f"  - Exceptions Removed: {c(colors.MAGENTA)}{exc_removed_last:>5}{c(colors.RESET)}")
+            if exc_updated_last > 0:
+                print(f"  ~ Exceptions Updated: {c(colors.YELLOW)}{exc_updated_last:>5}{c(colors.RESET)}")
+        else:
+            print(f"  {c(colors.DIM)}No changes since last sync{c(colors.RESET)}")
 
-            # Exceptions
-            if exc_added > 0:
-                print(
-                    f"  + New Exceptions:     {c(colors.GREEN)}{exc_added}{c(colors.RESET)}"
-                )
-            if exc_removed > 0:
-                print(
-                    f"  - Exceptions Fixed:   {c(colors.CYAN)}{exc_removed}{c(colors.RESET)}"
-                )
-            if exc_updated > 0:
-                print(
-                    f"  ~ Exceptions Updated: {c(colors.YELLOW)}{exc_updated}{c(colors.RESET)}"
-                )
+        # ═══════════════════════════════════════════════════════════════
+        # SECTION 4: Sheet-by-Sheet Breakdown (if any)
+        # ═══════════════════════════════════════════════════════════════
+        if sheet_stats:
+            print(f"\n{c(colors.BOLD)}📋 By Sheet:{c(colors.RESET)}")
+            for sheet_name, sheet_counts in sorted(sheet_stats.items()):
+                # Only show sheets with active issues or exceptions
+                active = sheet_counts.get("active", 0)
+                exceptions = sheet_counts.get("exceptions", 0)
+                
+                if active == 0 and exceptions == 0:
+                    continue  # Skip sheets with no issues
+                
+                parts = []
+                if active > 0:
+                    parts.append(f"{c(colors.RED)}{active} active{c(colors.RESET)}")
+                if exceptions > 0:
+                    parts.append(f"{c(colors.CYAN)}{exceptions} exc{c(colors.RESET)}")
+                
+                if parts:
+                    summary = ", ".join(parts)
+                    print(f"  {sheet_name}: {summary}")
 
-            # Docs
+        # ═══════════════════════════════════════════════════════════════
+        # SECTION 5: Documentation Activity (Notes/Dates)
+        # ═══════════════════════════════════════════════════════════════
+        has_docs = docs_added > 0 or docs_updated > 0 or docs_removed > 0
+        if has_docs:
+            print(f"\n{c(colors.BOLD)}{Icons.DOC} Documentation Changes:{c(colors.RESET)}")
             if docs_added > 0:
-                print(
-                    f"  + Notes Added:        {c(colors.GREEN)}{docs_added}{c(colors.RESET)}"
-                )
+                print(f"  + Notes Added:        {c(colors.GREEN)}{docs_added}{c(colors.RESET)}")
             if docs_updated > 0:
-                print(
-                    f"  ~ Notes Updated:      {c(colors.YELLOW)}{docs_updated}{c(colors.RESET)}"
-                )
+                print(f"  ~ Notes Updated:      {c(colors.YELLOW)}{docs_updated}{c(colors.RESET)}")
             if docs_removed > 0:
-                print(
-                    f"  - Notes Removed:      {c(colors.RED)}{docs_removed}{c(colors.RESET)}"
-                )
-        else:
-            print(
-                f"\n{c(colors.DIM)}No recent documentation or exception changes detected.{c(colors.RESET)}"
-            )
+                print(f"  - Notes Removed:      {c(colors.RED)}{docs_removed}{c(colors.RESET)}")
 
         print("")
+

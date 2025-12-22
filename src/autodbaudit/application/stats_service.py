@@ -213,7 +213,8 @@ class StatsService:
             fixed_since_baseline=baseline_diff.fixed,
             regressions_since_baseline=baseline_diff.regressions,
             new_issues_since_baseline=baseline_diff.new_issues,
-            exceptions_added_since_baseline=baseline_diff.exceptions_added,
+            # Use action log for baseline exceptions (diff is broken when using same annotations)
+            exceptions_added_since_baseline=action_counts.get("exceptions_added", 0),
             fixed_since_last=recent_diff.fixed,
             regressions_since_last=recent_diff.regressions,
             new_issues_since_last=recent_diff.new_issues,
@@ -224,7 +225,8 @@ class StatsService:
             docs_added_since_last=action_counts.get("docs_added", 0),
             docs_updated_since_last=action_counts.get("docs_updated", 0),
             docs_removed_since_last=action_counts.get("docs_removed", 0),
-            sheet_stats=recent_diff.sheet_stats,
+            # Build current state per-sheet stats (not just changes)
+            sheet_stats=self._build_current_sheet_stats(current_findings, annotations),
         )
 
     def _count_recent_actions(
@@ -336,6 +338,41 @@ class StatsService:
             if status == FindingStatus.PASS:
                 count += 1
         return count
+
+    def _build_current_sheet_stats(
+        self,
+        findings: list[dict],
+        annotations: dict[str, dict],
+    ) -> dict[str, dict[str, int]]:
+        """
+        Build per-sheet breakdown of current state.
+        
+        Returns dict of {sheet_name: {active: X, exceptions: X, compliant: X}}
+        """
+        sheet_stats: dict[str, dict[str, int]] = {}
+        
+        for finding in findings:
+            finding_type = finding.get("finding_type", "")
+            sheet_name = self._get_sheet_name_from_finding_type(finding_type)
+            
+            if not sheet_name:
+                continue
+            
+            if sheet_name not in sheet_stats:
+                sheet_stats[sheet_name] = defaultdict(int)
+            
+            status = FindingStatus.from_string(finding.get("status"))
+            entity_key = finding.get("entity_key", "")
+            
+            if status == FindingStatus.PASS:
+                sheet_stats[sheet_name]["compliant"] += 1
+            elif status and status.is_discrepant():
+                if self._is_exceptioned(entity_key, annotations):
+                    sheet_stats[sheet_name]["exceptions"] += 1
+                else:
+                    sheet_stats[sheet_name]["active"] += 1
+        
+        return sheet_stats
 
     def _is_exceptioned(
         self,
@@ -461,8 +498,9 @@ class StatsService:
             # Count by type
             from autodbaudit.domain.change_types import ChangeType
 
-            # Resolve sheet name once
-            sheet_name = self._get_sheet_name_from_key(key)
+            # Resolve sheet name from finding_type (not entity_key which lacks type prefix)
+            finding_type = old_f.get("finding_type", "")
+            sheet_name = self._get_sheet_name_from_finding_type(finding_type)
             if sheet_name:
                 if sheet_name not in result.sheet_stats:
                     result.sheet_stats[sheet_name] = defaultdict(int)
@@ -556,8 +594,9 @@ class StatsService:
                     # Only count if not already exceptioned
                     if not self._is_exceptioned(key, new_annotations):
                         result.new_issues += 1
-                        # Track sheet stat for NEW ISSUE
-                        sheet_name = self._get_sheet_name_from_key(key)
+                        # Track sheet stat for NEW ISSUE (use finding_type, not key)
+                        finding_type = new_f.get("finding_type", "")
+                        sheet_name = self._get_sheet_name_from_finding_type(finding_type)
                         if sheet_name:
                             if sheet_name not in result.sheet_stats:
                                 result.sheet_stats[sheet_name] = defaultdict(int)
@@ -594,6 +633,33 @@ class StatsService:
             "encryption": "Encryption",
         }
         return mapping.get(etype, etype.capitalize())
+
+    def _get_sheet_name_from_finding_type(self, finding_type: str) -> str:
+        """Derive readable sheet name from finding_type field directly."""
+        if not finding_type:
+            return ""
+        
+        etype = finding_type.lower().strip()
+        mapping = {
+            "instance": "Instances",
+            "sa_account": "SA Account",
+            "login": "Server Logins",
+            "server_role_member": "Sensitive Roles",
+            "config": "Configuration",
+            "service": "Services",
+            "database": "Databases",
+            "db_user": "Database Users",
+            "db_role": "Database Roles",
+            "permission": "Permission Grants",
+            "orphaned_user": "Orphaned Users",
+            "linked_server": "Linked Servers",
+            "trigger": "Triggers",
+            "protocol": "Client Protocols",
+            "backup": "Backups",
+            "audit_settings": "Audit Settings",
+            "encryption": "Encryption",
+        }
+        return mapping.get(etype, etype.replace("_", " ").title())
 
     def _has_docs(self, fields: dict) -> bool:
         """Check if annotation has non-exception documentation (Notes/Date)."""

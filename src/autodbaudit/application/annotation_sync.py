@@ -568,6 +568,9 @@ class AnnotationSyncService:
 
             # Only store if there are actual annotations
             if has_any_value:
+                # IMPORTANT: Store with UNPREFIXED key for backward compatibility
+                # The write_all_to_excel expects unprefixed keys to match Excel rows
+                # DB persistence in persist_to_db() adds the prefix when saving
                 annotations[entity_key] = fields
 
         logger.debug("Read %d annotations from %s sheet", len(annotations), ws.title)
