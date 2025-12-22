@@ -66,9 +66,14 @@ class BaseCollector(ABC):
         description: str | None = None,
         recommendation: str | None = None,
         details: str | None = None,
+        entity_key: str | None = None,  # Allow override for complex key formats
     ) -> None:
         """
         Save a finding to SQLite if db_conn is available in context.
+        
+        Args:
+            entity_key: Optional override for entity key. If None, builds using
+                        server|instance|entity_name format.
         """
         if self.ctx.db_conn is None or self.ctx.audit_run_id is None:
             logger.warning(
@@ -86,9 +91,11 @@ class BaseCollector(ABC):
                 build_entity_key,
             )
 
-            entity_key = build_entity_key(
-                self.ctx.server_name, self.ctx.instance_name or "(Default)", entity_name
-            )
+            # Use provided entity_key or build default
+            if entity_key is None:
+                entity_key = build_entity_key(
+                    self.ctx.server_name, self.ctx.instance_name or "(Default)", entity_name
+                )
 
             save_finding(
                 connection=self.ctx.db_conn,

@@ -258,24 +258,49 @@ class DatabaseCollector(BaseCollector):
         """Collect database and server triggers."""
         count = 0
 
-        # 1. Server Triggers
+        # 1. Server Triggers - these need review (FAIL status)
         try:
             srv_triggers = self.conn.execute_query(self.prov.get_server_triggers())
             for t in srv_triggers:
+                trigger_name = t.get("TriggerName", "")
+                event_type = t.get("EventType", "")
+                is_enabled = not bool(t.get("IsDisabled"))
+                
                 self.writer.add_trigger(
                     server_name=self.ctx.server_name,
                     instance_name=self.ctx.instance_name,
-                    trigger_name=t.get("TriggerName", ""),
-                    event_type=t.get("EventType", ""),
-                    is_enabled=not bool(t.get("IsDisabled")),
+                    trigger_name=trigger_name,
+                    event_type=event_type,
+                    is_enabled=is_enabled,
                     level="SERVER",
                     database_name=None,  # Server triggers have no database
+                )
+                
+                # SERVER triggers need review - save as findings
+                # Entity key format: server|instance|scope|database|trigger_name|event
+                entity_key = "|".join([
+                    self.ctx.server_name.lower(),
+                    (self.ctx.instance_name or "").lower(),
+                    "server",
+                    "",  # No database for server triggers
+                    trigger_name.lower(),
+                    event_type.lower(),
+                ])
+                
+                self.save_finding(
+                    finding_type="trigger",
+                    entity_name=trigger_name,
+                    entity_key=entity_key,  # Override with proper key
+                    status="FAIL",  # Server triggers need review
+                    risk_level="medium",
+                    description=f"Server trigger '{trigger_name}' ({event_type})",
+                    recommendation="Review server-level trigger purpose and necessity",
                 )
                 count += 1
         except Exception as e:
             logger.warning("Server triggers failed: %s", e)
 
-        # 2. Database Triggers
+        # 2. Database Triggers - informational only (PASS status, no action needed)
         for db in user_dbs:
             db_name = db.get("DatabaseName", "")
             if db.get("State", "ONLINE") != "ONLINE":
@@ -294,6 +319,8 @@ class DatabaseCollector(BaseCollector):
                         level="DATABASE",
                         database_name=db_name,
                     )
+                    # DATABASE triggers are informational - no finding needed
+                    # (they show in Excel but don't need action by default)
                     count += 1
             except Exception:
                 pass

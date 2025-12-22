@@ -123,11 +123,12 @@ class TriggerSheetMixin(ServerGroupMixin, BaseSheetMixin):
         # Apply action indicator
         apply_action_needed_styling(ws.cell(row=row, column=2), needs_action)
 
-        # Apply row color to data columns (shifted +1 for action column)
+        # Apply row color to data columns (shifted +1 for UUID, +1 for action = +2 total)
+        # Server=3, Instance=4, Scope=5, Database=6, Trigger Name=7, Event=8
         self._apply_row_color(row, row_color, data_cols=[3, 4, 5, 6, 7, 8], ws=ws)
 
-        # Style Enabled column (column 8, shifted +1)
-        apply_boolean_styling(ws.cell(row=row, column=8), is_enabled)
+        # Style Enabled column (column 9, shifted +1 for UUID)
+        apply_boolean_styling(ws.cell(row=row, column=9), is_enabled)
 
         # Highlight server-level triggers with info color
         if is_server_trigger:

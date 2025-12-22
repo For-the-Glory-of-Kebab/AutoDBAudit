@@ -1,54 +1,59 @@
 # Project Status: AutoDBAudit
 
-**Last Updated:** 2025-12-21  
-**Current Phase:** CLI Stats & Actions Fixes Complete ✅
+**Last Updated:** 2025-12-22  
+**Current Phase:** E2E Test Suite Development + Production Bug Fixes
 
-## ✅ All Bugs Fixed (2025-12-21)
+---
 
-### 1. False "Fixed" Statistics ✅
-**Root Cause:** `update_finding_status(status="Exception")` corrupted findings.  
-**Fix:** Removed the call. Exceptions tracked in annotations, not finding status.  
-**File:** `src/autodbaudit/application/actions/action_recorder.py`
+## ✅ Session 2025-12-22: E2E Tests + Bug Fixes
 
-### 2. Excel Lock Check Restored ✅
-**Fix:** Added pre-flight checks to `--sync` and `--finalize`.  
-**Files:** `sync_service.py`, `finalize_service.py`
+### E2E Test Suite Created
+| Sheet | Tests | Status |
+|-------|-------|--------|
+| Linked Servers | 62 | ✅ Passing |
+| Triggers | 19 | ✅ Passing |
+| Legacy Comprehensive | 9 | ✅ Passing |
+| **Total** | **90** | ✅ |
 
-### 3. CLI "No recent changes detected" ✅
-**Root Cause:** `_count_recent_actions` searched for "added" but actual type was "Exception Documented"  
-**Fix:** Changed to match "documented" in action_type  
-**File:** `src/autodbaudit/application/stats_service.py`
+### Production Bugs Fixed by Tests
 
-### 4. Duplicate Actions (8 instead of 4) ✅
-**Root Cause:** `detect_all_actions` added both `findings_diff.exception_changes` AND `exception_changes` from annotation sync  
-**Fix:** Removed `findings_diff.exception_changes` - annotation sync is authoritative  
-**File:** `src/autodbaudit/application/actions/action_detector.py`
+**Bug #1: triggers.py Column Index**
+- Line 130 styled column 8 (Event) instead of column 9 (Enabled)
+- Impact: Annotation keys had ✓ instead of LOGON
 
-## 🧪 Test Results
+**Bug #2: Missing save_finding() for Triggers**
+- `_collect_triggers()` never saved findings to SQLite
+- Impact: 0 action logs for triggers!
 
-All 16 tests pass:
-- `test_rigorous_e2e.py`: 13/13 PASS
-- `test_linked_servers_columns.py`: 3/3 PASS
+**Bug #3: base.py save_finding Extension**
+- Added optional `entity_key` parameter for complex 6-part keys
 
-## 📊 Verified CLI Output
+---
+
+## 📁 Test Hierarchy
 
 ```
-📊 Audit Statistics Summary
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Current Compliance State:
-  ❌ Active Issues:         80
-  ✅ Exceptions:             4
-  🔒 Compliant Items:       28
-
-Since Baseline:
-  ✅ Fixed:                  0
-  ❌ Regressions:            0
-  ⚠️ New Issues:             0
-
-📋 Recent Documentation Activity:
-  + New Exceptions:     4
+tests/atomic_e2e/sheets/
+├── linked_servers/     # 62 tests (harness + 5 test files)
+├── triggers/           # 19 tests (harness + 2 test files)
+├── _archive/           # Outdated tests (excluded)
+└── test_*_comprehensive.py  # 9 legacy tests
 ```
 
-## 📅 Ready for Commit
+---
 
-Message: "fix: correct CLI stats and action recording for exceptions"
+## ✅ Previous Session (2025-12-21): CLI Stats Fixes
+
+All previously documented bugs fixed:
+1. False "Fixed" Statistics ✅
+2. Excel Lock Check Restored ✅
+3. CLI "No recent changes detected" ✅
+4. Duplicate Actions (8 → 4) ✅
+
+---
+
+## 📋 Next Steps
+
+1. **Run fresh audit** to verify triggers appear in action logs
+2. **Create tests for more sheets:** Backups, Logins, Permissions
+3. **Add FIXED/REGRESSION detection** to test harness (requires SyncService integration)

@@ -1,51 +1,56 @@
 # Active Tasks
 
-**Last Updated:** 2025-12-21 23:00
+**Last Updated:** 2025-12-22 15:00
 
 ---
 
-## 🚨 Priority 1: Linked Servers Comprehensive Test
+## ✅ COMPLETED: Linked Servers E2E Test Suite
 
-**Status:** Not Started  
-**Goal:** Create exhaustive test suite for ONE sheet before expanding to all
+**Status:** Done (62 tests passing)
 
-### Test Categories Needed:
-
-1. **Exception Lifecycle**
-   - [ ] Add exception → verify CLI/Actions/Excel
-   - [ ] Update exception → verify CLI/Actions  
-   - [ ] Remove exception → verify reversion
-
-2. **Stats Accuracy**
-   - [ ] Exception count in compliance state
-   - [ ] Recent activity counts
-   - [ ] Baseline comparison
-
-3. **Actions Sheet**
-   - [ ] No duplicates
-   - [ ] Correct entity types
-   - [ ] Correct descriptions
-
-4. **Multi-Sync Stability**
-   - [ ] Persistence across syncs
-   - [ ] No data loss/corruption
-
-### Files to Create:
-- `tests/test_linked_servers_comprehensive.py`
+Created comprehensive test suite in `tests/atomic_e2e/sheets/linked_servers/`:
+- [x] Exception lifecycle (add/update/remove)
+- [x] Multi-sync stability (idempotency)
+- [x] Edge cases (Unicode, bad dates, long text)
+- [x] Action log column verification
+- [x] Annotation persistence through status changes
 
 ---
 
-## ✅ Completed This Session
+## ✅ COMPLETED: Triggers E2E Test Suite
 
-- [x] Fix "No recent changes detected" in CLI
-- [x] Fix duplicate actions (8 → 4)
-- [x] All 16 E2E tests passing
-- [x] Documentation updated
+**Status:** Done (19 tests passing)
+
+- [x] Created harness with trigger-specific KEY_COLS
+- [x] Exception lifecycle tests
+- [x] SERVER vs DATABASE scope tests
+- [x] **FOUND & FIXED 2 production bugs!**
+
+---
+
+## ⏸️ PAUSED: Additional Sheet Tests
+
+**Status:** Paused (user time constraint)
+
+Extensibility proven. Next sheets when time allows:
+1. Backups
+2. Server Logins
+3. Permissions
+4. Database Users
+5. Configuration
+
+---
+
+## 🔮 Future Enhancement
+
+**Add FIXED/REGRESSION Detection to Harness**
+- Current harness only detects EXCEPTION changes
+- FIXED (FAIL→PASS) and REGRESSION (PASS→FAIL) require SyncService integration
+- Tests adapted to verify annotation persistence instead
 
 ---
 
 ## 📝 Notes
 
-- Linked Servers sheet NOT manually verified yet
-- Use Linked Servers as template for all other sheets
-- Focus on comprehensive single-sheet testing first
+- Manual verification: Run fresh audit to confirm triggers appear in action logs
+- Test framework catches real production bugs - keep expanding!
