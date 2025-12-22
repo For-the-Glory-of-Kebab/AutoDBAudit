@@ -98,7 +98,7 @@ class RemediationService:
         if sql_targets:
             for t in sql_targets:
                 srv = t.get("server", "").lower()
-                inst = t.get("instance", "DEFAULT").upper()  # Normalize?
+                inst = (t.get("instance") or "DEFAULT").upper()  # Normalize None to DEFAULT
                 # Actually, instance name in DB might be "MSSQLSERVER" for default
                 # But assume sql_targets matches what we found or close enough
                 # If target has "instance" field use it, else try to infer

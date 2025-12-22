@@ -334,8 +334,9 @@ This document provides a **strict and precise definition** of all worksheets and
 | G | Event | TEXT | Event type (LOGON, DDL, DML). |
 | H | Enabled | BOOL | `✓` / `✗`. |
 | I | Review Status | STATUS | User review dropdown. |
-| J | Justification | MANUAL | Justification for trigger existence. |
-| K | Last Reviewed | DATE | Date of review. |
+| J | Notes | MANUAL | Purpose/notes for trigger. |
+| K | Justification | MANUAL | Justification for trigger existence. |
+| L | Last Reviewed | DATE | Date of review. |
 
 ---
 
