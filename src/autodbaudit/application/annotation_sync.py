@@ -14,6 +14,18 @@ Core Principles:
 
 from __future__ import annotations
 
+
+def _clean_key_value(val: str) -> str:
+    """
+    Clean key value by stripping non-ASCII characters (icons/emojis).
+    Used to normalize keys that contain decoration icons in Excel.
+    """
+    if not val:
+        return ""
+    # Encode to ASCII (ignore errors drops non-ascii) then decode back
+    return str(val).encode("ascii", "ignore").decode("ascii").strip()
+
+
 import logging
 from datetime import datetime
 from pathlib import Path
@@ -31,7 +43,6 @@ logger = logging.getLogger(__name__)
 # Editable columns map Excel header name to DB field name
 # Justification columns mark FAIL items as documented exceptions when filled
 SHEET_ANNOTATION_CONFIG = {
-
     "SA Account": {
         "entity_type": "sa_account",
         "key_cols": ["Server", "Instance", "Current Name"],
@@ -72,7 +83,6 @@ SHEET_ANNOTATION_CONFIG = {
             # No Notes column in Excel for this sheet
         },
     },
-
     "Instances": {
         "entity_type": "instance",
         "key_cols": ["Server", "Instance"],
@@ -154,14 +164,8 @@ SHEET_ANNOTATION_CONFIG = {
     },
     "Linked Servers": {
         "entity_type": "linked_server",
-        # Include logins to prevent collision if multiple mappings exist per LS
-        "key_cols": [
-            "Server",
-            "Instance",
-            "Linked Server",
-            "Local Login",
-            "Remote Login",
-        ],
+        # Just Server/Instance/Linked Server name - logins are optional and cause trailing pipes
+        "key_cols": ["Server", "Instance", "Linked Server"],
         "editable_cols": {
             "Review Status": "review_status",
             "Purpose": "purpose",
@@ -461,7 +465,21 @@ class AnnotationSyncService:
             if not row or all(v is None for v in row):
                 continue
 
-            # Build entity key from key columns
+            # === UUID-BASED MATCHING (v3) ===
+            # Column A contains stable UUID - use this as primary key
+            # This ensures annotations persist even if data in key columns changes
+            row_uuid = None
+            if len(row) > 0 and row[0]:
+                uuid_val = str(row[0]).strip().lower()
+                # Validate: 8 hex chars
+                if len(uuid_val) == 8:
+                    try:
+                        int(uuid_val, 16)
+                        row_uuid = uuid_val
+                    except ValueError:
+                        pass
+
+            # Build legacy entity key from key columns (for backwards compatibility)
             # Use last non-empty value if current is None (merged cell)
             key_parts = []
             for i, idx in enumerate(key_indices):
@@ -471,16 +489,36 @@ class AnnotationSyncService:
                     val = last_key_values[i]
                 else:
                     val = str(val)
+
+                    # Clean permission strings (remove icons)
+                    if config["key_cols"][i] == "Permission":
+                        val = _clean_key_value(val)
+
                     # Update last known value
                     last_key_values[i] = val
 
                 key_parts.append(val)
 
-            # Build entity key and normalize to lowercase for case-insensitive matching
-            entity_key = "|".join(str(p).lower() for p in key_parts)
+            # Build legacy entity key (normalized to lowercase)
+            legacy_entity_key = "|".join(str(p).lower() for p in key_parts)
+
+            # === PRIMARY KEY SELECTION ===
+            # Prefer UUID if available, fall back to legacy entity_key
+            # UUID format: uppercase 8-char hex (e.g., "A7F3B2C1")
+            # Legacy format: entity_type prefixed key (e.g., "server|instance|name")
+            if row_uuid:
+                entity_key = row_uuid
+            else:
+                entity_key = legacy_entity_key
+                if any(key_parts):
+                    logger.debug(
+                        "No UUID found for row in %s, using legacy key: %s",
+                        ws.title,
+                        entity_key[:50],
+                    )
 
             # Skip if we couldn't build a valid key
-            if not any(key_parts):
+            if not row_uuid and not any(key_parts):
                 continue
 
             # Extract editable fields
@@ -567,10 +605,17 @@ class AnnotationSyncService:
 
             # Only store if there are actual annotations
             if has_any_value:
-                # IMPORTANT: Store with UNPREFIXED key for backward compatibility
-                # The write_all_to_excel expects unprefixed keys to match Excel rows
-                # DB persistence in persist_to_db() adds the prefix when saving
-                annotations[entity_key] = fields
+                # Store metadata for exception detection matching
+                # When annotations are keyed by UUID, we need legacy_entity_key for findings lookup
+                fields["_legacy_entity_key"] = legacy_entity_key
+                fields["_row_uuid"] = row_uuid if row_uuid else None
+
+                # IMPORTANT: Store with entity_key (UUID or legacy) as dict key
+                # The write_all_to_excel expects these keys to match Excel rows
+                # DB persistence in persist_to_db() expects full keys (type|key)
+                # So we MUST prepend entity_type here
+                full_key = f"{config['entity_type']}|{entity_key}"
+                annotations[full_key] = fields
 
         logger.debug("Read %d annotations from %s sheet", len(annotations), ws.title)
         return annotations
@@ -718,7 +763,22 @@ class AnnotationSyncService:
         rows_processed = 0
         for row_num in range(2, ws.max_row + 1):
             rows_processed += 1
-            # Build entity key from key columns
+
+            # === UUID-BASED MATCHING (v3) ===
+            # Read UUID from Column A (column 1)
+            row_uuid = None
+            uuid_cell = ws.cell(row=row_num, column=1).value
+            if uuid_cell:
+                uuid_val = str(uuid_cell).strip().lower()
+                # Validate: 8 hex chars
+                if len(uuid_val) == 8:
+                    try:
+                        int(uuid_val, 16)
+                        row_uuid = uuid_val
+                    except ValueError:
+                        pass
+
+            # Build legacy entity key from key columns
             # Handle merged cells by using last non-empty value
             key_parts = []
             for i, col_idx in enumerate(key_indices):
@@ -735,17 +795,25 @@ class AnnotationSyncService:
                     key_parts.append(val)
                     last_key_values[i] = val
 
-            entity_key = "|".join(key_parts)
+            legacy_entity_key = "|".join(key_parts)
             # Normalize to lowercase for consistent matching with DB keys
-            entity_key_lower = entity_key.lower()
+            entity_key_lower = legacy_entity_key.lower()
 
             # Skip if we couldn't build a valid key
-            if not any(key_parts):
+            if not row_uuid and not any(key_parts):
                 continue
 
-            # Check if we have annotations for this row (use lowercase key)
-            if entity_key_lower in annotations:
+            # === ANNOTATION MATCHING ===
+            # Try UUID first (preferred), then legacy entity_key
+            row_annotations = None
+            display_key = row_uuid if row_uuid else legacy_entity_key  # For logging
+            if row_uuid and row_uuid in annotations:
+                row_annotations = annotations[row_uuid]
+            elif entity_key_lower in annotations:
                 row_annotations = annotations[entity_key_lower]
+
+            # Check if we have annotations for this row
+            if row_annotations:
                 for field_name, col_idx in editable_indices.items():
                     if field_name in row_annotations:
                         val = row_annotations[field_name]
@@ -810,7 +878,7 @@ class AnnotationSyncService:
                         updated += 1
                         logger.warning(
                             "DEBUG: Updated Excel Indicator for %s (Just=%s, Exc=%s, Stat=%s, Row=%d)",
-                            entity_key,
+                            display_key,
                             has_just,
                             has_exception,
                             status_val,
@@ -830,7 +898,7 @@ class AnnotationSyncService:
                         updated += 1
                         logger.warning(
                             "DEBUG: Reverted Excel Indicator for %s (Just=%s, Exc=%s, Row=%d)",
-                            entity_key,
+                            display_key,
                             has_just,
                             has_exception,
                             row_num,
@@ -843,12 +911,12 @@ class AnnotationSyncService:
                         if review_status_col:
                             ws.cell(row=row_num, column=review_status_col).value = ""
                             logger.debug(
-                                "Cleared Exception status for PASS row: %s", entity_key
+                                "Cleared Exception status for PASS row: %s", display_key
                             )
                     else:
                         logger.warning(
                             "DEBUG: Skipped Indicator Update for %s (Just=%s, Exc=%s, Disc=%s, Stat=%s, Row=%d)",
-                            entity_key,
+                            display_key,
                             has_just,
                             has_exception,
                             is_discrepant,
@@ -1039,17 +1107,24 @@ class AnnotationSyncService:
             # PASS rows with justification are documentation only, NOT exceptions
             # Use findings_status_map for accurate lookup (not Excel status column)
 
-            # Extract entity_key from full_key (remove entity_type prefix)
-            # and normalize to lowercase for case-insensitive matching
-            entity_type, finding_key = annotation_key_to_finding_key(full_key)
+            # === UUID-AWARE KEY MATCHING ===
+            # When annotations are keyed by UUID, use _legacy_entity_key for findings lookup
+            if "_legacy_entity_key" in fields and fields["_legacy_entity_key"]:
+                # Use stored legacy key (UUID-based annotations)
+                finding_key = fields["_legacy_entity_key"]
+                entity_type = ""  # Will be extracted below if needed
+            else:
+                # Fallback: Extract entity_key from full_key (legacy format)
+                entity_type, finding_key = annotation_key_to_finding_key(full_key)
+
             normalized_finding_key = normalize_key_string(finding_key)
 
             # Look up actual status from findings (using normalized lowercase key)
             finding_status = findings_status_map.get(normalized_finding_key, "")
 
-            # Debug: Log key matching for troubleshooting
+            # Log key matching for troubleshooting at debug level
             if justification or has_exception_status:
-                logger.info(
+                logger.debug(
                     "Exception candidate: %s -> finding_key=%s, status=%s",
                     full_key,
                     normalized_finding_key,
@@ -1100,6 +1175,7 @@ class AnnotationSyncService:
             # Detect change: new/updated justification or new Exception status
             # Note: We do NOT check status_mismatch - finding status correctly stays FAIL
             # for exceptioned items. Checking status_mismatch caused duplicate detections.
+
             if justification != old_justification or (
                 has_exception_status and not was_exception
             ):

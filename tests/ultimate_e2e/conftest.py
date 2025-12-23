@@ -154,6 +154,44 @@ class TestContext:
         wb.close()
         return True
 
+    def mark_row_as_fail(self, sheet_name: str, row: int = 2) -> bool:
+        """
+        Mark a row as FAIL/discrepant by setting Status and Action indicator.
+
+        This is needed for exception detection tests since sample data creates PASS rows.
+        """
+        wb = load_workbook(self.excel_path)
+
+        if sheet_name not in wb.sheetnames:
+            wb.close()
+            return False
+
+        ws = wb[sheet_name]
+
+        # Find Status column and Action indicator column
+        status_col = None
+        action_col = None
+        for col in range(1, ws.max_column + 1):
+            header = ws.cell(row=1, column=col).value
+            if header:
+                header_str = str(header).strip().lower()
+                if header_str == "status":
+                    status_col = col
+                if "⏳" in str(header):
+                    action_col = col
+
+        # Set Status to FAIL if column exists
+        if status_col:
+            ws.cell(row=row, column=status_col).value = "FAIL"
+
+        # Set Action indicator to ⏳ (needs action) if column exists
+        if action_col:
+            ws.cell(row=row, column=action_col).value = "⏳"
+
+        wb.save(self.excel_path)
+        wb.close()
+        return True
+
     def read_annotation_from_excel(
         self,
         sheet_name: str,
@@ -233,9 +271,10 @@ class TestContext:
             current_findings=mock_findings,
         )
 
-        # Reload and write back
+        # Reload and write back to EXISTING Excel (don't recreate, that wipes FAIL status)
         loaded = sync.load_from_db()
-        self.create_excel_with_specs()
+        # NOTE: Removed create_excel_with_specs() here - it was overwriting the Excel
+        # and erasing FAIL status set by mark_row_as_fail()
         write_count = sync.write_all_to_excel(self.excel_path, loaded)
 
         # Helper to map string change types to Enum
@@ -286,10 +325,24 @@ class TestContext:
         findings = []
 
         for spec in get_data_specs():
+            # The expected_key_pattern has format: entity_type|server|instance|...
+            # But findings use entity_key WITHOUT entity_type prefix: server|instance|...
+            # Strip the entity_type prefix from the key
+            if "|" in spec.expected_key_pattern:
+                # Format: "entity_type|server|instance|entity_name"
+                # Strip first part: "server|instance|entity_name"
+                entity_key_parts = spec.expected_key_pattern.split("|", 1)
+                if len(entity_key_parts) > 1:
+                    finding_key = entity_key_parts[1]  # Just the data portion
+                else:
+                    finding_key = spec.expected_key_pattern
+            else:
+                finding_key = spec.expected_key_pattern
+
             # Create a finding that marks this as discrepant
             finding = {
                 "entity_type": spec.entity_type,
-                "entity_key": spec.expected_key_pattern,
+                "entity_key": finding_key,  # Without entity_type prefix
                 "status": "FAIL",
                 "is_discrepant": True,
             }
@@ -300,9 +353,9 @@ class TestContext:
                 connection=self.conn,
                 audit_run_id=self.run_id,
                 instance_id=self.instance_id,
-                entity_key=spec.expected_key_pattern,
+                entity_key=finding_key,  # Without entity_type prefix
                 finding_type=spec.entity_type,
-                entity_name=spec.expected_key_pattern.split("|")[-1],
+                entity_name=finding_key.split("|")[-1],
                 status="FAIL",
                 risk_level="High",
                 finding_description="Mock Finding",

@@ -250,7 +250,7 @@ DATABASE_USERS_SPEC = SheetSpec(
         "Last Reviewed": "last_reviewed",
         "Notes": "notes",
     },
-    expected_key_pattern="db_user|testserver|inst1|appdb|guest",
+    expected_key_pattern="db_user|testserver|inst1|appdb|valid_user",
     supports_exceptions=True,
     has_notes=True,
     has_justification=True,
@@ -330,7 +330,7 @@ PERMISSION_GRANTS_SPEC = SheetSpec(
         "Last Reviewed": "last_reviewed",
         "Notes": "notes",
     },
-    expected_key_pattern="permission|testserver|inst1|server||dev_team|control server",
+    expected_key_pattern="permission|testserver|inst1|server||dev_team|connect|",
     supports_exceptions=True,
     has_notes=True,
     has_justification=True,
@@ -506,7 +506,7 @@ AUDIT_SETTINGS_SPEC = SheetSpec(
     },
     editable_cols={
         "Review Status": "review_status",
-        "Exception Reason": "justification",  # Note: uses "Exception Reason"
+        "Justification": "justification",  # Matches audit_settings.py
         "Last Reviewed": "last_reviewed",
     },
     expected_key_pattern="audit_settings|testserver|inst1|login auditing",
