@@ -57,7 +57,7 @@ See [docs/CLI_REFERENCE.md](docs/CLI_REFERENCE.md) for full command reference.
 | `--finalize` | ⚠️ Partial | Basic implementation |
 | `--deploy-hotfixes` | ⏳ Pending | Stubs only |
 
-See [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md) for comprehensive details.
+See [docs/STATUS.md](docs/STATUS.md) for comprehensive details.
 
 ---
 
@@ -104,7 +104,7 @@ All documentation is in the [`docs/`](docs/) folder:
 | Document | Purpose |
 |----------|---------|
 | [INDEX.md](docs/INDEX.md) | Documentation index |
-| [PROJECT_STATUS.md](docs/PROJECT_STATUS.md) | Current implementation state |
+| [STATUS.md](docs/STATUS.md) | Current implementation state |
 | [DEV_THOUGHTS.md](docs/DEV_THOUGHTS.md) | Future vision & requirements |
 | [AUDIT_WORKFLOW.md](docs/AUDIT_WORKFLOW.md) | Complete lifecycle |
 | [CLI_REFERENCE.md](docs/CLI_REFERENCE.md) | Command reference |
@@ -136,7 +136,7 @@ All documentation is in the [`docs/`](docs/) folder:
 | 16 | Encryption | SMK/DMK/TDE status |
 | 17 | Actions | Remediation tracking |
 
-See [docs/excel_report_layout.md](docs/excel_report_layout.md) for column details.
+See [docs/EXCEL_COLUMNS.md](docs/EXCEL_COLUMNS.md) for column details.
 
 ---
 
@@ -191,11 +191,11 @@ python test_multi_instance.py
 | File | Purpose |
 |------|---------|
 | [db-requirements.md](db-requirements.md) | 28 security requirements being audited |
-| [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md) | What's done, what's next |
+| [docs/STATUS.md](docs/STATUS.md) | What's done, what's next |
 | [docs/DEV_THOUGHTS.md](docs/DEV_THOUGHTS.md) | Future ideas |
 | [docs/TODO.md](docs/TODO.md) | Task tracker |
-| [docs/excel_report_layout.md](docs/excel_report_layout.md) | Sheet column documentation |
+| [docs/EXCEL_COLUMNS.md](docs/EXCEL_COLUMNS.md) | Sheet column documentation |
 
 ---
 
-*Last updated: 2025-12-17*
+*Last updated: 2025-12-23*

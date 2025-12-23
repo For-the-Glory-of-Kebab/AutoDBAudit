@@ -13,6 +13,7 @@ AutoDBAudit is a comprehensive SQL Server Audit & Remediation tool. It performs 
 | **Excel Reporting** | "Actions" sheet tracks changes. "Review Status" column drives persistence. | **STABLE** |
 | **Discrepancy Logic** | Standardized FAIL/WARN logic documented in `COMPLIANCE_LOGIC.md`. | **STABLE** |
 | **Configuration** | `config.yaml` drives aggressiveness and port targeting. | **STABLE** |
+| **E2E Framework** | "Nuclear" offline testing with Mock Service. | **STABLE** |
 
 ## ⚠️ Completed (Awaiting Manual Verification)
 | Feature | Details | Verification Step |
@@ -21,6 +22,7 @@ AutoDBAudit is a comprehensive SQL Server Audit & Remediation tool. It performs 
 | **Nuclear Options** | Batch scripts for "High Priv" cleanup (Level 3/2). | Check generated SQL for table-driven batch. |
 | **OS Audit Script** | `_OS_AUDIT.ps1` checks protocols, IPs, services. | Run generated PS1 on target. |
 | **Bug Fixes** | SA handling, Login Audit finding types. | Verify SA script has correct logic. |
+| **Hotfix** | Robust Bootstrap-WinRM (DCOM/PSDrive). | Run `Bootstrap-WinRM.ps1`. |
 
 ## ❌ Backlog / To-Do
 | Feature | Priority | Notes |

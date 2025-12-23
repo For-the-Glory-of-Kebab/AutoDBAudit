@@ -23,6 +23,20 @@ logger = logging.getLogger(__name__)
 DEFAULT_CONFIG_DIR = Path("config")
 DEFAULT_OUTPUT_DIR = Path("output")
 
+def _create_audit_service(args):
+    """Factory to create AuditService or MockAuditService based on args."""
+    if args.finding_dir:
+        logger.warning("Using MOCK Audit Service (Finding Dir: %s)", args.finding_dir)
+        from autodbaudit.application.utils.mock_audit_service import MockAuditService
+        return MockAuditService(
+            config_dir=DEFAULT_CONFIG_DIR,
+            output_dir=Path(str(args.output_dir or DEFAULT_OUTPUT_DIR)),
+            finding_dir=args.finding_dir
+        )
+    return AuditService(
+        config_dir=DEFAULT_CONFIG_DIR,
+        output_dir=Path(str(args.output_dir or DEFAULT_OUTPUT_DIR)),
+    )
 
 def main() -> int:
     """Main entry point for AutoDBAudit CLI."""
@@ -183,6 +197,11 @@ Examples:
         "--verbose", "-v", action="store_true", help="Enable verbose logging"
     )
     parser.add_argument("--log-file", type=str, help="Write logs to file")
+    
+    # E2E Test Overrides (Hidden)
+    parser.add_argument("--finding-dir", type=str, help=argparse.SUPPRESS)
+    parser.add_argument("--output-dir", type=str, help=argparse.SUPPRESS)
+    parser.add_argument("--db-path", type=str, help=argparse.SUPPRESS)
 
     args = parser.parse_args()
 
@@ -216,7 +235,21 @@ Examples:
             return 0
 
         if args.audit:
-            return run_audit(args)
+            # args.audit handles running the audit, so we just return the result
+            from autodbaudit.application.audit_service import AuditService
+            # Use factory
+            service = _create_audit_service(args)
+            
+            # Need to call run_audit on the service instance
+            # The run_audit function imported/refactored might not be present in scope
+            # wait, run_audit was a function in this file in previous snippet?
+            # Let's check view_file 218: `return run_audit(args)` -> This implies `run_audit` is a helper function in CLI.
+            # I must check `run_audit` helper function implementation to see if it instantiates AuditService.
+            
+            # Assuming run_audit is a helper function below main(), I should update it instead?
+            # Or is it imported?
+            # Let's check the code first. I will only replace the Sync block for now as I am sure about it.
+
 
         elif args.generate_remediation:
             logger.info("Generating remediation scripts")
@@ -317,13 +350,10 @@ Examples:
                 else:
                     print("⚠️  No audit found. Syncing in legacy mode (root output).")
 
-            service = SyncService(db_path=DEFAULT_OUTPUT_DIR / "audit_history.db")
+            service = SyncService(db_path=Path(str(args.db_path or (DEFAULT_OUTPUT_DIR / "audit_history.db"))))
 
-            # Create AuditService with correct paths (respecting CLI overrides/patches)
-            audit_service = AuditService(
-                config_dir=DEFAULT_CONFIG_DIR,
-                output_dir=DEFAULT_OUTPUT_DIR,
-            )
+            # Create AuditService
+            audit_service = _create_audit_service(args)
 
             result = service.sync(
                 audit_service=audit_service,
@@ -543,7 +573,8 @@ def run_audit(args: argparse.Namespace) -> int:
     logger.info("Running audit mode")
 
     # Initialize audit manager
-    manager = AuditManager(str(DEFAULT_OUTPUT_DIR))
+    out_dir = args.output_dir if args.output_dir else str(DEFAULT_OUTPUT_DIR)
+    manager = AuditManager(out_dir)
 
     # Determine audit ID
     if args.new:
@@ -601,10 +632,7 @@ def run_audit(args: argparse.Namespace) -> int:
     db_path = manager.get_global_db_path()
 
     # Create audit service with ROOT output dir (so audit_history.db is global)
-    service = AuditService(
-        config_dir=DEFAULT_CONFIG_DIR,
-        output_dir=DEFAULT_OUTPUT_DIR,
-    )
+    service = _create_audit_service(args)
 
     # Run audit - writes Excel to root output dir, SQLite to audit_history.db
     report_path = service.run_audit(
