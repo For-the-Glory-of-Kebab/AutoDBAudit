@@ -62,7 +62,7 @@ class AccessControlCollector(BaseCollector):
 
                 self.save_finding(
                     finding_type="sa_account",
-                    entity_name="sa",
+                    entity_name=login_name,
                     status=status,
                     risk_level="critical" if not is_disabled else None,
                     description=desc,
@@ -153,16 +153,39 @@ class AccessControlCollector(BaseCollector):
                     is_disabled=bool(r.get("MemberDisabled")),
                 )
 
-                # Check for sensitive roles (sysadmin)
-                if r.get("RoleName") == "sysadmin":
-                    self.save_finding(
-                        finding_type="server_role_member",
-                        entity_name=r.get("MemberName", ""),
-                        status="FAIL",
-                        risk_level="critical",
-                        description=f"Member of 'sysadmin': {r.get('MemberName')}",
-                        recommendation="Review sysadmin membership",
-                    )
+                # Save finding for ALL role members to ensure stats counting works
+                # "Results-Based Persistence": Findings table drives compliance
+                role_name = r.get("RoleName", "")
+                member_name = r.get("MemberName", "")
+                
+                # Determine status based on role sensitivity
+                status = "PASS"
+                risk_level = None
+                desc = f"Member of '{role_name}': {member_name}"
+                rec = None
+                
+                if role_name == "sysadmin":
+                    status = "FAIL"
+                    risk_level = "critical"
+                    rec = "Review sysadmin membership"
+                elif role_name in ("securityadmin", "serveradmin"):
+                    status = "WARN"
+                    risk_level = "high"
+                    rec = f"Review {role_name} membership"
+
+                # Entity key must be unique per role assignment (Role|Member)
+                # Matches SHEET_ANNOTATION_CONFIG key structure
+                entity_key = f"{role_name}|{member_name}"
+
+                self.save_finding(
+                    finding_type="server_role_member",
+                    entity_name=member_name,
+                    status=status,
+                    risk_level=risk_level,
+                    description=desc,
+                    recommendation=rec,
+                    entity_key=entity_key,
+                )
             return len(roles)
         except Exception as e:
             logger.warning("Roles failed: %s", e)

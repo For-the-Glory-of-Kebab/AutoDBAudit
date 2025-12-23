@@ -467,9 +467,25 @@ Examples:
         elif args.apply_remediation:
             from autodbaudit.application.script_executor import ScriptExecutor
 
-            scripts_path = args.scripts or str(
-                DEFAULT_OUTPUT_DIR / "remediation_scripts"
-            )
+            # Use latest audit's remediation folder if --scripts not specified
+            scripts_path = args.scripts
+            if not scripts_path:
+                manager = AuditManager(str(DEFAULT_OUTPUT_DIR))
+                audit = manager.get_latest_audit()
+                if not audit:
+                     print("❌ No audits found to apply remediation.")
+                     return 1
+                
+                # Get latest version
+                versions = audit.get("remediation_versions", 0)
+                if versions == 0:
+                    print(f"❌ No remediation scripts generated for Audit #{audit['id']}.")
+                    print("   Run --generate-remediation first.")
+                    return 1
+                
+                scripts_path = str(manager.get_remediation_scripts_folder(audit["id"], versions))
+                print(f"📂 Using scripts from: {scripts_path}")
+
             executor = ScriptExecutor(
                 targets_file=args.targets,
                 db_path=DEFAULT_OUTPUT_DIR / "audit_history.db",

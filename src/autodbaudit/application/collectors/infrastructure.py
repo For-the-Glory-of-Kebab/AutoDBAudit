@@ -39,14 +39,65 @@ class InfrastructureCollector(BaseCollector):
                 if svc_type in ("SQL Browser", "VSS Writer", "Integration Services"):
                     svc_instance = "(Shared)"
 
+                service_name = svc.get("ServiceName") or svc.get("DisplayName", "")
+                service_account = svc.get("ServiceAccount", "")
+                status = svc.get("Status", "Unknown")
+                startup_type = svc.get("StartupType", "")
+                
                 self.writer.add_service(
                     server_name=self.ctx.server_name,
                     instance_name=svc_instance,
-                    service_name=svc.get("ServiceName") or svc.get("DisplayName", ""),
+                    service_name=service_name,
                     service_type=svc_type,
-                    status=svc.get("Status", "Unknown"),
-                    startup_type=svc.get("StartupType", ""),
-                    service_account=svc.get("ServiceAccount", ""),
+                    status=status,
+                    startup_type=startup_type,
+                    service_account=service_account,
+                )
+                
+                # Build entity_key: server|instance|service_name
+                entity_key = f"{self.ctx.server_name}|{svc_instance}|{service_name}".lower()
+                
+                # Determine if this service needs review
+                acct_lower = service_account.lower().strip()
+                status_lower = status.lower().strip()
+                startup_lower = startup_type.lower().strip()
+                
+                # Rules:
+                # 1. Non-compliant accounts (System, LocalService, etc)
+                non_compliant_accounts = {"nt authority\\system", "localsystem", "local service", "network service"}
+                is_bad_account = acct_lower in non_compliant_accounts
+                
+                # 2. Key services that should be running but are stopped
+                # (Simple heuristic: If set to Auto Start, it should be Running)
+                is_stopped_auto = "auto" in startup_lower and "running" not in status_lower
+                
+                is_issue = is_bad_account or is_stopped_auto
+                finding_status = "WARN" if is_issue else "PASS"
+                
+                desc_parts = []
+                if is_bad_account:
+                    desc_parts.append(f"running as '{service_account}'")
+                if is_stopped_auto:
+                    desc_parts.append("Auto-start service is stopped")
+                if not is_issue:
+                    desc_parts.append("Service configuration OK")
+                    
+                description = f"Service '{service_name}': " + "; ".join(desc_parts)
+                
+                rec = []
+                if is_bad_account:
+                    rec.append("Use managed service accounts")
+                if is_stopped_auto:
+                    rec.append("Start service or change startup type to Manual/Disabled")
+                
+                self.save_finding(
+                    finding_type="service",
+                    entity_name=service_name,
+                    status=finding_status,
+                    risk_level="medium" if is_issue else None,
+                    description=description,
+                    recommendation="; ".join(rec) if rec else None,
+                    entity_key=entity_key,
                 )
             return len(services)
         except Exception as e:
@@ -57,16 +108,64 @@ class InfrastructureCollector(BaseCollector):
         """Collect client network protocol configuration."""
         try:
             protocols = self.conn.execute_query(self.prov.get_client_protocols())
-            for proto in protocols:
+            
+            # Map detected protocols by name (case-insensitive)
+            detected = {p.get("ProtocolName", "").lower(): p for p in protocols}
+            
+            # Standard set of protocols to report
+            standard_protocols = ["Shared Memory", "TCP/IP", "Named Pipes", "VIA"]
+            
+            for name in standard_protocols:
+                name_lower = name.lower()
+                p_data = detected.get(name_lower)
+                
+                # If detected, use actual values. If not (manual), assume disabled (compliant)
+                if p_data:
+                    is_enabled = bool(p_data.get("IsEnabled", 0))
+                    port = p_data.get("DefaultPort")
+                    notes = p_data.get("Notes", "")
+                    source = "Detected"
+                else:
+                    is_enabled = False  # Assume compliant if not detectable via T-SQL
+                    port = None
+                    notes = "Manual entry required" if name_lower not in ("shared memory", "tcp/ip") else ""
+                    source = "Manual"
+
                 self.writer.add_client_protocol(
                     server_name=self.ctx.server_name,
                     instance_name=self.ctx.instance_name,
-                    protocol_name=proto.get("ProtocolName", ""),
-                    is_enabled=bool(proto.get("IsEnabled", 0)),
-                    port=proto.get("DefaultPort"),
-                    notes=proto.get("Notes", ""),
+                    protocol_name=name,
+                    is_enabled=is_enabled,
+                    port=port,
+                    notes=notes,
                 )
-            return len(protocols)
+                
+                # Build entity_key: server|instance|protocol
+                entity_key = f"{self.ctx.server_name}|{self.ctx.instance_name}|{name}".lower()
+                
+                # Enabled protocols need review (except Shared Memory/TCP/IP usually)
+                # But we mark everything PASS by default as per "assumed compliant"
+                finding_status = "PASS"
+                risk_level = None
+                
+                # If we detected it enabled and it's risky (VIA/Named Pipes), WARN?
+                # User said "assumed to be in a compliant state", so PASS default.
+                # If actual detection finds enabled VIA, we should probably WARN.
+                if is_enabled and name_lower in ("via", "named pipes"):
+                    finding_status = "WARN"
+                    risk_level = "medium"
+                
+                self.save_finding(
+                    finding_type="protocol",
+                    entity_name=name,
+                    status=finding_status,
+                    risk_level=risk_level,
+                    description=f"Protocol '{name}' is {'enabled' if is_enabled else 'disabled'} ({source})",
+                    recommendation="Disable unused protocols" if finding_status == "WARN" else None,
+                    entity_key=entity_key,
+                )
+            
+            return len(standard_protocols)
         except Exception as e:
             logger.warning("Client protocols failed: %s", e)
             return 0
@@ -190,7 +289,7 @@ class InfrastructureCollector(BaseCollector):
                 if not last_full:
                     self.save_finding(
                         finding_type="backup",
-                        entity_name=f"{db_name}|full",
+                        entity_name=db_name,
                         status="FAIL",
                         risk_level="high",
                         description=f"Database '{db_name}' has no recent FULL backup",
@@ -199,7 +298,7 @@ class InfrastructureCollector(BaseCollector):
                 elif recovery_model == "FULL" and not last_log:
                     self.save_finding(
                         finding_type="backup",
-                        entity_name=f"{db_name}|log",
+                        entity_name=db_name,
                         status="WARN",
                         risk_level="medium",
                         description=f"Database '{db_name}' is in FULL recovery but has no LOG backups",

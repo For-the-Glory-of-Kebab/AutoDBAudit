@@ -1,23 +1,21 @@
-# Documentation Index
+# AutoDBAudit Documentation
 
-**Last Updated:** 2025-12-21
+Welcome to the AutoDBAudit documentation.
 
-## 🚀 Quick Start
+## 🏁 Starting Point
+*   **[Project Status](STATUS.md)**: Current state of features, verifying what is done/todo.
+*   **[User Guide](USER_GUIDE_DIST.md)**: How to run audits, generate reports, and apply fixes.
 
-- **[SESSION_HANDOFF.md](SESSION_HANDOFF.md)** - Start here for next session
-- **[ACTIVE_TASKS.md](ACTIVE_TASKS.md)** - Current tasks and priorities
-- **[PROJECT_STATUS.md](PROJECT_STATUS.md)** - Overall project status
+## 📐 Design & Reference
+*   **[Architecture](ARCHITECTURE.md)**: Modular design, collectors, handlers, and sync engine.
+*   **[Compliance Logic](COMPLIANCE_LOGIC.md)**: Rules triggering FAIL/WARN discrepancies.
+*   **[CLI Reference](CLI_REFERENCE.md)**: Full list of command-line arguments.
+*   **[Excel Columns](EXCEL_COLUMNS.md)**: Detailed schema of the Excel report.
+*   **[Sync Engine Architecture](SYNC_ENGINE_ARCHITECTURE.md)**: Deep dive into the persistence layer.
 
-## 📖 Reference Docs
+## 🛠️ Developer Resources
+*   **[Atomic E2E Implementation](ATOMIC_E2E_IMPLEMENTATION_PLAN.md)**: (Archived)
+*   **[Tech Debt](TECH_DEBT.md)**: Known code improvements.
 
-| Category | Document |
-|----------|----------|
-| Architecture | [ARCHITECTURE.md](ARCHITECTURE.md), [SYNC_ENGINE_ARCHITECTURE.md](SYNC_ENGINE_ARCHITECTURE.md) |
-| Schema | [SCHEMA_REFERENCE.md](SCHEMA_REFERENCE.md), [EXCEL_COLUMNS.md](EXCEL_COLUMNS.md) |
-| CLI | [CLI_REFERENCE.md](CLI_REFERENCE.md), [AUDIT_WORKFLOW.md](AUDIT_WORKFLOW.md) |
-| Testing | [E2E_TESTING_GUIDE.md](E2E_TESTING_GUIDE.md), [ATOMIC_E2E_TEST_SPECS.md](ATOMIC_E2E_TEST_SPECS.md) |
-| Development | [AI_RUNBOOK.md](AI_RUNBOOK.md), [ENGINEERING_STANDARDS.md](ENGINEERING_STANDARDS.md) |
-
-## 📁 Archive
-
-Old session handoffs and resolved issues in `archive/` folder.
+## 📦 Archive
+*   See `docs/archive/` for session logs and completed plans.

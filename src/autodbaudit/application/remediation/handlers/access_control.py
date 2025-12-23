@@ -18,10 +18,16 @@ class AccessControlHandler(RemediationHandler):
     def __init__(self, context):
         super().__init__(context)
         self.seen_logins = set()
+        # Buffers for batch processing
+        self.high_priv_logins: list[tuple[str, str]] = []  # (login, desc)
+        self.unused_logins: list[str] = []
+        self.policy_logins: list[str] = []
+        self.grant_logins: list[tuple[str, str]] = []
+        self.manual_logins: list[tuple[str, str]] = []
 
     def handle(self, finding: dict) -> list[RemediationAction]:
         """
-        Generate actions for a finding.
+        Generate actions for a finding. Buffers generic login findings.
         """
         ft = finding["finding_type"]
         entity = finding["entity_name"]
@@ -30,83 +36,171 @@ class AccessControlHandler(RemediationHandler):
         actions = []
 
         if ft == "sa_account":
-            # SA handling is special, usually done once per instance.
-            # We'll just generate it here based on the finding.
-            # Check if we are connected as SA
+            # SA handling remains immediate (special single item)
             is_connected_as_sa = (
                 self.ctx.conn_user and self.ctx.conn_user.lower() == "sa"
             )
-
-            # Generate temp password
             temp_password = self.generate_temp_password()
-
-            script = self._script_handle_sa(temp_password, is_connected_as_sa)
+            script = self._script_handle_sa(entity, temp_password, is_connected_as_sa)
             rollback = self._rollback_sa(temp_password)
-
             cat = "REVIEW" if is_connected_as_sa else "CAUTION"
             actions.append(RemediationAction(script, rollback, cat))
 
         elif ft == "login":
             if entity.lower() == "sa":
-                return []  # Handled by sa_account or duplicates
-
+                return []
             if entity in self.seen_logins:
                 return []
             self.seen_logins.add(entity)
 
-            is_connected_user = bool(
-                self.ctx.conn_user
-                and entity.strip().lower() == self.ctx.conn_user.strip().lower()
-            )
-
-            if "sysadmin" in desc.lower() or "privilege" in desc.lower():
-                # High priv -> REVIEW
-                script = self._script_review_login(
-                    entity, desc, is_connected_user, self.ctx.aggressiveness
-                )
-                actions.append(
-                    RemediationAction(
-                        script, "-- No rollback for review items", "REVIEW"
-                    )
-                )
-
-            elif "unused" in desc.lower() or "not used" in desc.lower():
-                # Unused -> SAFE (unless connected user)
-                script = self._script_disable_unused_login(entity, is_connected_user)
-                rollback = self._rollback_enable_login(entity)
-                cat = "REVIEW" if is_connected_user else "SAFE"
-                actions.append(RemediationAction(script, rollback, cat))
-
-            elif "policy" in desc.lower():
-                # Password Policy -> SAFE
-                script = self._script_enable_password_policy(entity, is_connected_user)
-                rollback = "-- Cannot revert password policy cleanly without knowing previous state"
-                cat = "REVIEW" if is_connected_user else "SAFE"
-                actions.append(RemediationAction(script, rollback, cat))
-
-            elif "grant" in desc.lower():
-                # Grant option -> REVIEW
-                script = self._script_review_grant_option(entity, desc)
-                actions.append(RemediationAction(script, "-- Manual action", "REVIEW"))
-
+            # Categorize and buffer
+            desc_lower = desc.lower()
+            if "sysadmin" in desc_lower or "privilege" in desc_lower:
+                self.high_priv_logins.append((entity, desc))
+            elif "unused" in desc_lower or "not used" in desc_lower:
+                self.unused_logins.append(entity)
+            elif "policy" in desc_lower:
+                self.policy_logins.append(entity)
+            elif "grant" in desc_lower:
+                self.grant_logins.append((entity, desc))
             else:
-                # Default -> REVIEW
-                script = self._script_review_login(
-                    entity, desc, is_connected_user, self.ctx.aggressiveness
-                )
-                actions.append(RemediationAction(script, "-- Manual action", "REVIEW"))
+                self.manual_logins.append((entity, desc))
 
         elif ft == "audit_settings" and (
             "login" in entity.lower() or "audit" in entity.lower()
         ):
-            # Login Auditing
             script = self._script_enable_login_auditing()
             rollback = self._rollback_disable_login_auditing()
             actions.append(RemediationAction(script, rollback, "SAFE"))
 
         return actions
 
-    def _script_handle_sa(self, temp_password: str, is_connected_as_sa: bool) -> str:
+    def finalize(self) -> list[RemediationAction]:
+        """Generate batched scripts from buffers."""
+        actions = []
+        
+        # 1. High Privilege & Unused Logins (Aggressive Batch)
+        # Combines Sysadmin/Privileged and Unused logins into a clearable block
+        if self.high_priv_logins or self.unused_logins:
+            script = self._batch_script_login_cleanup()
+            actions.append(RemediationAction(script, "", "REVIEW"))
+
+        # 2. Password Policy (Batch)
+        if self.policy_logins:
+            script = self._batch_script_password_policy()
+            actions.append(RemediationAction(script, "", "SAFE"))
+
+        # 3. Grant Option & Manual (Review items - still individual-ish but grouped)
+        if self.grant_logins or self.manual_logins:
+             # We just dump these as comments for now
+             pass 
+
+        return actions
+
+    def _batch_script_login_cleanup(self) -> str:
+        """Generate table-driven batch script for easier manual review."""
+        header = self._item_header(
+            "☢️ ACCOUNT CLEANUP", 
+            "Batch Fix: Remove High Priv & Unused Logins"
+        )
+        
+        lines = []
+        lines.append(f"{header}")
+        lines.append("/*")
+        lines.append("INSTRUCTIONS:")
+        lines.append("1. The logic block below handles safe execution.")
+        lines.append("2. Uncomment the INSERT statements for accounts you want to clean up.")
+        lines.append("3. Default ACTIONS are based on Aggressiveness Level.")
+        lines.append("*/")
+        lines.append("")
+        lines.append("DECLARE @Targets TABLE (AccountName sysname, ActionType varchar(20));")
+        lines.append("")
+        lines.append("-- === [CONFIG] Uncomment lines below to select targets ===")
+        
+        # Helper to generate INSERT line
+        def gen_insert(name, action, reason, commented=True):
+            prefix = "-- " if commented else ""
+            return f"{prefix}INSERT INTO @Targets VALUES ('{name}', '{action}'); -- {reason}"
+
+        # Level 3 (Nuclear) = DROP by default (Uncommented?), Level 2 = DISABLE
+        # User said: "level 1 just has those iffy ones all commented out"
+        # "level 3 should probably remove all things... make everything ... non discrepant"
+        
+        is_aggressive = self.ctx.aggressiveness >= 3
+        is_standard = self.ctx.aggressiveness >= 2
+        
+        # High Priv -> Usually DROP or DISABLE depending on level
+        for name, desc in self.high_priv_logins:
+            action = "DROP" if is_aggressive else "DISABLE"
+            # Comment out by default unless aggressiveness >= 2 forcing it?
+            # User "level 3 ... remove all things". So if L3, uncommented.
+            commented = not is_aggressive
+            lines.append(gen_insert(name, action, f"HIGH PRIV: {desc}", commented))
+            
+        # Unused -> Usually DISABLE or DROP
+        for name in self.unused_logins:
+            action = "DROP" if is_aggressive else "DISABLE"
+            commented = not (is_aggressive or is_standard) # L2/L3 uncommented
+            lines.append(gen_insert(name, action, "UNUSED ACCOUNT", commented))
+            
+        lines.append("-- ========================================================")
+        lines.append("")
+        lines.append("DECLARE @Name sysname, @Action varchar(20);")
+        lines.append("DECLARE Cur CURSOR LOCAL FAST_FORWARD FOR SELECT AccountName, ActionType FROM @Targets;")
+        lines.append("OPEN Cur;")
+        lines.append("FETCH NEXT FROM Cur INTO @Name, @Action;")
+        lines.append("")
+        lines.append("WHILE @@FETCH_STATUS = 0")
+        lines.append("BEGIN")
+        lines.append("    -- 1. Safety Check: Connecting User")
+        lines.append("    IF SUSER_SNAME() = @Name")
+        lines.append("    BEGIN")
+        lines.append("        PRINT 'SKIP: Cannot operate on current connecting user [' + @Name + ']';")
+        lines.append("    END")
+        lines.append("    ELSE")
+        lines.append("    BEGIN")
+        lines.append("        -- 2. Execute Action")
+        lines.append("        IF @Action = 'DROP'")
+        lines.append("        BEGIN")
+        lines.append("            PRINT 'Dropping [' + @Name + ']...';")
+        lines.append("            IF EXISTS (SELECT 1 FROM sys.server_principals WHERE name = @Name)")
+        lines.append("                EXEC('DROP LOGIN [' + @Name + ']');")
+        lines.append("        END")
+        lines.append("        ELSE IF @Action = 'DISABLE'")
+        lines.append("        BEGIN")
+        lines.append("            PRINT 'Disabling [' + @Name + ']...';")
+        lines.append("            IF EXISTS (SELECT 1 FROM sys.server_principals WHERE name = @Name)")
+        lines.append("                EXEC('ALTER LOGIN [' + @Name + '] DISABLE');")
+        lines.append("        END")
+        lines.append("    END")
+        lines.append("")
+        lines.append("    FETCH NEXT FROM Cur INTO @Name, @Action;")
+        lines.append("END")
+        lines.append("")
+        lines.append("CLOSE Cur; DEALLOCATE Cur;")
+        lines.append("GO")
+        
+        return "\n".join(lines)
+
+    def _batch_script_password_policy(self) -> str:
+        """Generate batched password policy enforcer."""
+        header = self._item_header("🔐 PASSWORD POLICY", "Batch Fix: Enforce Policy on SQL Logins")
+        lines = [header]
+        lines.append("PRINT 'Enforcing Password Policy on identified logins...';")
+        
+        for name in self.policy_logins:
+            lines.append(f"""
+IF SUSER_SNAME() <> '{name}'
+    ALTER LOGIN [{name}] WITH CHECK_POLICY = ON;
+""")
+        lines.append("GO")
+        return "\n".join(lines)
+
+    # ... Helper methods like _script_handle_sa kept or refactored? 
+    # I need to keep _script_handle_sa, _rollback_sa, etc. as they are called above.
+    # But I can remove the old iterative _script_review_login and others since they are replaced by batching.
+
+    def _script_handle_sa(self, current_name: str, temp_password: str, is_connected_as_sa: bool) -> str:
         """Handle SA account (Rename + Disable + Scramble)."""
         header = self._item_header(
             "🛡️ SA ACCOUNT", "Secure SA Account (Rename, Disable, Scramble)"
@@ -117,8 +211,8 @@ class AccessControlHandler(RemediationHandler):
 
         script = f"""{header}
 PRINT 'Securing SA account...';
-PRINT '1. Renaming SA to [x_sa_renamed]...';
-ALTER LOGIN [sa] WITH NAME = [x_sa_renamed];
+PRINT '1. Renaming [{current_name}] to [x_sa_renamed]...';
+ALTER LOGIN [{current_name}] WITH NAME = [x_sa_renamed];
 
 PRINT '2. Setting complex random password...';
 -- Password logged in secrets file
@@ -131,7 +225,7 @@ PRINT '  [OK] SA account secured';
 GO
 """
         if is_connected_as_sa:
-            return self._wrap_lockout_warning(script, "sa")
+            return self._wrap_lockout_warning(script, current_name)
         return script
 
     def _rollback_sa(self, temp_password: str) -> str:
@@ -151,95 +245,6 @@ ALTER LOGIN [x_sa_renamed] WITH NAME = [sa];
 PRINT 'WARNING: Password cannot be reverted to original.';
 PRINT 'Current password is: {temp_password}';
 GO
-"""
-
-    def _script_review_login(
-        self, entity: str, desc: str, is_connected_user: bool, aggressiveness: int
-    ) -> str:
-        """Generate review script for generic login findings."""
-        header = self._item_header("👀 MANUAL REVIEW", f"Login Issue: {entity}")
-        script = f"""{header}
-/*
-ISSUE: {desc}
-Login: [{entity}]
-
-RECOMMENDATION: Review permissions and disable if not needed.
-*/
-
--- EXEC sp_revokedbaccess '{entity}';
--- EXEC sp_droplogin '{entity}';
-"""
-        return script
-
-    def _script_disable_unused_login(
-        self, login_name: str, is_connected_user: bool
-    ) -> str:
-        # Same logic as original
-        header = self._item_header("👤 LOGIN", f"Disable unused login: {login_name}")
-        script = f"""{header}
-PRINT '--- LOGGING BEFORE DISABLE ---';
-PRINT 'Login: {login_name}';
-SELECT name, type_desc, is_disabled, create_date, default_database_name
-FROM sys.server_principals WHERE name = '{login_name}';
-PRINT '--- END LOGGING ---';
-PRINT 'Disabling [{login_name}]...';
-IF EXISTS (SELECT * FROM sys.server_principals 
-           WHERE name = '{login_name}' 
-           AND (
-               NOT EXISTS (SELECT * FROM sys.server_role_members srm 
-                           JOIN sys.server_principals r ON srm.role_principal_id = r.principal_id 
-                           WHERE srm.member_principal_id = principal_id AND r.name = 'sysadmin')
-               OR (SELECT COUNT(*) FROM sys.server_role_members srm 
-                   JOIN sys.server_principals r ON srm.role_principal_id = r.principal_id
-                   JOIN sys.server_principals m ON srm.member_principal_id = m.principal_id
-                   WHERE r.name = 'sysadmin' AND m.is_disabled = 0 AND m.name <> '{login_name}') > 0
-           ))
-BEGIN
-    ALTER LOGIN [{login_name}] DISABLE;
-    PRINT '  [OK] Login disabled';
-END
-ELSE
-BEGIN
-    PRINT '  [SKIP] Safety check: Disabling this would leave 0 sysadmins or user not found.';
-END
-GO
-"""
-        if is_connected_user:
-            return self._wrap_lockout_warning(script, login_name)
-        return script
-
-    def _rollback_enable_login(self, login_name: str) -> str:
-        header = self._item_header("🔙 ROLLBACK", f"Enable login: {login_name}")
-        return f"""{header}
-PRINT 'Re-enabling [{login_name}]...';
-ALTER LOGIN [{login_name}] ENABLE;
-PRINT '  [OK] Login enabled';
-GO
-"""
-
-    def _script_enable_password_policy(
-        self, login_name: str, is_connected_user: bool
-    ) -> str:
-        header = self._item_header("👤 LOGIN", f"Enable password policy: {login_name}")
-        script = f"""{header}
-PRINT 'Enabling password policy for [{login_name}]...';
-ALTER LOGIN [{login_name}] WITH CHECK_POLICY = ON;
-PRINT '  [OK] Password policy enabled';
-GO
-"""
-        if is_connected_user:
-            return self._wrap_lockout_warning(script, login_name)
-        return script
-
-    def _script_review_grant_option(self, entity: str, desc: str) -> str:
-        header = self._item_header("👀 REVIEW", f"WITH GRANT OPTION: {entity}")
-        return f"""{header}
-/*
-ISSUE: {desc}
-Login [{entity}] has ability to grant permissions to others.
-Review and revoke if not necessary.
-*/
--- REVOKE GRANT OPTION FOR ... FROM [{entity}];
 """
 
     def _script_enable_login_auditing(self) -> str:

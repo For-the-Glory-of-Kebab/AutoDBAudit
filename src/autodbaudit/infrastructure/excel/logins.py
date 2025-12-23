@@ -39,8 +39,8 @@ __all__ = ["LoginSheetMixin", "LOGIN_CONFIG"]
 
 
 LOGIN_COLUMNS = (
-    ACTION_COLUMN,  # Column A: Action indicator
-    ColumnDef("Server", 16, Alignments.LEFT),
+    ACTION_COLUMN,  # Column B: Action indicator (A=UUID hidden)
+    ColumnDef("Server", 16, Alignments.LEFT),  # Column C
     ColumnDef("Instance", 14, Alignments.LEFT),
     ColumnDef("Login Name", 28, Alignments.LEFT),
     ColumnDef("Login Type", 18, Alignments.LEFT),
@@ -163,15 +163,16 @@ class LoginSheetMixin(BaseSheetMixin):
             needs_action = pwd_policy is not None and not pwd_policy
         apply_action_needed_styling(ws.cell(row=row, column=2), needs_action)
 
-        # Apply shade to informational columns (not status)
+        # Apply shade to informational columns (NOT Action column which stays white)
+        # A=UUID, B=Action(2), C=Server(3), D=Instance(4), E=LoginName(5), F=LoginType(6), G=Enabled(7), H=Policy(8), I=DefaultDB(9)
         fill = PatternFill(
             start_color=row_color, end_color=row_color, fill_type="solid"
         )
-        for col in [2, 3, 4, 5, 8]:  # Server=2, Instance=3, Name=4, Type=5, DefaultDB=8
+        for col in [3, 4, 5, 6, 9]:  # Server=3, Instance=4, Name=5, Type=6, DefaultDB=9
             ws.cell(row=row, column=col).fill = fill
 
-        # Style Enabled column with icon + color (now column 6)
-        enabled_cell = ws.cell(row=row, column=6)
+        # Style Enabled column with icon + color (column G = 7)
+        enabled_cell = ws.cell(row=row, column=7)
         if is_enabled:
             enabled_cell.value = f"{Icons.PASS} Yes"
             enabled_cell.font = Fonts.PASS
@@ -181,8 +182,8 @@ class LoginSheetMixin(BaseSheetMixin):
             enabled_cell.font = Fonts.FAIL
             enabled_cell.fill = Fills.FAIL
 
-        # Style Password Policy (now column 7)
-        policy_cell = ws.cell(row=row, column=7)
+        # Style Password Policy (column H = 8)
+        policy_cell = ws.cell(row=row, column=8)
         if pwd_policy is None:
             policy_cell.value = "N/A"
             policy_cell.fill = fill
@@ -201,7 +202,7 @@ class LoginSheetMixin(BaseSheetMixin):
         if current_row > self._login_instance_start_row:
             merge_server_cells(
                 ws,
-                server_col=3,  # Instance column (shifted +1 for action column)
+                server_col=4,  # Instance column (A=UUID, B=Action, C=Server, D=Instance)
                 start_row=self._login_instance_start_row,
                 end_row=current_row - 1,
                 server_name=self._login_last_instance,
@@ -221,14 +222,14 @@ class LoginSheetMixin(BaseSheetMixin):
             ]
             merge_server_cells(
                 ws,
-                server_col=2,  # Server column (shifted +1 for action column)
+                server_col=3,  # Server column (A=UUID, B=Action, C=Server)
                 start_row=self._login_server_start_row,
                 end_row=current_row - 1,
                 server_name=self._login_last_server,
                 is_alt=True,
             )
             # Apply main color to merged server cell
-            merged = ws.cell(row=self._login_server_start_row, column=2)
+            merged = ws.cell(row=self._login_server_start_row, column=3)
             merged.fill = PatternFill(
                 start_color=color_main, end_color=color_main, fill_type="solid"
             )

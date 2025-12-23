@@ -36,17 +36,17 @@ __all__ = ["PermissionSheetMixin", "PERMISSION_CONFIG"]
 
 
 PERMISSION_COLUMNS = (
-    ACTION_COLUMN,  # Column A: Action indicator (⏳ needs attention)
-    ColumnDef("Server", 18, Alignments.LEFT),
-    ColumnDef("Instance", 15, Alignments.LEFT),
-    ColumnDef("Scope", 10, Alignments.CENTER),
-    ColumnDef("Database", 20, Alignments.LEFT),
-    ColumnDef("Grantee", 25, Alignments.LEFT),
-    ColumnDef("Permission", 25, Alignments.LEFT),
-    ColumnDef("State", 15, Alignments.CENTER),
-    ColumnDef("Entity Type", 15, Alignments.CENTER),
-    ColumnDef("Entity Name", 35, Alignments.LEFT),
-    ColumnDef("Risk", 12, Alignments.CENTER),
+    ACTION_COLUMN,  # Column B: Action indicator (A=UUID hidden)
+    ColumnDef("Server", 18, Alignments.LEFT),  # Column C
+    ColumnDef("Instance", 15, Alignments.LEFT),  # Column D
+    ColumnDef("Scope", 10, Alignments.CENTER),  # Column E
+    ColumnDef("Database", 20, Alignments.LEFT),  # Column F
+    ColumnDef("Grantee", 25, Alignments.LEFT),  # Column G
+    ColumnDef("Permission", 25, Alignments.LEFT),  # Column H
+    ColumnDef("State", 15, Alignments.CENTER),  # Column I
+    ColumnDef("Entity Type", 15, Alignments.CENTER),  # Column J
+    ColumnDef("Entity Name", 35, Alignments.LEFT),  # Column K
+    ColumnDef("Risk", 12, Alignments.CENTER),  # Column L
     STATUS_COLUMN,  # Review Status dropdown
     ColumnDef("Justification", 35, Alignments.LEFT, is_manual=True),
     LAST_REVIEWED_COLUMN,
@@ -176,8 +176,8 @@ class PermissionSheetMixin(ServerGroupMixin, BaseSheetMixin):
         needs_action = risk_level == "high"
 
         data = [
-            None,  # Action indicator (column A)
-            server_name,
+            None,  # Action indicator (column B)
+            server_name,  # Column C
             instance_name or "(Default)",
             scope_display,
             database_name,  # Can be empty for SERVER scope
@@ -196,11 +196,11 @@ class PermissionSheetMixin(ServerGroupMixin, BaseSheetMixin):
         # Apply action indicator (column 1)
         apply_action_needed_styling(ws.cell(row=row, column=2), needs_action)
 
-        # Apply row color to data columns (shifted +1)
-        self._apply_row_color(row, row_color, data_cols=[3, 4, 5, 6, 7, 9, 10], ws=ws)
+        # Apply row color to data columns (A=UUID, B=Action, C=Server, D=Instance, E=Scope, F=Database, G=Grantee, H=Permission)
+        self._apply_row_color(row, row_color, data_cols=[3, 4, 5, 6, 7, 10, 11], ws=ws)
 
-        # Style State Column (Col 8, shifted +1)
-        state_cell = ws.cell(row=row, column=8)
+        # Style State Column (Column I = 9)
+        state_cell = ws.cell(row=row, column=9)
         if state_upper == "DENY":
             state_cell.fill = Fills.FAIL
             state_cell.font = Fonts.FAIL
@@ -208,8 +208,8 @@ class PermissionSheetMixin(ServerGroupMixin, BaseSheetMixin):
             state_cell.fill = Fills.WARN
             state_cell.font = Fonts.WARN
 
-        # Style Risk Column (Col 11, shifted +1)
-        risk_cell = ws.cell(row=row, column=11)
+        # Style Risk Column (Column L = 12)
+        risk_cell = ws.cell(row=row, column=12)
         if risk_level == "high":
             risk_cell.value = "🔴 Risk"
             risk_cell.fill = Fills.FAIL
@@ -238,10 +238,14 @@ class PermissionSheetMixin(ServerGroupMixin, BaseSheetMixin):
         )
 
         ws = self._permission_sheet
-        # Scope (C)
-        add_dropdown_validation(ws, "C", ["SERVER", "DATABASE"])
-        # State (G)
-        add_dropdown_validation(ws, "N", ["✅ GRANT", "⛔ DENY", "⚠️ GRANT w/ OPT"])
-        # Review Status column (L) - column 12
-        add_dropdown_validation(ws, "J", STATUS_VALUES.all())
-        add_review_status_conditional_formatting(ws, "J")
+        # Column layout: A=UUID, B=Action, C=Server, D=Instance, E=Scope, F=Database,
+        #                G=Grantee, H=Permission, I=State, J=EntityType, K=EntityName,
+        #                L=Risk, M=ReviewStatus, N=Justification, O=LastReviewed, P=Notes
+        
+        # Scope (E) - column 5
+        add_dropdown_validation(ws, "E", ["SERVER", "DATABASE"])
+        # State (I) - column 9
+        add_dropdown_validation(ws, "I", ["✅ GRANT", "⛔ DENY", "⚠️ GRANT w/ OPT"])
+        # Review Status column (M) - column 13
+        add_dropdown_validation(ws, "M", STATUS_VALUES.all())
+        add_review_status_conditional_formatting(ws, "M")

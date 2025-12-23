@@ -38,16 +38,16 @@ __all__ = ["BackupSheetMixin", "BACKUP_CONFIG"]
 
 
 BACKUP_COLUMNS = (
-    ACTION_COLUMN,  # Column A: Action indicator
-    ColumnDef("Server", 16, Alignments.LEFT),
-    ColumnDef("Instance", 14, Alignments.LEFT),
-    ColumnDef("Database", 22, Alignments.LEFT),
-    ColumnDef("Recovery Model", 14, Alignments.CENTER),
-    ColumnDef("Last Full Backup", 16, Alignments.CENTER),
-    ColumnDef("Days Since", 10, Alignments.CENTER),
-    ColumnDef("Backup Path", 40, Alignments.LEFT),
-    ColumnDef("Size (MB)", 12, Alignments.RIGHT),
-    ColumnDef("Status", 10, Alignments.CENTER, is_status=True),
+    ACTION_COLUMN,  # Column B: Action indicator (A=UUID hidden)
+    ColumnDef("Server", 16, Alignments.LEFT),  # Column C
+    ColumnDef("Instance", 14, Alignments.LEFT),  # Column D
+    ColumnDef("Database", 22, Alignments.LEFT),  # Column E
+    ColumnDef("Recovery Model", 14, Alignments.CENTER),  # Column F
+    ColumnDef("Last Full Backup", 16, Alignments.CENTER),  # Column G
+    ColumnDef("Days Since", 10, Alignments.CENTER),  # Column H
+    ColumnDef("Backup Path", 40, Alignments.LEFT),  # Column I
+    ColumnDef("Size (MB)", 12, Alignments.RIGHT),  # Column J
+    ColumnDef("Status", 10, Alignments.CENTER, is_status=True),  # Column K
     STATUS_COLUMN,  # Review Status dropdown
     ColumnDef("Justification", 35, Alignments.LEFT, is_manual=True),
     LAST_REVIEWED_COLUMN,
@@ -103,8 +103,8 @@ class BackupSheetMixin(ServerGroupMixin, BaseSheetMixin):
         size_str = format_size_mb(backup_size_mb) if backup_size_mb else ""
         
         data = [
-            None,  # Action indicator (column A)
-            server_name,
+            None,  # Action indicator (column B)
+            server_name,  # Column C
             instance_name or "(Default)",
             database_name,
             recovery_model,
@@ -122,15 +122,15 @@ class BackupSheetMixin(ServerGroupMixin, BaseSheetMixin):
         needs_action = status != "pass"
         apply_action_needed_styling(ws.cell(row=row, column=2), needs_action)
         
-        # Apply row color (shifted +1)
+        # Apply row color (A=UUID, B=Action, C=Server, D=Instance, E=Database, F=Recovery, G=LastBackup, H=Days, I=Path, J=Size)
         self._apply_row_color(row, row_color, data_cols=[3, 4, 5, 6, 7, 8, 9, 10], ws=ws)
         
-        # Apply status styling (Status is now column 10, shifted +1 from 9)
-        apply_status_styling(ws.cell(row=row, column=10), status)
+        # Apply status styling (Status is column K = 11)
+        apply_status_styling(ws.cell(row=row, column=11), status)
         
         if backup_date_str == "NEVER":
-            ws.cell(row=row, column=6).fill = Fills.FAIL  # Last Full Backup column (shifted +1)
-            ws.cell(row=row, column=6).font = Fonts.FAIL
+            ws.cell(row=row, column=7).fill = Fills.FAIL  # Last Full Backup column G = 7
+            ws.cell(row=row, column=7).font = Fonts.FAIL
     
     def _finalize_backups(self) -> None:
         """Finalize backups sheet - merge remaining groups."""
@@ -145,10 +145,10 @@ class BackupSheetMixin(ServerGroupMixin, BaseSheetMixin):
         )
         
         ws = self._backup_sheet
-        # Status column (J) - column 10 (shifted +1 from I)
-        add_dropdown_validation(ws, "J", ["PASS", "WARN", "FAIL"])
-        # Review Status column (K) - column 11
-        add_dropdown_validation(ws, "K", STATUS_VALUES.all())
-        add_review_status_conditional_formatting(ws, "K")
+        # Status column (K) - column 11 (A=UUID, B=Action, ..., K=Status)
+        add_dropdown_validation(ws, "K", ["PASS", "WARN", "FAIL"])
+        # Review Status column (L) - column 12
+        add_dropdown_validation(ws, "L", STATUS_VALUES.all())
+        add_review_status_conditional_formatting(ws, "L")
 
 

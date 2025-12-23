@@ -37,9 +37,9 @@ __all__ = ["RoleSheetMixin", "ROLE_CONFIG"]
 
 
 ROLE_COLUMNS = (
-    ACTION_COLUMN,  # Column A: Action indicator
-    ColumnDef("Server", 18, Alignments.LEFT),
-    ColumnDef("Instance", 15, Alignments.LEFT),
+    ACTION_COLUMN,  # Column B: Action indicator (A=UUID hidden)
+    ColumnDef("Server", 18, Alignments.LEFT),  # Column C
+    ColumnDef("Instance", 15, Alignments.LEFT),  # Column D
     ColumnDef("Role", 20, Alignments.LEFT),
     ColumnDef("Member", 28, Alignments.LEFT),
     ColumnDef("Member Type", 18, Alignments.LEFT),
@@ -144,15 +144,16 @@ class RoleSheetMixin(BaseSheetMixin):
         # Apply action indicator - show ⏳ for sysadmin members needing justification
         apply_action_needed_styling(ws.cell(row=row, column=2), needs_justification)
 
-        # Apply shade to informational columns (shifted +1)
+        # Apply shade to informational columns (NOT Action column which stays white)
+        # A=UUID, B=Action(2), C=Server(3), D=Instance(4), E=Role(5), F=Member(6), G=MemberType(7), H=Enabled(8)
         fill = PatternFill(
             start_color=row_color, end_color=row_color, fill_type="solid"
         )
-        for col in [2, 3, 4, 5, 6]:  # Server=2, Instance=3, Role=4, Member=5, Type=6
+        for col in [3, 4, 5, 6, 7]:  # Server=3, Instance=4, Role=5, Member=6, Type=7
             ws.cell(row=row, column=col).fill = fill
 
-        # Style Enabled column with icon + color (now column 7)
-        enabled_cell = ws.cell(row=row, column=7)
+        # Style Enabled column with icon + color (column H = 8)
+        enabled_cell = ws.cell(row=row, column=8)
         if is_enabled:
             enabled_cell.value = f"{Icons.PASS} Yes"
             enabled_cell.font = Fonts.PASS
@@ -164,7 +165,7 @@ class RoleSheetMixin(BaseSheetMixin):
 
         # Highlight sysadmin with warning if NOT disabled and NOT whitelisted
         if needs_justification:
-            for col in [4, 5, 6]:  # Role=4, Member=5, Type=6
+            for col in [5, 6, 7]:  # Role=E(5), Member=F(6), Type=G(7)
                 ws.cell(row=row, column=col).fill = Fills.WARN
 
     def _merge_role_instance(self, ws) -> None:
@@ -173,7 +174,7 @@ class RoleSheetMixin(BaseSheetMixin):
         if current_row > self._role_instance_start_row:
             merge_server_cells(
                 ws,
-                server_col=3,  # Instance column (shifted +1 for action column)
+                server_col=4,  # Instance column (A=UUID, B=Action, C=Server, D=Instance)
                 start_row=self._role_instance_start_row,
                 end_row=current_row - 1,
                 server_name=self._role_last_instance,
@@ -191,13 +192,13 @@ class RoleSheetMixin(BaseSheetMixin):
             ]
             merge_server_cells(
                 ws,
-                server_col=2,  # Server column (shifted +1 for action column)
+                server_col=3,  # Server column (A=UUID, B=Action, C=Server)
                 start_row=self._role_server_start_row,
                 end_row=current_row - 1,
                 server_name=self._role_last_server,
                 is_alt=True,
             )
-            merged = ws.cell(row=self._role_server_start_row, column=2)
+            merged = ws.cell(row=self._role_server_start_row, column=3)
             merged.fill = PatternFill(
                 start_color=color_main, end_color=color_main, fill_type="solid"
             )

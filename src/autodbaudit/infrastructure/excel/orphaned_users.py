@@ -36,13 +36,13 @@ __all__ = ["OrphanedUserSheetMixin", "ORPHANED_USER_CONFIG"]
 
 
 ORPHANED_USER_COLUMNS = (
-    ACTION_COLUMN,  # Column A: Action indicator
-    ColumnDef("Server", 18, Alignments.LEFT),
-    ColumnDef("Instance", 15, Alignments.LEFT),
-    ColumnDef("Database", 20, Alignments.LEFT),
-    ColumnDef("User Name", 25, Alignments.LEFT),
-    ColumnDef("Type", 16, Alignments.CENTER),
-    ColumnDef("Status", 14, Alignments.CENTER),
+    ACTION_COLUMN,  # Column B: Action indicator (A=UUID hidden)
+    ColumnDef("Server", 18, Alignments.LEFT),  # Column C
+    ColumnDef("Instance", 15, Alignments.LEFT),  # Column D
+    ColumnDef("Database", 20, Alignments.LEFT),  # Column E
+    ColumnDef("User Name", 25, Alignments.LEFT),  # Column F
+    ColumnDef("Type", 16, Alignments.CENTER),  # Column G
+    ColumnDef("Status", 14, Alignments.CENTER),  # Column H
     STATUS_COLUMN,  # Review Status dropdown
     ColumnDef("Justification", 45, Alignments.LEFT, is_manual=True),
     LAST_REVIEWED_COLUMN,
@@ -91,8 +91,8 @@ class OrphanedUserSheetMixin(ServerGroupMixin, BaseSheetMixin):
             type_display = "🔑 SQL"
 
         data = [
-            None,  # Action indicator (column A) - all orphaned users need action
-            server_name,
+            None,  # Action indicator (column B) - all orphaned users need action
+            server_name,  # Column C
             instance_name or "(Default)",
             database_name,
             user_name,
@@ -107,11 +107,11 @@ class OrphanedUserSheetMixin(ServerGroupMixin, BaseSheetMixin):
         # All orphaned users need action - show ⏳
         apply_action_needed_styling(ws.cell(row=row, column=2), True)
 
-        # Apply row color to data columns (shifted +1: Server=2, Instance=3, etc.)
+        # Apply row color to data columns (A=UUID, B=Action, C=Server, D=Instance, E=Database, F=UserName, G=Type, H=Status)
         self._apply_row_color(row, row_color, data_cols=[3, 4, 5, 6, 7], ws=ws)
 
-        # Style Status column (column 7, shifted +1 from 6) - orphaned is a warning
-        status_cell = ws.cell(row=row, column=7)
+        # Style Status column (column H = 8)
+        status_cell = ws.cell(row=row, column=8)
         status_cell.value = "⚠️ Orphaned"
         status_cell.fill = Fills.WARN
         status_cell.font = Fonts.WARN
@@ -140,8 +140,8 @@ class OrphanedUserSheetMixin(ServerGroupMixin, BaseSheetMixin):
         )
 
         data = [
-            None,  # Action indicator (column A) - no action needed
-            server_name,
+            None,  # Action indicator (column B) - no action needed
+            server_name,  # Column C
             instance_name or "(Default)",
             "(All Databases)",  # Database
             "— None Found —",  # User Name
@@ -156,8 +156,8 @@ class OrphanedUserSheetMixin(ServerGroupMixin, BaseSheetMixin):
         # Apply row color to data columns
         self._apply_row_color(row, row_color, data_cols=[3, 4, 5, 6, 7], ws=ws)
 
-        # Style Status column as PASS (no orphans = good)
-        status_cell = ws.cell(row=row, column=7)
+        # Style Status column (column H = 8) as PASS (no orphans = good)
+        status_cell = ws.cell(row=row, column=8)
         status_cell.value = "✅ None Found"
         status_cell.fill = Fills.PASS
         status_cell.font = Fonts.PASS

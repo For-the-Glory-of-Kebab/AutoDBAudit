@@ -26,6 +26,7 @@ from autodbaudit.infrastructure.excel.base import (
     SheetConfig,
     get_sql_year,
     LAST_REVIEWED_COLUMN,
+    STATUS_COLUMN,
 )
 
 
@@ -33,9 +34,9 @@ __all__ = ["InstanceSheetMixin", "INSTANCE_CONFIG"]
 
 
 INSTANCE_COLUMNS = (
-    ColumnDef("Config Name", 22, Alignments.LEFT),  # From display_name
-    ColumnDef("Server", 18, Alignments.LEFT),  # Connection target
-    ColumnDef("Instance", 12, Alignments.LEFT),
+    ColumnDef("Config Name", 22, Alignments.LEFT),  # Column B (A=UUID hidden)
+    ColumnDef("Server", 18, Alignments.LEFT),  # Column C - merged
+    ColumnDef("Instance", 12, Alignments.LEFT),  # Column D - merged
     ColumnDef("Machine Name", 16, Alignments.LEFT),  # From SERVERPROPERTY
     ColumnDef("IP Address", 16, Alignments.LEFT),  # From dm_exec_connections
     ColumnDef("Version", 12, Alignments.LEFT),
@@ -48,6 +49,8 @@ INSTANCE_COLUMNS = (
     ColumnDef("OS", 18, Alignments.LEFT),
     ColumnDef("CPU", 4, Alignments.CENTER),
     ColumnDef("RAM", 5, Alignments.CENTER),
+    STATUS_COLUMN,
+    ColumnDef("Justification", 30, Alignments.LEFT, is_manual=True),
     ColumnDef("Notes", 24, Alignments.LEFT, is_manual=True),
     LAST_REVIEWED_COLUMN,
 )
@@ -192,13 +195,13 @@ class InstanceSheetMixin(BaseSheetMixin):
             # Merge 1: Server Name (Always merge for the group)
             merge_server_cells(
                 ws,
-                server_col=2,  # Server column
+                server_col=3,  # Server column (A=UUID, B=ConfigName, C=Server)
                 start_row=self._instance_server_start_row,
                 end_row=current_row - 1,
                 server_name=self._instance_last_server,
                 is_alt=True,
             )
-            merged_cell = ws.cell(row=self._instance_server_start_row, column=2)
+            merged_cell = ws.cell(row=self._instance_server_start_row, column=3)
             merged_cell.fill = PatternFill(
                 start_color=color_main, end_color=color_main, fill_type="solid"
             )
@@ -207,14 +210,14 @@ class InstanceSheetMixin(BaseSheetMixin):
             if not self._instance_group_mixed:
                 merge_server_cells(
                     ws,
-                    server_col=3,  # Instance column
+                    server_col=4,  # Instance column (A=UUID, B=ConfigName, C=Server, D=Instance)
                     start_row=self._instance_server_start_row,
                     end_row=current_row - 1,
                     server_name=self._instance_last_instance,
                     is_alt=True,  # Use same style
                 )
                 merged_cell_inst = ws.cell(
-                    row=self._instance_server_start_row, column=3
+                    row=self._instance_server_start_row, column=4
                 )
                 merged_cell_inst.fill = PatternFill(
                     start_color=color_main, end_color=color_main, fill_type="solid"

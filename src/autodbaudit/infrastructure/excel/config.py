@@ -33,14 +33,14 @@ __all__ = ["ConfigSheetMixin", "CONFIG_CONFIG"]
 
 
 CONFIG_COLUMNS = (
-    ACTION_COLUMN,  # Column A: Action indicator
-    ColumnDef("Server", 18, Alignments.LEFT),
-    ColumnDef("Instance", 15, Alignments.LEFT),
-    ColumnDef("Setting", 35, Alignments.LEFT),
-    ColumnDef("Current", 12, Alignments.CENTER),
-    ColumnDef("Required", 12, Alignments.CENTER),
-    ColumnDef("Status", 12, Alignments.CENTER, is_status=True),
-    ColumnDef("Risk", 10, Alignments.CENTER),
+    ACTION_COLUMN,  # Column B: Action indicator (A=UUID hidden)
+    ColumnDef("Server", 18, Alignments.LEFT),  # Column C
+    ColumnDef("Instance", 15, Alignments.LEFT),  # Column D
+    ColumnDef("Setting", 35, Alignments.LEFT),  # Column E
+    ColumnDef("Current", 12, Alignments.CENTER),  # Column F
+    ColumnDef("Required", 12, Alignments.CENTER),  # Column G
+    ColumnDef("Status", 12, Alignments.CENTER, is_status=True),  # Column H
+    ColumnDef("Risk", 10, Alignments.CENTER),  # Column I
     STATUS_COLUMN,  # Review Status dropdown
     ColumnDef("Exception Reason", 45, Alignments.LEFT, is_manual=True),
     LAST_REVIEWED_COLUMN,
@@ -82,8 +82,8 @@ class ConfigSheetMixin(ServerGroupMixin, BaseSheetMixin):
             self._increment_issue()
 
         data = [
-            None,  # Action indicator (column A)
-            server_name,
+            None,  # Action indicator (column B)
+            server_name,  # Column C
             instance_name or "(Default)",
             setting_name,
             str(current_value),
@@ -99,17 +99,17 @@ class ConfigSheetMixin(ServerGroupMixin, BaseSheetMixin):
         needs_action = status != "pass"
         apply_action_needed_styling(ws.cell(row=row, column=2), needs_action)
 
-        # Apply row color to data columns (shifted +1: Server=2, Instance=3, Setting=4, etc.)
+        # Apply row color to data columns (A=UUID, B=Action, C=Server, D=Instance, E=Setting, F=Current, G=Required)
         self._apply_row_color(row, row_color, data_cols=[3, 4, 5, 6, 7], ws=ws)
 
-        # Apply status styling (Status is now column 7, shifted +1)
-        apply_status_styling(ws.cell(row=row, column=7), status)
+        # Apply status styling (Status is column H = 8)
+        apply_status_styling(ws.cell(row=row, column=8), status)
 
-        # Highlight risk column (Risk is now column 8, shifted +1)
+        # Highlight risk column (Risk is column I = 9)
         if risk_level.lower() == "critical":
-            ws.cell(row=row, column=8).fill = Fills.CRITICAL
+            ws.cell(row=row, column=9).fill = Fills.CRITICAL
         elif risk_level.lower() == "high":
-            ws.cell(row=row, column=8).fill = Fills.FAIL
+            ws.cell(row=row, column=9).fill = Fills.FAIL
 
     def _finalize_config(self) -> None:
         """Finalize config sheet - merge remaining groups."""
@@ -125,10 +125,10 @@ class ConfigSheetMixin(ServerGroupMixin, BaseSheetMixin):
         )
 
         ws = self._config_sheet
-        # Status column (G) - column 7 (shifted +1 from F)
+        # Status column (H) - column 8 (A=UUID, B=Action, ..., H=Status)
         add_dropdown_validation(ws, "H", ["✅ PASS", "❌ FAIL"])
-        # Risk column (H) - column 8 (shifted +1 from G)
+        # Risk column (I) - column 9
         add_dropdown_validation(ws, "I", ["Critical", "High", "Medium", "Low"])
-        # Review Status column (I) - column 9
+        # Review Status column (J) - column 10
         add_dropdown_validation(ws, "J", STATUS_VALUES.all())
         add_review_status_conditional_formatting(ws, "J")

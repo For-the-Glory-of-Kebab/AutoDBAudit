@@ -201,6 +201,9 @@ class DatabaseCollector(BaseCollector):
         """Collect database role memberships."""
         count = 0
         seen_memberships: set[tuple[str, str, str]] = set()
+        
+        # Sensitive database roles that should be reviewed
+        sensitive_roles = {"db_owner", "db_securityadmin", "db_accessadmin", "db_backupoperator"}
 
         for db in user_dbs:
             db_name = db.get("DatabaseName", "")
@@ -233,6 +236,23 @@ class DatabaseCollector(BaseCollector):
                             member_type=member_type,
                         )
                         count += 1
+                        
+                        # Build entity_key: server|instance|database|role|member
+                        entity_key = f"{self.ctx.server_name}|{self.ctx.instance_name}|{db_name}|{role_name}|{member_name}".lower()
+                        
+                        # Sensitive role members are findings
+                        is_sensitive = role_name.lower() in sensitive_roles
+                        finding_status = "WARN" if is_sensitive else "PASS"
+                        
+                        self.save_finding(
+                            finding_type="db_role",
+                            entity_name=f"{db_name}|{role_name}|{member_name}",
+                            status=finding_status,
+                            risk_level="medium" if is_sensitive else None,
+                            description=f"'{member_name}' is member of '{role_name}' in '{db_name}'",
+                            recommendation="Review database role membership" if is_sensitive else None,
+                            entity_key=entity_key,
+                        )
 
                     # Aggregate for Matrix
                     if member_name not in db_matrix:
@@ -329,23 +349,49 @@ class DatabaseCollector(BaseCollector):
     def _collect_permissions(self, user_dbs: list[dict]) -> int:
         """Collect database and server permissions."""
         count = 0
+        
+        # High-risk permissions that need review
+        sensitive_permissions = {
+            "CONTROL SERVER", "ALTER ANY LOGIN", "ALTER ANY LINKED SERVER",
+            "IMPERSONATE", "CONTROL", "ALTER ANY DATABASE", "ALTER ANY USER"
+        }
 
         # 1. Server Permissions
         try:
             srv_perms = self.conn.execute_query(self.prov.get_server_permissions())
             for p in srv_perms:
+                grantee = p.get("GranteeName", "")
+                perm_name = p.get("PermissionName", "")
+                entity_name = p.get("EntityName", "")
+                
                 self.writer.add_permission(
                     server_name=self.ctx.server_name,
                     instance_name=self.ctx.instance_name,
                     scope="SERVER",
                     database_name="(Server)",
-                    grantee_name=p.get("GranteeName", ""),
-                    permission_name=p.get("PermissionName", ""),
+                    grantee_name=grantee,
+                    permission_name=perm_name,
                     state=p.get("PermissionState", ""),
-                    entity_name=p.get("EntityName", ""),
+                    entity_name=entity_name,
                     class_desc=p.get("PermissionClass", ""),
                 )
                 count += 1
+                
+                # Build entity_key matching SHEET_ANNOTATION_CONFIG
+                entity_key = f"{self.ctx.server_name}|{self.ctx.instance_name}|SERVER|(Server)|{grantee}|{perm_name}|{entity_name}".lower()
+                
+                is_sensitive = perm_name.upper() in sensitive_permissions
+                finding_status = "WARN" if is_sensitive else "PASS"
+                
+                self.save_finding(
+                    finding_type="permission",
+                    entity_name=f"{grantee}|{perm_name}",
+                    status=finding_status,
+                    risk_level="high" if is_sensitive else None,
+                    description=f"Server permission '{perm_name}' granted to '{grantee}'",
+                    recommendation="Review server-level permission grant" if is_sensitive else None,
+                    entity_key=entity_key,
+                )
         except Exception as e:
             logger.warning("Server permissions failed: %s", e)
 
@@ -359,18 +405,38 @@ class DatabaseCollector(BaseCollector):
                     self.prov.get_database_permissions(db_name)
                 )
                 for p in perms:
+                    grantee = p.get("GranteeName", "")
+                    perm_name = p.get("PermissionName", "")
+                    entity_name = p.get("EntityName", "")
+                    
                     self.writer.add_permission(
                         server_name=self.ctx.server_name,
                         instance_name=self.ctx.instance_name,
                         scope="DATABASE",
                         database_name=db_name,
-                        grantee_name=p.get("GranteeName", ""),
-                        permission_name=p.get("PermissionName", ""),
+                        grantee_name=grantee,
+                        permission_name=perm_name,
                         state=p.get("PermissionState", ""),
-                        entity_name=p.get("EntityName", ""),
+                        entity_name=entity_name,
                         class_desc=p.get("PermissionClass", ""),
                     )
                     count += 1
+                    
+                    # Build entity_key matching SHEET_ANNOTATION_CONFIG
+                    entity_key = f"{self.ctx.server_name}|{self.ctx.instance_name}|DATABASE|{db_name}|{grantee}|{perm_name}|{entity_name}".lower()
+                    
+                    is_sensitive = perm_name.upper() in sensitive_permissions
+                    finding_status = "WARN" if is_sensitive else "PASS"
+                    
+                    self.save_finding(
+                        finding_type="permission",
+                        entity_name=f"{db_name}|{grantee}|{perm_name}",
+                        status=finding_status,
+                        risk_level="high" if is_sensitive else None,
+                        description=f"Database permission '{perm_name}' granted to '{grantee}' in '{db_name}'",
+                        recommendation="Review database-level permission grant" if is_sensitive else None,
+                        entity_key=entity_key,
+                    )
             except Exception:
                 pass
         return count

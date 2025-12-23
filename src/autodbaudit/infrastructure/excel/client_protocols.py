@@ -56,14 +56,14 @@ DISCREPANT_PROTOCOLS = frozenset(
 
 
 CLIENT_PROTOCOL_COLUMNS = (
-    ACTION_COLUMN,  # Column A: Action indicator
-    ColumnDef("Server", 18, Alignments.LEFT),
-    ColumnDef("Instance", 15, Alignments.LEFT),
-    ColumnDef("Protocol", 18, Alignments.LEFT),
-    ColumnDef("Enabled", 10, Alignments.CENTER),
-    ColumnDef("Port", 10, Alignments.CENTER),
-    ColumnDef("Status", 14, Alignments.CENTER),
-    ColumnDef("Notes", 30, Alignments.LEFT),
+    ACTION_COLUMN,  # Column B: Action indicator (A=UUID hidden)
+    ColumnDef("Server", 18, Alignments.LEFT),  # Column C
+    ColumnDef("Instance", 15, Alignments.LEFT),  # Column D
+    ColumnDef("Protocol", 18, Alignments.LEFT),  # Column E
+    ColumnDef("Enabled", 10, Alignments.CENTER),  # Column F
+    ColumnDef("Port", 10, Alignments.CENTER),  # Column G
+    ColumnDef("Status", 14, Alignments.CENTER),  # Column H
+    ColumnDef("Notes", 30, Alignments.LEFT),  # Column I
     STATUS_COLUMN,  # Review Status dropdown
     ColumnDef("Justification", 40, Alignments.LEFT, is_manual=True),
     LAST_REVIEWED_COLUMN,
@@ -131,8 +131,8 @@ class ClientProtocolSheetMixin(ServerGroupMixin, BaseSheetMixin):
             status = "—"
 
         data = [
-            None,  # Action indicator (column A)
-            server_name,
+            None,  # Action indicator (column B)
+            server_name,  # Column C
             instance_name or "(Default)",
             protocol_name,
             None,  # Enabled - styled separately
@@ -148,11 +148,11 @@ class ClientProtocolSheetMixin(ServerGroupMixin, BaseSheetMixin):
         # Apply action indicator (column 1)
         apply_action_needed_styling(ws.cell(row=row, column=2), needs_action)
 
-        # Apply row color to data columns
+        # Apply row color to data columns (A=UUID, B=Action, C=Server, D=Instance, E=Protocol, F=Enabled, G=Port, H=Status, I=Notes)
         self._apply_row_color(row, row_color, data_cols=[3, 4, 5, 7, 9], ws=ws)
 
-        # Style Enabled column (column 5)
-        enabled_cell = ws.cell(row=row, column=5)
+        # Style Enabled column (column F = 6)
+        enabled_cell = ws.cell(row=row, column=6)
         if is_enabled:
             enabled_cell.value = "✓ Yes"
             if is_acceptable:
@@ -167,8 +167,8 @@ class ClientProtocolSheetMixin(ServerGroupMixin, BaseSheetMixin):
                 start_color="F5F5F5", end_color="F5F5F5", fill_type="solid"
             )
 
-        # Style Status column (column 7)
-        status_cell = ws.cell(row=row, column=7)
+        # Style Status column (column H = 8)
+        status_cell = ws.cell(row=row, column=8)
         status_cell.value = status
         if "Compliant" in status or (status == "✅ Disabled"):
             status_cell.fill = Fills.PASS

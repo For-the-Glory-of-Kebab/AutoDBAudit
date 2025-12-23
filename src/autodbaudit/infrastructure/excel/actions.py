@@ -56,16 +56,16 @@ ACTION_COLUMNS = (
     ColumnDef("Server", 16, Alignments.LEFT),
     ColumnDef("Instance", 14, Alignments.LEFT),
     ColumnDef("Category", 16, Alignments.LEFT),
-    ColumnDef("Finding", 40, Alignments.LEFT),
+    ColumnDef("Finding", 40, Alignments.LEFT_WRAP),
     ColumnDef("Risk Level", 10, Alignments.CENTER),
-    ColumnDef("Change Description", 45, Alignments.LEFT),  # What changed
+    ColumnDef("Change Description", 45, Alignments.LEFT_WRAP),  # What changed
     ColumnDef(
         "Change Type", 12, Alignments.CENTER, is_status=True
     ),  # Fixed/Regressed/New
     ColumnDef(
         "Detected Date", 12, Alignments.CENTER
     ),  # When change detected (editable)
-    ColumnDef("Notes", 45, Alignments.LEFT, is_manual=True),  # User commentary
+    ColumnDef("Notes", 45, Alignments.LEFT_WRAP, is_manual=True),  # User commentary
 )
 
 ACTION_CONFIG = SheetConfig(name="Actions", columns=ACTION_COLUMNS)

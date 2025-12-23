@@ -51,9 +51,9 @@ SYSTEM_USERS = frozenset({
 
 
 DB_USER_COLUMNS = (
-    ACTION_COLUMN,  # Column A: Action indicator (⏳ needs attention)
-    ColumnDef("Server", 18, Alignments.LEFT),
-    ColumnDef("Instance", 14, Alignments.LEFT),
+    ACTION_COLUMN,  # Column B: Action indicator (A=UUID hidden)
+    ColumnDef("Server", 18, Alignments.LEFT),  # Column C
+    ColumnDef("Instance", 14, Alignments.LEFT),  # Column D
     ColumnDef("Database", 18, Alignments.LEFT),
     ColumnDef("User Name", 22, Alignments.LEFT),
     ColumnDef("Type", 16, Alignments.LEFT),
@@ -137,8 +137,8 @@ class DBUserSheetMixin(ServerGroupMixin, BaseSheetMixin):
         needs_action = (is_guest and has_connect) or (is_orphaned and not is_system_user)
         
         data = [
-            None,  # Action indicator (column A)
-            server_name,
+            None,  # Action indicator (column B)
+            server_name,  # Column C
             instance_name or "(Default)",
             database_name,
             user_name,
@@ -158,8 +158,8 @@ class DBUserSheetMixin(ServerGroupMixin, BaseSheetMixin):
         # Apply row color to data columns (shifted +1 for action column)
         self._apply_row_color(row, row_color, data_cols=[3, 4, 5, 6, 7, 8], ws=ws)
         
-        # Style Login Status column (column 8, shifted +1)
-        status_cell = ws.cell(row=row, column=8)
+        # Style Login Status column (A=UUID, B=Action, C=Server, D=Instance, E=Database, F=User, G=Type, H=Login, I=LoginStatus)
+        status_cell = ws.cell(row=row, column=9)
         status_cell.value = login_status
         status_cell.fill = login_color
         if "Orphaned" in login_status:
@@ -167,8 +167,8 @@ class DBUserSheetMixin(ServerGroupMixin, BaseSheetMixin):
         elif "Mapped" in login_status:
             status_cell.font = Fonts.PASS
         
-        # Style Compliant column (column 9, shifted +1)
-        compliant_cell = ws.cell(row=row, column=9)
+        # Style Compliant column (column J = 10)
+        compliant_cell = ws.cell(row=row, column=10)
         if is_guest and has_connect:
             compliant_cell.value = "❌ GUEST"
             compliant_cell.fill = Fills.FAIL

@@ -71,6 +71,20 @@ class RemediationHandler(ABC):
 -- [{tag}] {title}
 -- ============================================================================"""
 
+    def handle(self, finding: dict) -> list[RemediationAction]:
+        """
+        Process a single finding and return immediate actions.
+        Override this to either return actions immediately or buffer them.
+        """
+        raise NotImplementedError
+
+    def finalize(self) -> list[RemediationAction]:
+        """
+        Return any buffered actions after all findings have been processed.
+        Override this if the handler buffers findings for batched processing.
+        """
+        return []
+
     def _wrap_lockout_warning(self, script: str, username: str) -> str:
         """Wrap a script in comments with a lockout warning."""
         lines = script.split("\n")

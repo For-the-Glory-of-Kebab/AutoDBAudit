@@ -36,10 +36,10 @@ __all__ = ["DBRoleSheetMixin", "DB_ROLE_CONFIG"]
 
 
 DB_ROLE_COLUMNS = (
-    ACTION_COLUMN,  # Column A: Action indicator
-    ColumnDef("Server", 18, Alignments.LEFT),
-    ColumnDef("Instance", 15, Alignments.LEFT),
-    ColumnDef("Database", 20, Alignments.LEFT),
+    ACTION_COLUMN,  # Column B: Action indicator (A=UUID hidden)
+    ColumnDef("Server", 18, Alignments.LEFT),  # Column C
+    ColumnDef("Instance", 15, Alignments.LEFT),  # Column D
+    ColumnDef("Database", 20, Alignments.LEFT),  # Column E
     ColumnDef("Role", 22, Alignments.LEFT),
     ColumnDef("Member", 25, Alignments.LEFT),
     ColumnDef("Member Type", 18, Alignments.CENTER),
@@ -133,8 +133,8 @@ class DBRoleSheetMixin(ServerGroupMixin, BaseSheetMixin):
         needs_action = risk_level == "high"
         
         data = [
-            None,  # Action indicator (column A)
-            server_name,
+            None,  # Action indicator (column B)
+            server_name,  # Column C
             instance_name or "(Default)",
             database_name,
             role_display,
@@ -149,11 +149,11 @@ class DBRoleSheetMixin(ServerGroupMixin, BaseSheetMixin):
         # Apply action indicator (column 1)
         apply_action_needed_styling(ws.cell(row=row, column=2), needs_action)
         
-        # Apply row color to data columns (shifted +1 for action column)
+        # Apply row color to data columns (A=UUID, B=Action, C=Server, D=Instance, E=Database)
         self._apply_row_color(row, row_color, data_cols=[3, 4, 5, 7, 8], ws=ws)
         
-        # Style Role column (column 5) based on risk
-        role_cell = ws.cell(row=row, column=5)
+        # Style Role column (column F = 6)
+        role_cell = ws.cell(row=row, column=6)
         if risk_level == "high":
             role_cell.fill = Fills.FAIL
             role_cell.font = Fonts.FAIL
@@ -162,8 +162,8 @@ class DBRoleSheetMixin(ServerGroupMixin, BaseSheetMixin):
             role_cell.fill = Fills.WARN
             role_cell.font = Fonts.WARN
         
-        # Style Risk column (column 8)
-        risk_cell = ws.cell(row=row, column=8)
+        # Style Risk column (column I = 9)
+        risk_cell = ws.cell(row=row, column=9)
         if risk_level == "high":
             risk_cell.value = "🔴 High"
             risk_cell.fill = Fills.FAIL

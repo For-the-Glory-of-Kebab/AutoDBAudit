@@ -40,13 +40,13 @@ __all__ = ["DatabaseSheetMixin", "DATABASE_CONFIG"]
 
 
 DATABASE_COLUMNS = (
-    ACTION_COLUMN,  # Column A: Action indicator (⏳ needs attention)
-    ColumnDef("Server", 18, Alignments.LEFT),
-    ColumnDef("Instance", 15, Alignments.LEFT),
-    ColumnDef("Database", 25, Alignments.LEFT),
-    ColumnDef("Owner", 20, Alignments.LEFT),
-    ColumnDef("Recovery", 14, Alignments.CENTER),
-    ColumnDef("State", 14, Alignments.CENTER),
+    ACTION_COLUMN,  # Column B: Action indicator (A=UUID hidden)
+    ColumnDef("Server", 18, Alignments.LEFT),  # Column C
+    ColumnDef("Instance", 15, Alignments.LEFT),  # Column D
+    ColumnDef("Database", 25, Alignments.LEFT),  # Column E
+    ColumnDef("Owner", 20, Alignments.LEFT),  # Column F
+    ColumnDef("Recovery", 14, Alignments.CENTER),  # Column G
+    ColumnDef("State", 14, Alignments.CENTER),  # Column H
     ColumnDef("Data (MB)", 12, Alignments.RIGHT),
     ColumnDef("Log (MB)", 12, Alignments.RIGHT),
     ColumnDef("Trustworthy", 12, Alignments.CENTER),
@@ -93,8 +93,8 @@ class DatabaseSheetMixin(ServerGroupMixin, BaseSheetMixin):
         needs_action = is_trustworthy and not is_system_db
         
         data = [
-            None,  # Action indicator (column A)
-            server_name,
+            None,  # Action indicator (column B)
+            server_name,  # Column C
             instance_name or "(Default)",
             database_name,
             owner or "",
@@ -112,11 +112,11 @@ class DatabaseSheetMixin(ServerGroupMixin, BaseSheetMixin):
         # Apply action indicator (column 1)
         apply_action_needed_styling(ws.cell(row=row, column=2), needs_action)
         
-        # Apply row color to data columns (shifted +1 for action column)
+        # Apply row color to data columns (A=UUID, B=Action, C=Server, D=Instance, E=Database, F=Owner, ...)
         self._apply_row_color(row, row_color, data_cols=[3, 4, 5, 6, 9, 10], ws=ws)
         
-        # Style Recovery Model column (column 6, shifted +1)
-        recovery_cell = ws.cell(row=row, column=6)
+        # Style Recovery Model column (column G = 7)
+        recovery_cell = ws.cell(row=row, column=7)
         recovery_lower = (recovery_model or "").lower()
         if "full" in recovery_lower:
             recovery_cell.value = "🛡️ Full"
@@ -130,8 +130,8 @@ class DatabaseSheetMixin(ServerGroupMixin, BaseSheetMixin):
         else:
             recovery_cell.value = recovery_model or ""
         
-        # Style State column (column 7, shifted +1)
-        state_cell = ws.cell(row=row, column=7)
+        # Style State column (column H = 8)
+        state_cell = ws.cell(row=row, column=8)
         state_lower = (state or "").lower()
         if "online" in state_lower:
             state_cell.value = "✓ Online"
@@ -158,9 +158,9 @@ class DatabaseSheetMixin(ServerGroupMixin, BaseSheetMixin):
         else:
             state_cell.value = state or ""
         
-        # Trustworthy column (column 10, shifted +1)
+        # Trustworthy column (column K = 11)
         # is_system_db already calculated above for needs_action
-        trustworthy_cell = ws.cell(row=row, column=10)
+        trustworthy_cell = ws.cell(row=row, column=11)
         if is_system_db:
             # System DB - show value but don't mark as pass/fail
             trustworthy_cell.value = "✓ ON" if is_trustworthy else "✗ OFF"
@@ -182,13 +182,13 @@ class DatabaseSheetMixin(ServerGroupMixin, BaseSheetMixin):
         )
         
         ws = self._database_sheet
-        # Recovery Model column (F) - column 6, after Action(A), Server(B), Instance(C), DB(D), Owner(E)
-        add_dropdown_validation(ws, "F", ["🛡️ Full", "📦 Bulk-Logged", "⚡ Simple"])
-        # State column (G) - column 7
-        add_dropdown_validation(ws, "G", ["✓ Online", "⛔ Offline", "🔄 Restoring", "⏳ Recovering", "⚠️ Suspect", "🚨 Emergency"])
-        # Trustworthy column (J) - column 10
-        add_dropdown_validation(ws, "J", ["✓ ON", "✗ OFF", "✓", "✗"])
-        # Review Status column (K) - column 11
-        add_dropdown_validation(ws, "K", STATUS_VALUES.all())
-        add_review_status_conditional_formatting(ws, "K")
+        # Recovery Model column (G) - column 7 (A=UUID, B=Action, C=Server, D=Instance, E=DB, F=Owner, G=Recovery)
+        add_dropdown_validation(ws, "G", ["🛡️ Full", "📦 Bulk-Logged", "⚡ Simple"])
+        # State column (H) - column 8
+        add_dropdown_validation(ws, "H", ["✓ Online", "⛔ Offline", "🔄 Restoring", "⏳ Recovering", "⚠️ Suspect", "🚨 Emergency"])
+        # Trustworthy column (K) - column 11
+        add_dropdown_validation(ws, "K", ["✓ ON", "✗ OFF", "✓", "✗"])
+        # Review Status column (L) - column 12
+        add_dropdown_validation(ws, "L", STATUS_VALUES.all())
+        add_review_status_conditional_formatting(ws, "L")
 

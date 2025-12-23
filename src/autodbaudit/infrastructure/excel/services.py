@@ -41,9 +41,9 @@ __all__ = ["ServiceSheetMixin", "SERVICE_CONFIG"]
 
 
 SERVICE_COLUMNS = (
-    ACTION_COLUMN,  # Column A: Action indicator
-    ColumnDef("Server", 16, Alignments.LEFT),
-    ColumnDef("Instance", 14, Alignments.LEFT),
+    ACTION_COLUMN,  # Column B: Action indicator (A=UUID hidden)
+    ColumnDef("Server", 16, Alignments.LEFT),  # Column C
+    ColumnDef("Instance", 14, Alignments.LEFT),  # Column D
     ColumnDef("Service Name", 40, Alignments.LEFT),
     ColumnDef("Type", 18, Alignments.LEFT),
     ColumnDef("Status", 12, Alignments.CENTER),
@@ -216,13 +216,14 @@ class ServiceSheetMixin(BaseSheetMixin):
         # Apply action indicator (column 1)
         apply_action_needed_styling(ws.cell(row=row, column=2), needs_action)
         
-        # Apply color to data columns (shifted +1 for action column)
+        # Apply color to data columns (NOT Action column which stays white)
+        # A=UUID, B=Action(2), C=Server(3), D=Instance(4), E=ServiceName(5), F=Type(6), G=Status(7), H=Startup(8), I=Account(9), J=Compliant(10)
         fill = PatternFill(start_color=row_color, end_color=row_color, fill_type="solid")
-        for col in [2, 3, 4, 5, 8]:
+        for col in [3, 4, 5, 6, 9]:  # Server=3, Instance=4, ServiceName=5, Type=6, Account=9
             ws.cell(row=row, column=col).fill = fill
         
-        # Style status column (column 6)
-        status_cell = ws.cell(row=row, column=6)
+        # Style status column (column G = 7)
+        status_cell = ws.cell(row=row, column=7)
         status_lower = (status or "").lower()
         if "running" in status_lower:
             status_cell.value = "✓ Running"
@@ -235,8 +236,8 @@ class ServiceSheetMixin(BaseSheetMixin):
         else:
             status_cell.value = status or "Unknown"
         
-        # Style startup type column (column 7)
-        startup_cell = ws.cell(row=row, column=7)
+        # Style startup type column (column H = 8)
+        startup_cell = ws.cell(row=row, column=8)
         startup_lower = (startup_type or "").lower()
         if "auto" in startup_lower:
             startup_cell.value = "⚡ Auto"
@@ -250,8 +251,8 @@ class ServiceSheetMixin(BaseSheetMixin):
         else:
             startup_cell.value = startup_type or ""
         
-        # Style Compliant column (column 9)
-        apply_boolean_styling(ws.cell(row=row, column=9), is_compliant)
+        # Style Compliant column (column J = 10)
+        apply_boolean_styling(ws.cell(row=row, column=10), is_compliant)
     
     def _merge_svc_instance(self, ws) -> None:
         """Merge Instance cells for current instance group."""
@@ -259,7 +260,7 @@ class ServiceSheetMixin(BaseSheetMixin):
         if current_row > self._svc_instance_start_row:
             merge_server_cells(
                 ws,
-                server_col=3,  # Instance column (shifted +1 for action column)
+                server_col=4,  # Instance column (A=UUID, B=Action, C=Server, D=Instance)
                 start_row=self._svc_instance_start_row,
                 end_row=current_row - 1,
                 server_name=self._svc_last_instance,
@@ -276,13 +277,13 @@ class ServiceSheetMixin(BaseSheetMixin):
             ]
             merge_server_cells(
                 ws,
-                server_col=2,  # Server column (shifted +1 for action column)
+                server_col=3,  # Server column (A=UUID, B=Action, C=Server)
                 start_row=self._svc_server_start_row,
                 end_row=current_row - 1,
                 server_name=self._svc_last_server,
                 is_alt=True,
             )
-            merged = ws.cell(row=self._svc_server_start_row, column=2)
+            merged = ws.cell(row=self._svc_server_start_row, column=3)
             merged.fill = PatternFill(
                 start_color=color_main, end_color=color_main, fill_type="solid"
             )

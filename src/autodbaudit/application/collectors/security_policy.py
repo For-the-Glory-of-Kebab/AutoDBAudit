@@ -48,7 +48,7 @@ class SecurityPolicyCollector(BaseCollector):
 
                 if status.upper() == "FAIL":
                     self.save_finding(
-                        finding_type="audit",
+                        finding_type="audit_settings",
                         entity_name=setting_name,
                         status="FAIL",
                         risk_level="medium",

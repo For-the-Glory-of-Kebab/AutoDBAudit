@@ -71,7 +71,6 @@ class AuditManager:
         # Create audit folder
         audit_folder = self._get_audit_folder(new_id)
         audit_folder.mkdir(parents=True, exist_ok=True)
-        (audit_folder / "runs").mkdir(exist_ok=True)
         (audit_folder / "remediation").mkdir(exist_ok=True)
 
         # Generate default name if not provided

@@ -221,6 +221,23 @@ class RemediationService:
                             rollback_section.append(action.rollback)
                     break  # Finding handled by first handler that claims it
 
+        # Finalize handlers (get batched scripts)
+        for handler in handlers:
+            actions = handler.finalize()
+            if actions:
+                for action in actions:
+                    if action.category == "SAFE":
+                        safe_section.append(action.script)
+                    elif action.category == "CAUTION":
+                        caution_section.append(action.script)
+                    elif action.category == "REVIEW":
+                        review_section.append(action.script)
+                    elif action.category == "INFO":
+                        info_section.append(action.script)
+
+                    if action.rollback:
+                        rollback_section.append(action.rollback)
+
         # Add global info scripts (e.g. Encryption Info from InfraHandler)
         infra_handler = next(
             h for h in handlers if isinstance(h, InfrastructureHandler)
@@ -265,7 +282,12 @@ class RemediationService:
                 secrets_file, server, instance_label, context.secrets_log
             )
 
-        return [main_path, rollback_path]
+        # OS Script (PowerShell) - Template
+        os_script = infra_handler.generate_os_script()
+        os_path = self.output_dir / f"{safe_name}_OS_AUDIT.ps1"
+        os_path.write_text(os_script, encoding="utf-8")
+
+        return [main_path, rollback_path, os_path]
 
     def _build_main_script(
         self,

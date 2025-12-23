@@ -31,14 +31,7 @@ logger = logging.getLogger(__name__)
 # Editable columns map Excel header name to DB field name
 # Justification columns mark FAIL items as documented exceptions when filled
 SHEET_ANNOTATION_CONFIG = {
-    "Instances": {
-        "entity_type": "instance",
-        "key_cols": ["Server", "Instance"],
-        "editable_cols": {
-            "Notes": "notes",
-            "Last Reviewed": "last_reviewed",
-        },
-    },
+
     "SA Account": {
         "entity_type": "sa_account",
         "key_cols": ["Server", "Instance", "Current Name"],
@@ -79,13 +72,24 @@ SHEET_ANNOTATION_CONFIG = {
             # No Notes column in Excel for this sheet
         },
     },
+
+    "Instances": {
+        "entity_type": "instance",
+        "key_cols": ["Server", "Instance"],
+        "editable_cols": {
+            "Review Status": "review_status",
+            "Justification": "justification",
+            "Last Reviewed": "last_reviewed",
+            "Notes": "notes",
+        },
+    },
     "Services": {
         "entity_type": "service",
         "key_cols": ["Server", "Instance", "Service Name"],
         "editable_cols": {
             "Review Status": "review_status",
             "Justification": "justification",
-            "Last Reviewed": "last_reviewed",  # Excel has 'Last Reviewed'
+            "Last Reviewed": "last_reviewed",
             # No Notes column in Excel for this sheet
         },
     },
@@ -196,7 +200,7 @@ SHEET_ANNOTATION_CONFIG = {
     },
     "Backups": {
         "entity_type": "backup",
-        "key_cols": ["Server", "Instance", "Database", "Recovery Model"],
+        "key_cols": ["Server", "Instance", "Database"],
         "editable_cols": {
             "Review Status": "review_status",
             "Justification": "justification",
@@ -463,15 +467,10 @@ class AnnotationSyncService:
             for i, idx in enumerate(key_indices):
                 val = row[idx] if idx < len(row) else None
 
-                # If value is None, use last known value (merged cell case)
                 if val is None:
                     val = last_key_values[i]
                 else:
-                    # Normalize: "(Default)" -> ""
-                    if val == "(Default)":
-                        val = ""
-                    else:
-                        val = str(val)
+                    val = str(val)
                     # Update last known value
                     last_key_values[i] = val
 
@@ -1061,15 +1060,20 @@ class AnnotationSyncService:
             if not finding_status:
                 row_status = str(fields.get("status", "")).upper()
                 # Check Status column - must be FAIL/WARN to be discrepant
-                is_discrepant = row_status in ("FAIL", "WARN")
+                is_discrepant = row_status in ("FAIL", "WARN", "EXCEPTION")
                 # Also check for emoji indicators in status
                 if "⏳" in row_status or "⚠" in row_status or "✗" in row_status:
                     is_discrepant = True
-                # NOTE: Do NOT use action_needed here - that flag being True doesn't mean discrepant
-                logger.debug(
-                    "Using Excel status fallback for %s: status=%s, discrepant=%s",
+                # CRITICAL: For sheets without Status column (Sensitive Roles, Services),
+                # the ONLY way to detect discrepancy is via action_needed field
+                # which was set from the ⏳ icon in Action column during Excel read
+                if fields.get("action_needed", False):
+                    is_discrepant = True
+                logger.info(
+                    "Using Excel status fallback for %s: status=%s, action_needed=%s, discrepant=%s",
                     full_key,
-                    row_status,
+                    row_status or "(empty)",
+                    fields.get("action_needed", False),
                     is_discrepant,
                 )
             else:

@@ -32,13 +32,13 @@ __all__ = ["AuditSettingSheetMixin", "AUDIT_SETTING_CONFIG"]
 
 
 AUDIT_SETTING_COLUMNS = (
-    ACTION_COLUMN,  # Column A: Action indicator (⏳ needs attention)
-    ColumnDef("Server", 18, Alignments.LEFT),
-    ColumnDef("Instance", 15, Alignments.LEFT),
-    ColumnDef("Setting", 35, Alignments.LEFT),
-    ColumnDef("Current Value", 15, Alignments.CENTER),
-    ColumnDef("Recommended", 15, Alignments.CENTER),
-    ColumnDef("Status", 12, Alignments.CENTER, is_status=True),
+    ACTION_COLUMN,  # Column B: Action indicator (A=UUID hidden)
+    ColumnDef("Server", 18, Alignments.LEFT),  # Column C
+    ColumnDef("Instance", 15, Alignments.LEFT),  # Column D
+    ColumnDef("Setting", 35, Alignments.LEFT),  # Column E
+    ColumnDef("Current Value", 15, Alignments.CENTER),  # Column F
+    ColumnDef("Recommended", 15, Alignments.CENTER),  # Column G
+    ColumnDef("Status", 12, Alignments.CENTER, is_status=True),  # Column H
     STATUS_COLUMN,  # Review Status dropdown
     ColumnDef("Justification", 35, Alignments.LEFT, is_manual=True),
     LAST_REVIEWED_COLUMN,
@@ -82,8 +82,8 @@ class AuditSettingSheetMixin(ServerGroupMixin, BaseSheetMixin):
         needs_action = status == "fail"
         
         data = [
-            None,  # Action indicator (column A)
-            server_name,
+            None,  # Action indicator (column B)
+            server_name,  # Column C
             instance_name or "(Default)",
             setting_name,
             current_value,
@@ -98,11 +98,11 @@ class AuditSettingSheetMixin(ServerGroupMixin, BaseSheetMixin):
         # Apply action indicator (column 1)
         apply_action_needed_styling(ws.cell(row=row, column=2), needs_action)
         
-        # Apply row color (shifted +1 for action column)
+        # Apply row color (A=UUID, B=Action, C=Server, D=Instance, E=Setting, F=Current, G=Recommended)
         self._apply_row_color(row, row_color, data_cols=[3, 4, 5, 6, 7], ws=ws)
         
-        # Status column (column 7, shifted +1)
-        apply_status_styling(ws.cell(row=row, column=7), status)
+        # Status column (column H = 8)
+        apply_status_styling(ws.cell(row=row, column=8), status)
     
     def _finalize_audit_settings(self) -> None:
         """Finalize audit settings sheet - merge remaining groups."""
@@ -117,8 +117,8 @@ class AuditSettingSheetMixin(ServerGroupMixin, BaseSheetMixin):
         )
         
         ws = self._audit_setting_sheet
-        # Status column (G = 7, shifted +1)
+        # Status column (H) - column 8
         add_dropdown_validation(ws, "H", ["PASS", "FAIL"])
-        # Review Status column (H) - column 8
+        # Review Status column (I) - column 9
         add_dropdown_validation(ws, "I", STATUS_VALUES.all())
         add_review_status_conditional_formatting(ws, "I")

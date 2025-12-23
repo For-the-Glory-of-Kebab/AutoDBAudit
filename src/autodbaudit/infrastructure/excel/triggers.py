@@ -36,10 +36,10 @@ __all__ = ["TriggerSheetMixin", "TRIGGER_CONFIG"]
 
 
 TRIGGER_COLUMNS = (
-    ACTION_COLUMN,  # Column A: Action indicator for discrepant triggers
-    ColumnDef("Server", 18, Alignments.LEFT),
-    ColumnDef("Instance", 15, Alignments.LEFT),
-    ColumnDef("Scope", 10, Alignments.CENTER),  # "SERVER" or "DATABASE"
+    ACTION_COLUMN,  # Column B: Action indicator (A=UUID hidden)
+    ColumnDef("Server", 18, Alignments.LEFT),  # Column C
+    ColumnDef("Instance", 15, Alignments.LEFT),  # Column D
+    ColumnDef("Scope", 10, Alignments.CENTER),  # Column E: "SERVER" or "DATABASE"
     ColumnDef(
         "Database", 20, Alignments.LEFT
     ),  # Database name (empty for SERVER scope)
@@ -104,8 +104,8 @@ class TriggerSheetMixin(ServerGroupMixin, BaseSheetMixin):
         db_display = database_name or ("" if scope == "DATABASE" else "")
 
         data = [
-            None,  # Action indicator (column A)
-            server_name,
+            None,  # Action indicator (column B)
+            server_name,  # Column C
             instance_name or "(Default)",
             scope,  # "SERVER" or "DATABASE"
             db_display,
@@ -132,7 +132,7 @@ class TriggerSheetMixin(ServerGroupMixin, BaseSheetMixin):
 
         # Highlight server-level triggers with info color
         if is_server_trigger:
-            for col in [4, 5, 6, 7]:  # Scope, Database, Trigger Name, Event
+            for col in [5, 6, 7, 8]:  # Scope=E(5), Database=F(6), Trigger Name=G(7), Event=H(8)
                 ws.cell(row=row, column=col).fill = Fills.INFO
 
     def _finalize_triggers(self) -> None:
