@@ -84,7 +84,7 @@ class ExcelAnnotationReader:
         wb = load_workbook(self.excel_path, read_only=True, data_only=True)
 
         for sheet_name, config in self.SHEET_CONFIG.items():
-            entity_col, entity_type, annotation_col = config
+            entity_col, _entity_type, annotation_col = config
 
             if sheet_name not in wb.sheetnames:
                 continue
@@ -114,10 +114,10 @@ class ExcelAnnotationReader:
             for row_num, row in enumerate(ws.iter_rows(min_row=2), start=2):
                 cells = list(row)
 
-                # Handle short rows
-                def get_cell(idx):
-                    if idx is not None and idx < len(cells):
-                        return cells[idx].value
+                # Handle short rows - use default arg to capture cells value
+                def get_cell(idx, row_cells=cells):
+                    if idx is not None and idx < len(row_cells):
+                        return row_cells[idx].value
                     return None
 
                 # Extract values
@@ -270,17 +270,7 @@ class ExceptionService:
 
         Returns dict with notes, reason, status_override fields.
         """
-        rows = self.store.get_annotations_for_entity(entity_key)
-
-        result = {}
-        # rows is a dict of results from schema function?
-        # Let's check schema signature. get_annotations_for_entity returns dict.
-        # HistoryStore returns whatever schema returns.
-
-        # If schema.get_annotations_for_entity returns a dict {field_name: value, status_override: ...}
-        # Wait, I need to verify what schema returns.
-
-        return rows
+        return self.store.get_annotations_for_entity(entity_key)
 
     def get_all_exceptions(self) -> list[dict]:
         """Get all exceptions with status_override set."""

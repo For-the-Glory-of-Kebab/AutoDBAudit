@@ -1,0 +1,18 @@
+# AutoDBAudit - Development Dependencies
+# Install with: pip install -r requirements-dev.txt
+
+# Base production dependencies
+-r requirements.txt
+
+# PyInstaller for building standalone executable
+pyinstaller>=6.0.0,<7.0.0
+
+# Testing
+pytest>=7.0.0
+pytest-mock
+pytest-cov
+
+# Linting & Formatting
+black
+pylint
+mypy

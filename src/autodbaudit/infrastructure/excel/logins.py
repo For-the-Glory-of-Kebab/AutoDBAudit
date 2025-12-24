@@ -50,7 +50,7 @@ LOGIN_COLUMNS = (
     STATUS_COLUMN,  # Review Status dropdown
     ColumnDef("Justification", 35, Alignments.LEFT, is_manual=True),
     LAST_REVIEWED_COLUMN,  # Last Reviewed (was Last Revised)
-    ColumnDef("Notes", 25, Alignments.LEFT, is_manual=True),
+    ColumnDef("Notes", 25, Alignments.LEFT_WRAP, is_manual=True),
 )
 
 LOGIN_CONFIG = SheetConfig(name="Server Logins", columns=LOGIN_COLUMNS)

@@ -67,6 +67,14 @@ class FinalizeService:
                 "message": f"Run {run_id} is already finalized.",
             }
 
+        # 2a. Enforce Strictness (unless force=True)
+        if not force:
+            status = self.get_finalization_status(run_id)
+            if not status["can_finalize"]:
+                return {
+                    "error": f"Strict Finalization Block: {status.get('error')}. Use --force to override."
+                }
+
         # 2b. Check if Excel file is locked (open in Excel)
         src_path = (
             Path(excel_path) if excel_path else (self.output_dir / "Audit_Latest.xlsx")
@@ -133,22 +141,33 @@ class FinalizeService:
         except IOError as e:
             return {"error": f"Failed to archive report: {e}"}
 
-        # 6. Compute Hash
-        file_hash = self._compute_file_hash(final_path)
+        try:
+            # 6. Compute Hash
+            file_hash = self._compute_file_hash(final_path)
 
-        # 7. Update DB
-        self.store.complete_audit_run(run_id, "finalized")
+            # 7. Update DB
+            self.store.complete_audit_run(run_id, "finalized")
 
-        logger.info("Finalized Run %s. Hash: %s", run_id, file_hash)
+            logger.info("Finalized Run %s. Hash: %s", run_id, file_hash)
 
-        return {
-            "status": "success",
-            "run_id": run_id,
-            "final_path": str(final_path),
-            "hash": file_hash,
-            "annotations_applied": exc_result.get("applied", 0),
-            "forced": force,
-        }
+            return {
+                "status": "success",
+                "run_id": run_id,
+                "final_path": str(final_path),
+                "hash": file_hash,
+                "annotations_applied": exc_result.get("applied", 0),
+                "forced": force,
+            }
+        except Exception as e:
+            logger.exception("Finalization failed mid-process")
+            # If we copied the file but DB update failed, we should probably delete the file
+            # to prevent a "ghost" final report from existing.
+            if final_path and final_path.exists():
+                try:
+                    final_path.unlink()
+                except OSError:
+                    pass  # Best effort cleanup
+            return {"error": f"Critical Finalize Error: {e}"}
 
     def get_finalization_status(self, run_id: int | None = None) -> dict:
         """
@@ -185,12 +204,12 @@ class FinalizeService:
             elif f["status"] == "WARN":
                 warns.append({"type": f["finding_type"], "entity": f["entity_key"]})
 
-        # Check if they have exceptions?
-        # (Naive check: count them. If user wants to finalize with fails, they use --force)
-
+        # Strictness: allow finalize only if ZERO fails.
+        # User must either remediate or Except (which changes status to PASS/EXCEPTED)
         can_finalize = len(fails) == 0
 
-        return {
+        # Construct result
+        status = {
             "baseline_run_id": run_id,
             "can_finalize": can_finalize,
             "outstanding_fails": len(fails),
@@ -198,6 +217,13 @@ class FinalizeService:
             "fail_details": fails[:10],  # Limit output
             "warn_details": warns[:10],
         }
+
+        if not can_finalize:
+            status["error"] = (
+                f"Cannot finalize: {len(fails)} outstanding FAILs. Remediate or Except them first."
+            )
+
+        return status
 
     def _compute_file_hash(self, path: Path) -> str:
         """Compute SHA256 hash of a file."""

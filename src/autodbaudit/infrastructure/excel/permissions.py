@@ -50,7 +50,7 @@ PERMISSION_COLUMNS = (
     STATUS_COLUMN,  # Review Status dropdown
     ColumnDef("Justification", 35, Alignments.LEFT, is_manual=True),
     LAST_REVIEWED_COLUMN,
-    ColumnDef("Notes", 30, Alignments.LEFT, is_manual=True),
+    ColumnDef("Notes", 30, Alignments.LEFT_WRAP, is_manual=True),
 )
 
 PERMISSION_CONFIG = SheetConfig(name="Permission Grants", columns=PERMISSION_COLUMNS)
@@ -171,7 +171,7 @@ class PermissionSheetMixin(ServerGroupMixin, BaseSheetMixin):
 
         # Format Scope
         scope_display = scope.upper()
-        
+
         # Determine if action needed (high risk or deny)
         needs_action = risk_level == "high"
 
@@ -187,12 +187,12 @@ class PermissionSheetMixin(ServerGroupMixin, BaseSheetMixin):
             class_desc or "",
             entity_name,
             None,  # Risk - styled below
-            "",    # Justification
-            "",    # Notes
+            "",  # Justification
+            "",  # Notes
         ]
 
         row, row_uuid = self._write_row_with_uuid(ws, PERMISSION_CONFIG, data)
-        
+
         # Apply action indicator (column 1)
         apply_action_needed_styling(ws.cell(row=row, column=2), needs_action)
 
@@ -234,14 +234,16 @@ class PermissionSheetMixin(ServerGroupMixin, BaseSheetMixin):
     def _add_permission_dropdowns(self) -> None:
         """Add validation dropdowns."""
         from autodbaudit.infrastructure.excel.base import (
-            add_dropdown_validation, add_review_status_conditional_formatting, STATUS_VALUES
+            add_dropdown_validation,
+            add_review_status_conditional_formatting,
+            STATUS_VALUES,
         )
 
         ws = self._permission_sheet
         # Column layout: A=UUID, B=Action, C=Server, D=Instance, E=Scope, F=Database,
         #                G=Grantee, H=Permission, I=State, J=EntityType, K=EntityName,
         #                L=Risk, M=ReviewStatus, N=Justification, O=LastReviewed, P=Notes
-        
+
         # Scope (E) - column 5
         add_dropdown_validation(ws, "E", ["SERVER", "DATABASE"])
         # State (I) - column 9

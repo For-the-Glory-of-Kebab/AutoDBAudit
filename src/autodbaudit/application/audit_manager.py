@@ -260,8 +260,10 @@ class AuditManager:
         return self.output_dir / "audit_history.db"
 
     def get_run_excel_path(self, audit_id: int, run_num: int) -> Path:
-        """Get path to run's Excel snapshot."""
-        return self._get_run_folder(audit_id, run_num) / "snapshot.xlsx"
+        """Get path to run's Excel snapshot (hidden temp file)."""
+        temp_dir = self._get_audit_folder(audit_id) / ".temp_runs"
+        temp_dir.mkdir(exist_ok=True)
+        return temp_dir / f"run_{run_num:03d}_snapshot.xlsx"
 
     def get_latest_excel_path(self, audit_id: int) -> Path:
         """Get path to latest Excel report in audit root."""

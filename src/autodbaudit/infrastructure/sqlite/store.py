@@ -653,12 +653,50 @@ class HistoryStore:
         ).fetchone()
         return row["id"] if row else None
 
-    def get_latest_run_id(self) -> int | None:
-        """Get the most recent audit run ID."""
+    def fail_audit_run(self, run_id: int, error_message: str) -> None:
+        """
+        Mark a run as failed due to error/interruption.
+
+        Args:
+            run_id: Audit run ID
+            error_message: Reason for failure
+        """
         conn = self._get_connection()
-        row = conn.execute(
-            "SELECT id FROM audit_runs ORDER BY id DESC LIMIT 1"
-        ).fetchone()
+        now = datetime.now(timezone.utc).isoformat()
+
+        # Append error to organization or status field? Status is best.
+        # We might want a separate error column later, but status='failed' is critical.
+        conn.execute(
+            """
+            UPDATE audit_runs
+            SET ended_at = ?, status = 'failed'
+            WHERE id = ?
+            """,
+            (now, run_id),
+        )
+        conn.commit()
+        logger.error("Audit run %d marked as FAILED: %s", run_id, error_message)
+
+    def get_latest_run_id(self, include_failed: bool = False) -> int | None:
+        """
+        Get the most recent VALID audit run ID.
+
+        Args:
+            include_failed: If True, returns absolutely latest even if failed.
+                           If False (default), returns latest successful/running/pending run,
+                           ignoring 'failed' or 'cancelled'.
+
+        Returns:
+            Latest run ID or None
+        """
+        conn = self._get_connection()
+
+        if include_failed:
+            query = "SELECT id FROM audit_runs ORDER BY id DESC LIMIT 1"
+        else:
+            query = "SELECT id FROM audit_runs WHERE status NOT IN ('failed', 'cancelled') ORDER BY id DESC LIMIT 1"
+
+        row = conn.execute(query).fetchone()
         return row["id"] if row else None
 
     def mark_run_as_sync(self, run_id: int) -> None:

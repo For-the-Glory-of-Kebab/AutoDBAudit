@@ -16,8 +16,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Any
+
 
 logger = logging.getLogger(__name__)
 
@@ -445,7 +444,7 @@ def _get_config_data(conn, run_id: int) -> dict[tuple[int, str], dict]:
 
 
 def _diff_services(
-    conn, initial_run_id: int, current_run_id: int, scanned: set[int]
+    conn, initial_run_id: int, current_run_id: int, _scanned: set[int]
 ) -> list[EntityChange]:
     """Detect service changes (account, status, startup type)."""
     changes = []
@@ -456,7 +455,7 @@ def _diff_services(
     all_keys = set(initial.keys()) | set(current.keys())
 
     for key in all_keys:
-        server_id, service_name = key
+        _server_id, service_name = key
 
         # For services, we need to check if any instance on this server was scanned
         # Services are per-server, not per-instance

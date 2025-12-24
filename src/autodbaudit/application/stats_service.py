@@ -346,24 +346,24 @@ class StatsService:
     ) -> dict[str, dict[str, int]]:
         """
         Build per-sheet breakdown of current state.
-        
+
         Returns dict of {sheet_name: {active: X, exceptions: X, compliant: X}}
         """
         sheet_stats: dict[str, dict[str, int]] = {}
-        
+
         for finding in findings:
             finding_type = finding.get("finding_type", "")
             sheet_name = self._get_sheet_name_from_finding_type(finding_type)
-            
+
             if not sheet_name:
                 continue
-            
+
             if sheet_name not in sheet_stats:
                 sheet_stats[sheet_name] = defaultdict(int)
-            
+
             status = FindingStatus.from_string(finding.get("status"))
             entity_key = finding.get("entity_key", "")
-            
+
             if status == FindingStatus.PASS:
                 sheet_stats[sheet_name]["compliant"] += 1
             elif status and status.is_discrepant():
@@ -371,7 +371,7 @@ class StatsService:
                     sheet_stats[sheet_name]["exceptions"] += 1
                 else:
                     sheet_stats[sheet_name]["active"] += 1
-        
+
         return sheet_stats
 
     def _is_exceptioned(
@@ -433,6 +433,21 @@ class StatsService:
                     has_justification=bool(ann.get("justification")),
                     review_status=ann.get("review_status"),
                 )
+
+        # Fallback: Try matching by _legacy_entity_key (for UUID-keyed annotations)
+        for ann_key, ann in annotations.items():
+            legacy_key = ann.get("_legacy_entity_key", "")
+            if legacy_key:
+                normalized_legacy = normalize_key_string(legacy_key)
+                if (
+                    normalized_entity_key == normalized_legacy
+                    or normalized_entity_key in normalized_legacy
+                ):
+                    return is_exception_eligible(
+                        status=FindingStatus.FAIL,
+                        has_justification=bool(ann.get("justification")),
+                        review_status=ann.get("review_status"),
+                    )
 
         return False
 
@@ -596,7 +611,9 @@ class StatsService:
                         result.new_issues += 1
                         # Track sheet stat for NEW ISSUE (use finding_type, not key)
                         finding_type = new_f.get("finding_type", "")
-                        sheet_name = self._get_sheet_name_from_finding_type(finding_type)
+                        sheet_name = self._get_sheet_name_from_finding_type(
+                            finding_type
+                        )
                         if sheet_name:
                             if sheet_name not in result.sheet_stats:
                                 result.sheet_stats[sheet_name] = defaultdict(int)
@@ -638,7 +655,7 @@ class StatsService:
         """Derive readable sheet name from finding_type field directly."""
         if not finding_type:
             return ""
-        
+
         etype = finding_type.lower().strip()
         mapping = {
             "instance": "Instances",

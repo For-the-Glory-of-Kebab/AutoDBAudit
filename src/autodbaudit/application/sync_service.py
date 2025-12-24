@@ -68,6 +68,16 @@ class SyncService:
     def __init__(self, db_path: str | Path = "output/audit_history.db"):
         """Initialize sync service."""
         self.db_path = Path(db_path)
+
+        # Validation: Sync cannot run without an existing audit database
+        if not self.db_path.exists():
+            # If the DB doesn't exist, we can't sync.
+            # We raise a specific error that the CLI can catch or just exit cleanly.
+            # The user specifically requested "sync command without an audit shouldn't create a db"
+            raise FileNotFoundError(
+                f"No active audit found at {self.db_path}. Run 'audit' command first."
+            )
+
         self.store = HistoryStore(self.db_path)
         self.store.initialize_schema()
         logger.info("SyncService initialized")
@@ -166,227 +176,271 @@ class SyncService:
             logger.info("Annotations from DB: %s", old_by_type)
             logger.info("Annotations from Excel: %s", new_by_type)
 
-        # ─────────────────────────────────────────────────────────────
-        # PHASE 3: Run Re-Audit
-        # ─────────────────────────────────────────────────────────────
-        logger.info("Running re-audit...")
-
-        if audit_service is None:
-            from autodbaudit.application.audit_service import AuditService
-
-            audit_service = AuditService(
-                config_dir=Path("config"), output_dir=Path("output")
-            )
-
-        # Prepare writer
-        writer = EnhancedReportWriter()
-        baseline_org = run.organization if run else "Unspecified"
-        baseline_started = run.started_at if run else datetime.now()
-
-        writer.set_audit_info(
-            run_id=initial_run_id,
-            organization=baseline_org,
-            audit_name="Remediation Sync Report",
-            started_at=baseline_started,
-        )
-
         try:
-            processed_writer = audit_service.run_audit(
-                targets_file=targets_file, writer=writer, skip_save=True
-            )
-        except Exception as e:
-            logger.error("Re-audit failed: %s", e)
-            return {"error": f"Re-audit failed: {e}"}
+            # ─────────────────────────────────────────────────────────────
+            # PHASE 3: Run Re-Audit
+            # ─────────────────────────────────────────────────────────────
+            logger.info("Running re-audit...")
 
-        current_run_id = self.get_latest_run_id()
-        if not current_run_id:
-            return {"error": "Re-audit did not produce a run ID"}
+            if audit_service is None:
+                from autodbaudit.application.audit_service import AuditService
 
-        if current_run_id != initial_run_id:
-            self.store.mark_run_as_sync(current_run_id)
-
-        # ─────────────────────────────────────────────────────────────
-        # PHASE 4: Diff Findings
-        # ─────────────────────────────────────────────────────────────
-        baseline_findings = self.store.get_findings(initial_run_id)
-        current_findings = self.store.get_findings(current_run_id)
-
-        # Get valid instances
-        valid_pairs = self.store.get_instances_for_run(current_run_id)
-        valid_keys = {
-            f"{s.hostname}|{i.instance_name or ''}".lower() for s, i in valid_pairs
-        }
-
-        # Get exception keys
-        old_exception_keys = get_exception_keys(baseline_findings, old_annotations)
-        new_exception_keys = get_exception_keys(current_findings, current_annotations)
-
-        # Perform diff
-        findings_diff = diff_findings(
-            old_findings=baseline_findings,
-            new_findings=current_findings,
-            old_exceptions=old_exception_keys,
-            new_exceptions=new_exception_keys,
-            valid_instance_keys=valid_keys,
-        )
-
-        # ─────────────────────────────────────────────────────────────
-        # PHASE 4b: Detect Exception Changes (using current findings for status)
-        # ─────────────────────────────────────────────────────────────
-        exception_changes = []
-        if current_annotations:
-            raw_exceptions = annot_sync.detect_exception_changes(
-                old_annotations, current_annotations, current_findings
-            )
-
-            logger.info(
-                "Exception changes detected: %d (types: %s)",
-                len(raw_exceptions),
-                (
-                    {ex.get("entity_type", "?") for ex in raw_exceptions}
-                    if raw_exceptions
-                    else set()
-                ),
-            )
-
-            # Convert to DetectedChange objects
-            from autodbaudit.application.actions.action_detector import (
-                create_exception_action,
-            )
-            from autodbaudit.domain.change_types import ChangeType
-
-            for ex in raw_exceptions:
-                change_type = ex.get("change_type", "added")
-                ct = ChangeType.EXCEPTION_ADDED
-                if change_type == "removed":
-                    ct = ChangeType.EXCEPTION_REMOVED
-                elif change_type == "updated":
-                    ct = ChangeType.EXCEPTION_UPDATED
-
-                exception_changes.append(
-                    create_exception_action(
-                        entity_key=ex["full_key"],
-                        justification=ex.get("justification", ""),
-                        change_type=ct,
-                        entity_type=ex.get("entity_type"),  # Pass explicitly
-                    )
+                audit_service = AuditService(
+                    config_dir=Path("config"), output_dir=Path("output")
                 )
 
-        # ─────────────────────────────────────────────────────────────
-        # PHASE 5: Detect & Record Actions
-        # ─────────────────────────────────────────────────────────────
-        all_actions = detect_all_actions(
-            findings_diff=findings_diff,
-            exception_changes=exception_changes,
-        )
+            # Prepare writer
+            writer = EnhancedReportWriter()
+            baseline_org = run.organization if run else "Unspecified"
+            baseline_started = run.started_at if run else datetime.now()
 
-        # Consolidate (apply priority rules)
-        consolidated = consolidate_actions(all_actions)
-
-        # Record to database
-        recorder = ActionRecorder(self.store)
-        recorded = recorder.record_actions(
-            actions=consolidated,
-            initial_run_id=initial_run_id,
-            sync_run_id=current_run_id,
-        )
-
-        logger.info("Recorded %d actions", recorded)
-
-        # ─────────────────────────────────────────────────────────────
-        # PHASE 6: Calculate Stats
-        # ─────────────────────────────────────────────────────────────
-        prev_run_id = self.store.get_previous_sync_run(current_run_id)
-
-        stats_service = StatsService(
-            findings_provider=self.store,
-            annotations_provider=annot_sync,
-        )
-
-        stats = stats_service.calculate(
-            baseline_run_id=initial_run_id,
-            current_run_id=current_run_id,
-            previous_run_id=prev_run_id,
-        )
-
-        # ─────────────────────────────────────────────────────────────
-        # PHASE 7: Write Excel Report
-        # ─────────────────────────────────────────────────────────────
-        # Set Cover sheet stats from StatsService (unified source of truth)
-        if hasattr(processed_writer, "set_stats_from_service"):
-            processed_writer.set_stats_from_service(
-                active_issues=stats.active_issues,
-                documented_exceptions=stats.documented_exceptions,
-                compliant_items=stats.compliant_items,
-                # Granular stats (Change Stats)
-                fixed=stats.fixed_since_last,
-                regressed=stats.regressions_since_last,
-                new_issues=stats.new_issues_since_last,
-                docs_changed=(
-                    stats.docs_added_since_last
-                    + stats.docs_updated_since_last
-                    + stats.docs_removed_since_last
-                ),
-                exceptions_changed=(
-                    stats.exceptions_added_since_last
-                    + stats.exceptions_removed_since_last
-                    + stats.exceptions_updated_since_last
-                ),
+            writer.set_audit_info(
+                run_id=initial_run_id,
+                organization=baseline_org,
+                audit_name="Remediation Sync Report",
+                started_at=baseline_started,
             )
 
-        # Add actions to writer
-        formatted_actions = recorder.get_formatted_actions(initial_run_id)
-        for action in formatted_actions:
-            writer.add_action(
-                server_name=action["server"],
-                instance_name=action["instance"],
-                category=action["category"],
-                finding=action["finding"],
-                risk_level=action["risk_level"],
-                recommendation=action["description"],
-                status=action["status"],
-                found_date=action["detected_date"],
-                notes=action.get("notes", ""),
-                action_id=action.get("id"),
+            try:
+                processed_writer = audit_service.run_audit(
+                    targets_file=targets_file, writer=writer, skip_save=True
+                )
+            except Exception as e:
+                logger.error("Re-audit failed: %s", e)
+                # Note: run_audit might have created a run ID. We need to check finding it.
+                # However, audit_service doesn't easily expose it if it crashes mid-flight.
+                # We relying on get_latest_run_id to find the zombie run.
+
+                # Check if a new run was actually created
+                zombie_id = self.get_latest_run_id()
+                if zombie_id and zombie_id > initial_run_id:
+                    self.store.fail_audit_run(zombie_id, f"Audit Crash: {e}")
+
+                return {"error": f"Re-audit failed: {e}"}
+
+            current_run_id = self.get_latest_run_id()
+            if not current_run_id:
+                return {"error": "Re-audit did not produce a run ID"}
+
+            if current_run_id != initial_run_id:
+                self.store.mark_run_as_sync(current_run_id)
+
+            # ─────────────────────────────────────────────────────────────
+            # PHASE 4: Diff Findings
+            # ─────────────────────────────────────────────────────────────
+            baseline_findings = self.store.get_findings(initial_run_id)
+            current_findings = self.store.get_findings(current_run_id)
+
+            # Get valid instances
+            valid_pairs = self.store.get_instances_for_run(current_run_id)
+            valid_keys = {
+                f"{s.hostname}|{i.instance_name or ''}".lower() for s, i in valid_pairs
+            }
+
+            # Get exception keys
+            old_exception_keys = get_exception_keys(baseline_findings, old_annotations)
+            new_exception_keys = get_exception_keys(
+                current_findings, current_annotations
             )
 
-        # Save report
-        if hasattr(processed_writer, "save"):
-            processed_writer.save(final_excel)
+            # Perform diff
+            findings_diff = diff_findings(
+                old_findings=baseline_findings,
+                new_findings=current_findings,
+                old_exceptions=old_exception_keys,
+                new_exceptions=new_exception_keys,
+                valid_instance_keys=valid_keys,
+            )
 
-        # Write annotations back
-        latest_annotations = annot_sync.load_from_db()
-        annot_sync.write_all_to_excel(final_excel, latest_annotations)
+            # ─────────────────────────────────────────────────────────────
+            # PHASE 4b: Detect Exception Changes (using current findings for status)
+            # ─────────────────────────────────────────────────────────────
+            exception_changes = []
+            if current_annotations:
+                raw_exceptions = annot_sync.detect_exception_changes(
+                    old_annotations, current_annotations, current_findings
+                )
 
-        logger.info("Sync complete. Report: %s", final_excel)
+                logger.info(
+                    "Exception changes detected: %d (types: %s)",
+                    len(raw_exceptions),
+                    (
+                        {ex.get("entity_type", "?") for ex in raw_exceptions}
+                        if raw_exceptions
+                        else set()
+                    ),
+                )
 
-        # Print CLI stats - REMOVED (Handled by CLI now)
-        # print(format_cli_stats(stats))
+                # Convert to DetectedChange objects
+                from autodbaudit.application.actions.action_detector import (
+                    create_exception_action,
+                )
+                from autodbaudit.domain.change_types import ChangeType
+                from autodbaudit.infrastructure.sqlite.schema import set_annotation
+                import sqlite3
 
-        # ─────────────────────────────────────────────────────────────
-        # Return Result
-        # ─────────────────────────────────────────────────────────────
-        return {
-            "status": "success",
-            "initial_run_id": initial_run_id,
-            "current_run_id": current_run_id,
-            "stats": stats.to_dict(),
-            "stats_obj": stats,  # Return object for CLI renderer
-            "report_path": str(final_excel),
-            "actions_recorded": recorded,
-            # Legacy compatibility fields
-            "exceptions": stats.exceptions_added_since_last,
-            "total_exceptions": stats.documented_exceptions,
-            "baseline": {
-                "fixed": stats.fixed_since_baseline,
-                "still_failing": stats.active_issues,
-                "regression": stats.regressions_since_baseline,
-                "new": stats.new_issues_since_baseline,
-            },
-            "recent": {
-                "fixed": stats.fixed_since_last,
-                "still_failing": stats.active_issues,
-                "regression": stats.regressions_since_last,
-                "new": stats.new_issues_since_last,
-            },
-        }
+                conn = sqlite3.connect(str(self.db_path))
+                conn.row_factory = sqlite3.Row
+
+                for ex in raw_exceptions:
+                    change_type = ex.get("change_type", "added")
+                    ct = ChangeType.EXCEPTION_ADDED
+                    if change_type == "removed":
+                        ct = ChangeType.EXCEPTION_REMOVED
+                        # CRITICAL: Explicitly clear old annotation's review_status
+                        # This handles key mismatch (legacy vs UUID)
+                        full_key = ex["full_key"]
+                        parts = full_key.split("|", 1)
+                        if len(parts) == 2:
+                            etype, ekey = parts
+                            set_annotation(
+                                connection=conn,
+                                entity_type=etype,
+                                entity_key=ekey,
+                                field_name="review_status",
+                                field_value="",  # Clear it
+                            )
+                            logger.info("Cleared review_status for %s", full_key[:60])
+                    elif change_type == "updated":
+                        ct = ChangeType.EXCEPTION_UPDATED
+
+                    exception_changes.append(
+                        create_exception_action(
+                            entity_key=ex["full_key"],
+                            justification=ex.get("justification", ""),
+                            change_type=ct,
+                            entity_type=ex.get("entity_type"),  # Pass explicitly
+                        )
+                    )
+
+                conn.close()
+
+            # ─────────────────────────────────────────────────────────────
+            # PHASE 5: Detect & Record Actions
+            # ─────────────────────────────────────────────────────────────
+            all_actions = detect_all_actions(
+                findings_diff=findings_diff,
+                exception_changes=exception_changes,
+            )
+
+            # Consolidate (apply priority rules)
+            consolidated = consolidate_actions(all_actions)
+
+            # Record to database
+            recorder = ActionRecorder(self.store)
+            recorded = recorder.record_actions(
+                actions=consolidated,
+                initial_run_id=initial_run_id,
+                sync_run_id=current_run_id,
+            )
+
+            logger.info("Recorded %d actions", recorded)
+
+            # ─────────────────────────────────────────────────────────────
+            # PHASE 6: Calculate Stats
+            # ─────────────────────────────────────────────────────────────
+            prev_run_id = self.store.get_previous_sync_run(current_run_id)
+
+            stats_service = StatsService(
+                findings_provider=self.store,
+                annotations_provider=annot_sync,
+            )
+
+            stats = stats_service.calculate(
+                baseline_run_id=initial_run_id,
+                current_run_id=current_run_id,
+                previous_run_id=prev_run_id,
+            )
+
+            # ─────────────────────────────────────────────────────────────
+            # PHASE 7: Write Excel Report
+            # ─────────────────────────────────────────────────────────────
+            # Set Cover sheet stats from StatsService (unified source of truth)
+            if hasattr(processed_writer, "set_stats_from_service"):
+                processed_writer.set_stats_from_service(
+                    active_issues=stats.active_issues,
+                    documented_exceptions=stats.documented_exceptions,
+                    compliant_items=stats.compliant_items,
+                    # Granular stats (Change Stats)
+                    fixed=stats.fixed_since_last,
+                    regressed=stats.regressions_since_last,
+                    new_issues=stats.new_issues_since_last,
+                    docs_changed=(
+                        stats.docs_added_since_last
+                        + stats.docs_updated_since_last
+                        + stats.docs_removed_since_last
+                    ),
+                    exceptions_changed=(
+                        stats.exceptions_added_since_last
+                        + stats.exceptions_removed_since_last
+                        + stats.exceptions_updated_since_last
+                    ),
+                )
+
+            # Add actions to writer
+            formatted_actions = recorder.get_formatted_actions(initial_run_id)
+            for action in formatted_actions:
+                writer.add_action(
+                    server_name=action["server"],
+                    instance_name=action["instance"],
+                    category=action["category"],
+                    finding=action["finding"],
+                    risk_level=action["risk_level"],
+                    recommendation=action["description"],
+                    status=action["status"],
+                    found_date=action["detected_date"],
+                    notes=action.get("notes", ""),
+                    action_id=action.get("id"),
+                )
+
+            # Save report
+            if hasattr(processed_writer, "save"):
+                processed_writer.save(final_excel)
+
+            # Write annotations back
+            latest_annotations = annot_sync.load_from_db()
+            annot_sync.write_all_to_excel(final_excel, latest_annotations)
+
+            logger.info("Sync complete. Report: %s", final_excel)
+
+            # ─────────────────────────────────────────────────────────────
+            # Return Result
+            # ─────────────────────────────────────────────────────────────
+            return {
+                "status": "success",
+                "initial_run_id": initial_run_id,
+                "current_run_id": current_run_id,
+                "stats": stats.to_dict(),
+                "stats_obj": stats,  # Return object for CLI renderer
+                "report_path": str(final_excel),
+                "actions_recorded": recorded,
+                # Legacy compatibility fields
+                "exceptions": stats.exceptions_added_since_last,
+                "total_exceptions": stats.documented_exceptions,
+                "baseline": {
+                    "fixed": stats.fixed_since_baseline,
+                    "still_failing": stats.active_issues,
+                    "regression": stats.regressions_since_baseline,
+                    "new": stats.new_issues_since_baseline,
+                },
+                "recent": {
+                    "fixed": stats.fixed_since_last,
+                    "still_failing": stats.active_issues,
+                    "regression": stats.regressions_since_last,
+                    "new": stats.new_issues_since_last,
+                },
+            }
+        except KeyboardInterrupt:
+            logger.warning("Sync Interrupted by User")
+            # Try to fail the run if one was created
+            possible_run = self.store.get_latest_run_id(include_failed=True)
+            if possible_run and possible_run > initial_run_id:
+                self.store.fail_audit_run(possible_run, "Interrupted by User")
+            return {"error": "Sync interrupted"}
+
+        except Exception as e:
+            logger.exception("Sync Critical Failure")
+            possible_run = self.store.get_latest_run_id(include_failed=True)
+            if possible_run and possible_run > initial_run_id:
+                self.store.fail_audit_run(possible_run, f"Critical Failure: {str(e)}")
+            return {"error": f"Sync failed: {e}"}

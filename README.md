@@ -18,27 +18,28 @@ The tool generates **smart remediation scripts** that:
 
 ```bash
 # 1. Initial audit → Excel + SQLite
-python main.py --audit
+python main.py audit
 
 # 2. Generate smart remediation scripts
-python main.py --generate-remediation
+# 2. Generate smart remediation scripts
+python main.py remediate --generate
 
 # 3. Preview changes (dry run)
-python main.py --apply-remediation --dry-run
+python main.py remediate --apply --dry-run
 
 # 4. Execute remediation
-python main.py --apply-remediation
+python main.py remediate --apply
 
 # 5. Check status dashboard
-python main.py --status
+python main.py finalize --status
 
 # 6. If rollback needed
-python main.py --apply-remediation --rollback
+python main.py remediate --rollback
 
 # 7. Add Notes in Excel for exceptions
 
 # 8. Finalize → Persist to SQLite
-python main.py --finalize --excel output/sql_audit_edited.xlsx
+python main.py finalize --excel output/sql_audit_edited.xlsx
 ```
 
 See [docs/CLI_REFERENCE.md](docs/CLI_REFERENCE.md) for full command reference.
@@ -49,13 +50,13 @@ See [docs/CLI_REFERENCE.md](docs/CLI_REFERENCE.md) for full command reference.
 
 | Command | Status | Notes |
 |---------|--------|-------|
-| `--audit` | ✅ Working | Excel + SQLite output |
-| `--generate-remediation` | ✅ Working | 4-category scripts + rollback |
-| `--apply-remediation` | ✅ Working | With --dry-run, --rollback |
-| `--status` | ✅ Working | Dashboard summary |
-| `--sync` | ✅ **STABLE** | Robust tracking, exceptions, stats |
-| `--finalize` | ⚠️ Partial | Basic implementation |
-| `--deploy-hotfixes` | ⏳ Pending | Stubs only |
+| `audit` | ✅ Working | Excel + SQLite output |
+| `remediate --generate` | ✅ Working | 4-category scripts + rollback |
+| `remediate --apply` | ✅ Working | With --dry-run, --rollback |
+| `finalize --status` | ✅ Working | Dashboard summary |
+| `sync` | ✅ **STABLE** | Robust tracking, exceptions, stats |
+| `finalize` | ⚠️ Partial | Basic implementation |
+| `remediate --hotfix` | ⏳ Pending | Stubs only |
 
 See [docs/STATUS.md](docs/STATUS.md) for comprehensive details.
 
@@ -92,7 +93,7 @@ Edit `sql_targets.json` with your SQL Server connection details:
 ### 3. Run Audit
 ```powershell
 $env:PYTHONPATH="$PWD\src"
-python main.py --audit
+python main.py audit
 ```
 
 ---

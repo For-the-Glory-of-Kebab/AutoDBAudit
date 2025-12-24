@@ -249,6 +249,8 @@ class ConfigLoader:
             ),
             requirements=data.get("requirements", {}),
         )
+        # Dynamically attach OS settings not in dataclass yet
+        config.os_remediation = data.get("os_remediation", {})
 
         logger.info(
             "Loaded audit config for: %s (%d)", config.organization, config.audit_year

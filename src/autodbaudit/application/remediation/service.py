@@ -70,7 +70,6 @@ class RemediationService:
             audit_run_id = row["id"]
 
         # Get findings
-        # Get findings
         findings = conn.execute(
             """
             SELECT f.*, i.instance_name, i.id as instance_db_id, s.hostname as server_name
@@ -83,6 +82,42 @@ class RemediationService:
         """,
             (audit_run_id,),
         ).fetchall()
+        findings = [dict(f) for f in findings]  # Convert to dicts
+
+        # CRITICAL: Also fetch SA accounts from logins table (they may not be in findings)
+        sa_accounts = conn.execute(
+            """
+            SELECT l.login_name as entity_name, l.is_disabled,
+                   i.instance_name, i.id as instance_db_id, s.hostname as server_name
+            FROM logins l
+            JOIN instances i ON l.instance_id = i.id
+            JOIN servers s ON i.server_id = s.id
+            WHERE l.audit_run_id = ?
+            AND l.is_sa_account = 1
+            AND l.is_disabled = 0
+        """,
+            (audit_run_id,),
+        ).fetchall()
+
+        for sa in sa_accounts:
+            # Inject synthetic SA finding
+            findings.append(
+                {
+                    "finding_type": "sa_account",
+                    "entity_name": sa["entity_name"],
+                    "status": "FAIL",
+                    "server_name": sa["server_name"],
+                    "instance_name": sa["instance_name"],
+                    "instance_db_id": sa["instance_db_id"],
+                    "finding_description": "SA account is enabled",
+                    "recommendation": "Disable SA account",
+                }
+            )
+            logger.info(
+                "Injected SA account finding for %s\\%s",
+                sa["server_name"],
+                sa["instance_name"],
+            )
 
         conn.close()
 
@@ -98,7 +133,9 @@ class RemediationService:
         if sql_targets:
             for t in sql_targets:
                 srv = t.get("server", "").lower()
-                inst = (t.get("instance") or "DEFAULT").upper()  # Normalize None to DEFAULT
+                inst = (
+                    t.get("instance") or "DEFAULT"
+                ).upper()  # Normalize None to DEFAULT
                 # Actually, instance name in DB might be "MSSQLSERVER" for default
                 # But assume sql_targets matches what we found or close enough
                 # If target has "instance" field use it, else try to infer

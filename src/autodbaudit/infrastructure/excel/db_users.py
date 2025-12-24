@@ -40,14 +40,16 @@ __all__ = ["DBUserSheetMixin", "DB_USER_CONFIG"]
 
 
 # System/built-in users that are expected to exist
-SYSTEM_USERS = frozenset({
-    "dbo",
-    "guest",
-    "INFORMATION_SCHEMA",
-    "sys",
-    "##MS_PolicyEventProcessingLogin##",
-    "##MS_AgentSigningCertificate##",
-})
+SYSTEM_USERS = frozenset(
+    {
+        "dbo",
+        "guest",
+        "INFORMATION_SCHEMA",
+        "sys",
+        "##MS_PolicyEventProcessingLogin##",
+        "##MS_AgentSigningCertificate##",
+    }
+)
 
 
 DB_USER_COLUMNS = (
@@ -63,7 +65,7 @@ DB_USER_COLUMNS = (
     STATUS_COLUMN,  # Review Status dropdown
     ColumnDef("Justification", 35, Alignments.LEFT, is_manual=True),
     LAST_REVIEWED_COLUMN,
-    ColumnDef("Notes", 25, Alignments.LEFT, is_manual=True),
+    ColumnDef("Notes", 25, Alignments.LEFT_WRAP, is_manual=True),
 )
 
 DB_USER_CONFIG = SheetConfig(name="Database Users", columns=DB_USER_COLUMNS)
@@ -71,9 +73,9 @@ DB_USER_CONFIG = SheetConfig(name="Database Users", columns=DB_USER_COLUMNS)
 
 class DBUserSheetMixin(ServerGroupMixin, BaseSheetMixin):
     """Mixin for Database Users sheet with server/instance grouping."""
-    
+
     _db_user_sheet = None
-    
+
     def add_db_user(
         self,
         server_name: str,
@@ -86,10 +88,10 @@ class DBUserSheetMixin(ServerGroupMixin, BaseSheetMixin):
         has_connect: bool = True,
     ) -> None:
         """Add a database user row with security assessment.
-        
+
         Args:
             server_name: Server name
-            instance_name: Instance name  
+            instance_name: Instance name
             database_name: Database containing the user
             user_name: Database user name
             user_type: User type (SQL_USER, WINDOWS_USER, etc.)
@@ -101,27 +103,29 @@ class DBUserSheetMixin(ServerGroupMixin, BaseSheetMixin):
             self._db_user_sheet = self._ensure_sheet_with_uuid(DB_USER_CONFIG)
             self._init_grouping(self._db_user_sheet, DB_USER_CONFIG)
             self._add_db_user_dropdowns()
-        
+
         ws = self._db_user_sheet
-        
+
         # Track grouping and get row color
         row_color = self._track_group(server_name, instance_name, DB_USER_CONFIG.name)
-        
+
         # Determine login status and compliance
         is_system_user = user_name in SYSTEM_USERS
         is_guest = user_name.lower() == "guest"
-        
+
         # Login status determination
         if mapped_login:
             login_status = "✓ Mapped"
             login_color = Fills.PASS
         elif is_system_user:
             login_status = "🔧 System"
-            login_color = PatternFill(start_color="E8EAF6", end_color="E8EAF6", fill_type="solid")
+            login_color = PatternFill(
+                start_color="E8EAF6", end_color="E8EAF6", fill_type="solid"
+            )
         else:
             login_status = "⚠️ Orphaned"
             login_color = Fills.WARN
-        
+
         # Compliance check:
         # - GUEST with CONNECT = FAIL (req 13: "Guest user should be disabled")
         # - Orphaned non-system user = WARN (needs review)
@@ -132,10 +136,12 @@ class DBUserSheetMixin(ServerGroupMixin, BaseSheetMixin):
             self._increment_warn()  # Orphaned user needs review
         else:
             self._increment_pass()
-        
+
         # Determine if this row needs action (for ⏳ indicator)
-        needs_action = (is_guest and has_connect) or (is_orphaned and not is_system_user)
-        
+        needs_action = (is_guest and has_connect) or (
+            is_orphaned and not is_system_user
+        )
+
         data = [
             None,  # Action indicator (column B)
             server_name,  # Column C
@@ -146,18 +152,18 @@ class DBUserSheetMixin(ServerGroupMixin, BaseSheetMixin):
             mapped_login or ("(system)" if is_system_user else "(none)"),
             None,  # Login Status - styled separately
             None,  # Compliant - styled separately
-            "",    # Justification
-            "",    # Notes
+            "",  # Justification
+            "",  # Notes
         ]
-        
+
         row, row_uuid = self._write_row_with_uuid(ws, DB_USER_CONFIG, data)
-        
+
         # Apply action indicator (column 1)
         apply_action_needed_styling(ws.cell(row=row, column=2), needs_action)
-        
+
         # Apply row color to data columns (shifted +1 for action column)
         self._apply_row_color(row, row_color, data_cols=[3, 4, 5, 6, 7, 8], ws=ws)
-        
+
         # Style Login Status column (A=UUID, B=Action, C=Server, D=Instance, E=Database, F=User, G=Type, H=Login, I=LoginStatus)
         status_cell = ws.cell(row=row, column=9)
         status_cell.value = login_status
@@ -166,7 +172,7 @@ class DBUserSheetMixin(ServerGroupMixin, BaseSheetMixin):
             status_cell.font = Fonts.WARN
         elif "Mapped" in login_status:
             status_cell.font = Fonts.PASS
-        
+
         # Style Compliant column (column J = 10)
         compliant_cell = ws.cell(row=row, column=10)
         if is_guest and has_connect:
@@ -181,19 +187,21 @@ class DBUserSheetMixin(ServerGroupMixin, BaseSheetMixin):
             compliant_cell.value = "✓"
             compliant_cell.fill = Fills.PASS
             compliant_cell.font = Fonts.PASS
-    
+
     def _finalize_db_users(self) -> None:
         """Finalize db users sheet - merge remaining groups."""
         if self._db_user_sheet:
             self._finalize_grouping(DB_USER_CONFIG.name)
             self._finalize_sheet_with_uuid(self._db_user_sheet)
-    
+
     def _add_db_user_dropdowns(self) -> None:
         """Add dropdown validations for status columns."""
         from autodbaudit.infrastructure.excel.base import (
-            add_dropdown_validation, add_review_status_conditional_formatting, STATUS_VALUES
+            add_dropdown_validation,
+            add_review_status_conditional_formatting,
+            STATUS_VALUES,
         )
-        
+
         ws = self._db_user_sheet
         # Login Status column (H) - column 8 (Action=A, Server=B, Instance=C, DB=D, User=E, Type=F, Login=G)
         add_dropdown_validation(ws, "I", ["✓ Mapped", "🔧 System", "⚠️ Orphaned"])
@@ -202,4 +210,3 @@ class DBUserSheetMixin(ServerGroupMixin, BaseSheetMixin):
         # Review Status column (J) - column 10
         add_dropdown_validation(ws, "K", STATUS_VALUES.all())
         add_review_status_conditional_formatting(ws, "K")
-

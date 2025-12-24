@@ -78,7 +78,7 @@ SHEET_ANNOTATION_CONFIG = {
         "key_cols": ["Server", "Instance", "Setting"],
         "editable_cols": {
             "Review Status": "review_status",
-            "Exception Reason": "justification",  # Config uses 'Exception Reason'
+            "Justification": "justification",
             "Last Reviewed": "last_reviewed",  # Excel has 'Last Reviewed'
             # No Notes column in Excel for this sheet
         },
@@ -200,6 +200,8 @@ SHEET_ANNOTATION_CONFIG = {
             "Review Status": "review_status",
             "Justification": "justification",
             "Last Reviewed": "last_reviewed",
+            "Status": "status",
+            "Enabled": "enabled",
         },
     },
     "Backups": {
@@ -759,6 +761,13 @@ class AnnotationSyncService:
         # Track last non-empty values for key columns (handles merged cells)
         last_key_values = [""] * len(key_indices)
 
+        # Build legacy key map for fallback matching (recovers annotations if UUIDs changed)
+        legacy_key_map = {}
+        for key, fields in annotations.items():
+            legacy_key = fields.get("_legacy_entity_key")
+            if legacy_key:
+                legacy_key_map[legacy_key.lower()] = fields
+
         # Iterate through data rows and update matching cells
         rows_processed = 0
         for row_num in range(2, ws.max_row + 1):
@@ -792,6 +801,11 @@ class AnnotationSyncService:
                     last_key_values[i] = ""
                 else:
                     val = str(cell_val)
+
+                    # Clean special columns to match read logic
+                    if config["key_cols"][i] == "Permission":
+                        val = _clean_key_value(val)
+
                     key_parts.append(val)
                     last_key_values[i] = val
 
@@ -804,13 +818,19 @@ class AnnotationSyncService:
                 continue
 
             # === ANNOTATION MATCHING ===
-            # Try UUID first (preferred), then legacy entity_key
+            # Try UUID first (preferred), then legacy entity_key (direct match or map lookup)
             row_annotations = None
             display_key = row_uuid if row_uuid else legacy_entity_key  # For logging
+
             if row_uuid and row_uuid in annotations:
                 row_annotations = annotations[row_uuid]
             elif entity_key_lower in annotations:
                 row_annotations = annotations[entity_key_lower]
+            elif entity_key_lower in legacy_key_map:
+                # Fallback: Match by legacy key (e.g., if UUID changed due to regen)
+                row_annotations = legacy_key_map[entity_key_lower]
+                if rows_processed <= 5:  # Log first few only to avoid spam
+                    logger.debug("Matched by legacy fallback: %s", entity_key_lower)
 
             # Check if we have annotations for this row
             if row_annotations:
@@ -1108,14 +1128,22 @@ class AnnotationSyncService:
             # Use findings_status_map for accurate lookup (not Excel status column)
 
             # === UUID-AWARE KEY MATCHING ===
+            # Extract entity_type from full_key first (always valid as type|uuid)
+            parts = full_key.split("|", 1)
+            # Default entity_type from key structure
+            current_entity_type = parts[0] if len(parts) == 2 else ""
+
             # When annotations are keyed by UUID, use _legacy_entity_key for findings lookup
             if "_legacy_entity_key" in fields and fields["_legacy_entity_key"]:
                 # Use stored legacy key (UUID-based annotations)
                 finding_key = fields["_legacy_entity_key"]
-                entity_type = ""  # Will be extracted below if needed
+                # entity_type = ""  <-- REMOVED clearing of entity_type, we use current_entity_type variable
             else:
                 # Fallback: Extract entity_key from full_key (legacy format)
-                entity_type, finding_key = annotation_key_to_finding_key(full_key)
+                # Note: This overwrites local variables, but main loop uses full_key
+                et, finding_key = annotation_key_to_finding_key(full_key)
+                if not current_entity_type:
+                    current_entity_type = et
 
             normalized_finding_key = normalize_key_string(finding_key)
 
@@ -1165,7 +1193,39 @@ class AnnotationSyncService:
                 continue
 
             # Check if this is NEW or CHANGED
-            old_fields = old_annotations.get(full_key, {})
+            # FALLBACK MATCHING: If direct key lookup fails (UUID mismatch), try legacy key
+            old_fields = old_annotations.get(full_key)
+            if not old_fields:
+                # Try finding by legacy key
+                legacy_key_val = fields.get("_legacy_entity_key")
+                if legacy_key_val:
+                    # We need to find the old annotation that has this legacy key
+                    # This is O(N) unless we build an index. Given N is usually small (<1000), iteration is fine.
+                    # Or build index at start of method. Let's build index for performance.
+                    pass
+
+            # Optimization: Build legacy map for old_annotations once at start of method?
+            # Doing it locally here for minimal diff, but let's do it right.
+            # Actually, let's use a helper function or build it at top of loop if needed?
+            # No, let's just iterate if missing.
+
+            if not old_fields and "_legacy_entity_key" in fields:
+                target_legacy = fields["_legacy_entity_key"]
+                # Search old_annotations for matching legacy key (filtered by entity type)
+                for old_k, old_v in old_annotations.items():
+                    if (
+                        old_k.startswith(f"{current_entity_type}|")
+                        and old_v.get("_legacy_entity_key") == target_legacy
+                    ):
+                        old_fields = old_v
+                        logger.debug(
+                            "Matched old annotation by legacy fallback: %s",
+                            target_legacy,
+                        )
+                        break
+
+            old_fields = old_fields or {}
+
             old_raw = old_fields.get("justification")
             old_justification = str(old_raw).strip() if old_raw else ""
 
@@ -1173,21 +1233,38 @@ class AnnotationSyncService:
             was_exception = was_previously_exception(old_fields)
 
             # Detect change: new/updated justification or new Exception status
-            # Note: We do NOT check status_mismatch - finding status correctly stays FAIL
-            # for exceptioned items. Checking status_mismatch caused duplicate detections.
+            # OR status changed (e.g. Exception -> Needs Review)
+            status_changed = review_status != old_status
+            justification_changed = justification != old_justification
 
-            if justification != old_justification or (
-                has_exception_status and not was_exception
-            ):
-                # Parse entity key
+            if justification_changed or status_changed:
                 parts = full_key.split("|", 1)
                 if len(parts) == 2:
                     entity_type, entity_key = parts
 
+                    if (
+                        not was_exception
+                        and not has_exception_status
+                        and not justification
+                    ):
+                        # Nothing interesting (empty -> empty or irrelevant change)
+                        continue
+
                     if not was_exception:
                         change_type = "added"
+                    elif justification_changed:
+                        change_type = "updated"
+                    elif status_changed:
+                        change_type = "updated"  # Status change counts as update
                     else:
                         change_type = "updated"
+
+                    # Add detailed note about what changed
+                    change_note = ""
+                    if status_changed:
+                        change_note += f"Status: '{old_status}' -> '{review_status}'. "
+                    if justification_changed:
+                        change_note += "Justification updated."
 
                     exceptions.append(
                         {
@@ -1197,13 +1274,15 @@ class AnnotationSyncService:
                             "justification": justification,
                             "is_new": not was_exception,
                             "change_type": change_type,
+                            "note": change_note.strip(),
                         }
                     )
                     logger.info(
-                        "Exception %s: %s - %s",
+                        "Exception %s: %s - %s (%s)",
                         change_type,
                         entity_type,
                         entity_key[:50],
+                        change_note,
                     )
 
         # 2. Detect REMOVED exceptions
@@ -1220,7 +1299,14 @@ class AnnotationSyncService:
             # Look up current finding status
             parts = full_key.split("|", 1)
             entity_key_for_lookup = parts[1] if len(parts) == 2 else full_key
-            current_status = findings_status_map.get(entity_key_for_lookup, "")
+
+            # CRITICAL: Also try _legacy_entity_key for UUID-based annotations
+            if "_legacy_entity_key" in old_fields and old_fields["_legacy_entity_key"]:
+                entity_key_for_lookup = old_fields["_legacy_entity_key"]
+
+            # CRITICAL: Normalize to lowercase for case-insensitive matching
+            normalized_lookup_key = normalize_key_string(entity_key_for_lookup)
+            current_status = findings_status_map.get(normalized_lookup_key, "")
 
             # If row is now PASS, this is a FIX - not a "removed exception"
             # If status is unknown/missing (not in current findings), assume FIX or GONE
@@ -1233,37 +1319,75 @@ class AnnotationSyncService:
                 )
                 continue
 
-            # Row is still discrepant - check if justification was cleared
-            new_fields = new_annotations.get(full_key, {})
+            # Row is still discrepant - check if exception was removed
+            # Exception removal happens when:
+            # 1. User clears justification AND status
+            # 2. User changes Review Status FROM "Exception" to something else (Needs Review, etc.)
+
+            # CRITICAL: Try to find matching new annotation with fallback key matching
+            new_fields = new_annotations.get(full_key)
+            if not new_fields:
+                # Try matching by _legacy_entity_key
+                old_legacy_key = old_fields.get("_legacy_entity_key")
+                if old_legacy_key:
+                    for new_key, nf in new_annotations.items():
+                        if nf.get("_legacy_entity_key") == old_legacy_key:
+                            new_fields = nf
+                            break
+
+            # If still no matching new annotation found, this entity may have been removed
+            # from Excel entirely - that's NOT an "exception removed", it's just gone
+            if not new_fields:
+                logger.debug(
+                    "No matching new annotation for %s - entity may have been removed",
+                    full_key[:60],
+                )
+                continue
+
             new_just = new_fields.get("justification", "")
             new_status = new_fields.get("review_status", "")
             has_new_just = new_just and str(new_just).strip()
             has_new_exception = "Exception" in str(new_status)
 
-            if has_new_just or has_new_exception:
-                continue  # Still has exception documentation
+            # Check if OLD status was Exception
+            old_status = old_fields.get("review_status", "")
+            was_exception_status = "Exception" in str(old_status)
 
-            # User cleared both justification AND exception status on a FAIL row
-            # This is a genuine "removed exception"
-            if len(parts) == 2:
-                entity_type, entity_key = parts
-                old_just = old_fields.get("justification", "")
+            # Case 1: Status changed FROM Exception to something else
+            status_reverted = was_exception_status and not has_new_exception
 
-                exceptions.append(
-                    {
-                        "full_key": full_key,
-                        "entity_type": entity_type,
-                        "entity_key": entity_key,
-                        "justification": "",  # Now empty
-                        "old_justification": str(old_just).strip() if old_just else "",
-                        "is_new": False,
-                        "change_type": "removed",
-                    }
-                )
-                logger.info(
-                    "Exception removed: %s - %s",
-                    entity_type,
-                    entity_key[:50],
-                )
+            # Case 2: Both justification and exception status cleared
+            both_cleared = not has_new_just and not has_new_exception
+
+            if status_reverted or both_cleared:
+                if len(parts) == 2:
+                    entity_type, entity_key = parts
+                    old_just = old_fields.get("justification", "")
+
+                    exceptions.append(
+                        {
+                            "full_key": full_key,
+                            "entity_type": entity_type,
+                            "entity_key": entity_key,
+                            "justification": str(new_just).strip() if new_just else "",
+                            "old_justification": (
+                                str(old_just).strip() if old_just else ""
+                            ),
+                            "is_new": False,
+                            "change_type": "removed",
+                            "note": (
+                                f"Status changed: '{old_status}' -> '{new_status}'"
+                                if status_reverted
+                                else "Cleared"
+                            ),
+                        }
+                    )
+                    logger.info(
+                        "Exception removed: %s - %s (was: %s, now: %s)",
+                        entity_type,
+                        entity_key[:50],
+                        old_status,
+                        new_status or "(empty)",
+                    )
 
         return exceptions

@@ -42,7 +42,7 @@ ENCRYPTION_COLUMNS = (
     ColumnDef("Created", 12, Alignments.CENTER),
     ColumnDef("Backup Status", 16, Alignments.CENTER),
     ColumnDef("Status", 10, Alignments.CENTER),
-    ColumnDef("Notes", 40, Alignments.LEFT, is_manual=True),
+    ColumnDef("Notes", 40, Alignments.LEFT_WRAP, is_manual=True),
 )
 
 ENCRYPTION_CONFIG = SheetConfig(name="Encryption", columns=ENCRYPTION_COLUMNS)
@@ -55,9 +55,9 @@ STATUS_OPTIONS = ["PASS", "FAIL", "WARN", "N/A"]
 
 class EncryptionSheetMixin(ServerGroupMixin, BaseSheetMixin):
     """Mixin for Encryption sheet with server/instance grouping."""
-    
+
     _encryption_sheet = None
-    
+
     def add_encryption_row(
         self,
         server_name: str,
@@ -75,20 +75,26 @@ class EncryptionSheetMixin(ServerGroupMixin, BaseSheetMixin):
             self._encryption_sheet = self._ensure_sheet_with_uuid(ENCRYPTION_CONFIG)
             self._init_grouping(self._encryption_sheet, ENCRYPTION_CONFIG)
             self._add_encryption_dropdowns()
-        
+
         ws = self._encryption_sheet
-        
+
         # Track grouping and get row color
-        row_color = self._track_group(server_name, instance_name, ENCRYPTION_CONFIG.name)
-        
+        row_color = self._track_group(
+            server_name, instance_name, ENCRYPTION_CONFIG.name
+        )
+
         # Format date
         created_str = ""
         if created_date:
             try:
-                created_str = created_date.strftime("%Y-%m-%d") if hasattr(created_date, "strftime") else str(created_date)[:10]
+                created_str = (
+                    created_date.strftime("%Y-%m-%d")
+                    if hasattr(created_date, "strftime")
+                    else str(created_date)[:10]
+                )
             except (AttributeError, TypeError):
                 created_str = str(created_date)[:10] if created_date else ""
-        
+
         data = [
             server_name,
             instance_name or "(Default)",
@@ -99,14 +105,14 @@ class EncryptionSheetMixin(ServerGroupMixin, BaseSheetMixin):
             created_str,
             None,  # Backup Status - styled separately
             None,  # Status - styled separately
-            "",    # Notes
+            "",  # Notes
         ]
-        
+
         row, row_uuid = self._write_row_with_uuid(ws, ENCRYPTION_CONFIG, data)
-        
+
         # Apply row color to data columns
         self._apply_row_color(row, row_color, data_cols=[2, 3, 4, 5, 6, 7, 8], ws=ws)
-        
+
         # Style Backup Status column (column 8)
         backup_cell = ws.cell(row=row, column=8)
         backup_lower = (backup_status or "").lower()
@@ -121,7 +127,7 @@ class EncryptionSheetMixin(ServerGroupMixin, BaseSheetMixin):
         else:
             backup_cell.value = backup_status or "N/A"
         backup_cell.alignment = Alignments.CENTER
-        
+
         # Style Status column (column 9)
         status_cell = ws.cell(row=row, column=9)
         status_upper = (status or "").upper()
@@ -140,18 +146,18 @@ class EncryptionSheetMixin(ServerGroupMixin, BaseSheetMixin):
         else:
             status_cell.value = status or "N/A"
         status_cell.alignment = Alignments.CENTER
-    
+
     def _add_encryption_dropdowns(self) -> None:
         """Add dropdown validations to the Encryption sheet."""
         ws = self._encryption_sheet
         if ws is None:
             return
-        
+
         # Key Type dropdown (column 4)
         add_dropdown_validation(ws, column_letter="D", options=KEY_TYPE_OPTIONS)
-        
+
         # Backup Status dropdown (column 8)
         add_dropdown_validation(ws, column_letter="H", options=BACKUP_STATUS_OPTIONS)
-        
+
         # Status dropdown (column 9)
         add_dropdown_validation(ws, column_letter="I", options=STATUS_OPTIONS)

@@ -14,9 +14,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
-from openpyxl.styles import (
-    Font, PatternFill, Alignment, Border, Side
-)
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.worksheet.worksheet import Worksheet
 from openpyxl.utils import get_column_letter
 
@@ -25,65 +23,59 @@ from openpyxl.utils import get_column_letter
 # Color Palette
 # ============================================================================
 
+
 class Colors:
     """Audit report color palette (hex codes without #)."""
-    
-    # Headers
-    HEADER_BG = "1F4E79"      # Navy blue
-    HEADER_TEXT = "FFFFFF"    # White
-    SUBHEADER_BG = "4472C4"   # Steel blue
-    
-    # Status colors
-    PASS_BG = "C6EFCE"        # Soft green
-    PASS_TEXT = "006100"      # Dark green
-    FAIL_BG = "FFC7CE"        # Soft red
-    FAIL_TEXT = "9C0006"      # Dark red
-    WARN_BG = "FFEB9C"        # Soft yellow
-    WARN_TEXT = "9C5700"      # Dark orange
-    EXCEPTION_BG = "FFEB9C"   # Soft yellow (same as warn)
+
+    # Headers - Modern Deep Slate Blue
+    HEADER_BG = "203764"  # Darker, more premium Navy
+    HEADER_TEXT = "FFFFFF"  # White
+    SUBHEADER_BG = "4472C4"  # Steel blue (kept for hierarchy)
+
+    # Status colors - Vibrant but professional
+    PASS_BG = "C6EFCE"  # Vibrant Green
+    PASS_TEXT = "006100"  # Dark Green
+    FAIL_BG = "FFC7CE"  # Vibrant Red
+    FAIL_TEXT = "9C0006"  # Dark Red
+    WARN_BG = "FFEB9C"  # Vibrant Yellow
+    WARN_TEXT = "9C5700"  # Dark Orange/Brown
+    EXCEPTION_BG = "FFEB9C"
     EXCEPTION_TEXT = "9C5700"
-    INFO_BG = "DDEBF7"        # Light blue
-    INFO_TEXT = "1F4E79"      # Navy
-    
+    INFO_BG = "BDD7EE"  # Blue
+    INFO_TEXT = "1F4E79"  # Dark Blue
+
     # Special
-    MANUAL_BG = "F2F2F2"      # Light gray (user input columns)
-    DISABLED_BG = "BFBFBF"    # Medium gray
-    CRITICAL_BG = "C00000"    # Dark red
-    CRITICAL_TEXT = "FFFFFF"  # White
-    NEW_BG = "FFF2CC"         # Light gold
-    NEW_TEXT = "806000"       # Dark gold
-    CHANGED_BG = "FCE4D6"     # Light orange
-    CHANGED_TEXT = "974706"   # Dark orange
-    
+    MANUAL_BG = "F2F2F2"  # Light gray
+    DISABLED_BG = "D9D9D9"  # Medium gray
+    CRITICAL_BG = "FF0000"  # Bright Red
+    CRITICAL_TEXT = "FFFFFF"
+    NEW_BG = "FFFF00"  # Bright Yellow
+    NEW_TEXT = "000000"
+    CHANGED_BG = "FFC000"  # Orange
+    CHANGED_TEXT = "000000"
+
     # Action needed indicator
-    ACTION_BG = "FFE6CC"      # Light orange (action needed)
-    
+    ACTION_BG = "FFC000"  # Orange
+
     # Row alternation
-    SERVER_ALT_BG = "E9EFF7"  # Pale blue for server grouping
-    ROW_ALT_BG = "F9F9F9"     # Very light gray for row alternation
-    
-    # Server group color rotation - soft pastels with good contrast
-    # Main = saturated shade for merged cells and alternating rows
-    # Light = visible but softer for primary rows
-    
-    # Teal (fresh, professional)
-    SERVER_1_MAIN = "A8D8C8"     # Teal
-    SERVER_1_LIGHT = "D0EDE5"    # Light teal
-    
-    # Coral (warm, inviting)
-    SERVER_2_MAIN = "F2B8B8"     # Coral
-    SERVER_2_LIGHT = "F9D8D8"    # Light coral
-    
-    # Golden (energetic)
-    SERVER_3_MAIN = "F5D98A"     # Gold  
-    SERVER_3_LIGHT = "FBECC0"    # Light gold
-    
-    # Lavender (calm, distinct)
-    SERVER_4_MAIN = "C8B8E8"     # Lavender
-    SERVER_4_LIGHT = "E0D8F0"    # Light lavender
+    SERVER_ALT_BG = "DEEBF7"  # Slightly more saturated blue tint
+    ROW_ALT_BG = "FAFAFA"  # Almost white
+
+    # Server group color rotation - Premium Macaron Palette
+    SERVER_1_MAIN = "A9D18E"  # Fresh Green
+    SERVER_1_LIGHT = "E2F0D9"
+
+    SERVER_2_MAIN = "F4B084"  # Soft Orange
+    SERVER_2_LIGHT = "FCE4D6"
+
+    SERVER_3_MAIN = "BF9000"  # Gold Accent
+    SERVER_3_LIGHT = "FFF2CC"
+
+    SERVER_4_MAIN = "9DC3E6"  # Sky Blue
+    SERVER_4_LIGHT = "DDEBF7"
 
 
-# Server group color tuples (main, light) for easy rotation
+# ... (Server Group Colors Tuple remains same logic, just using new constants)
 SERVER_GROUP_COLORS = [
     (Colors.SERVER_1_MAIN, Colors.SERVER_1_LIGHT),
     (Colors.SERVER_2_MAIN, Colors.SERVER_2_LIGHT),
@@ -93,141 +85,163 @@ SERVER_GROUP_COLORS = [
 
 
 # ============================================================================
-# Icons
+# Icons (Unchanged)
 # ============================================================================
-
 class Icons:
     """
     Unicode icons with text fallbacks.
-    
-    Each icon has a primary (unicode) and fallback (ASCII) version.
-    Fallbacks are used if the font doesn't support the unicode character.
     """
-    
+
     PASS = "✓"
     PASS_FALLBACK = "[PASS]"
-    
     FAIL = "✗"
     FAIL_FALLBACK = "[FAIL]"
-    
     WARN = "⚠"
     WARN_FALLBACK = "[WARN]"
-    
-    EXCEPTION = "◐"
+    EXCEPTION = "⚡"  # Updated to bolt
     EXCEPTION_FALLBACK = "[EXCPT]"
-    
     INFO = "ℹ"
     INFO_FALLBACK = "[INFO]"
-    
-    RUNNING = "●"
+    RUNNING = "▶"  # Updated to play arrow
     RUNNING_FALLBACK = "[RUN]"
-    
-    STOPPED = "○"
+    STOPPED = "⏹"  # Updated to stop square
     STOPPED_FALLBACK = "[STOP]"
-    
     PENDING = "⏳"
     PENDING_FALLBACK = "[PEND]"
-    
     LOCKED = "🔒"
     LOCKED_FALLBACK = "[LOCK]"
-    
     UNLOCKED = "🔓"
     UNLOCKED_FALLBACK = "[RISK]"
-    
     NEW = "★"
     NEW_FALLBACK = "[NEW]"
-    
     CHANGED = "Δ"
     CHANGED_FALLBACK = "[CHG]"
-    
+
     @classmethod
     def get(cls, icon_name: str, use_fallback: bool = False) -> str:
-        """Get icon by name with optional fallback."""
         icon = getattr(cls, icon_name.upper(), "?")
         if use_fallback:
-            fallback = getattr(cls, f"{icon_name.upper()}_FALLBACK", icon)
-            return fallback
+            return getattr(cls, f"{icon_name.upper()}_FALLBACK", icon)
         return icon
 
 
 # ============================================================================
-# Fonts
+# Fonts - Premium "Segoe UI"
 # ============================================================================
+
 
 class Fonts:
     """Font definitions for the report."""
-    
+
     # Main fonts
-    TITLE = Font(name="Calibri", size=16, bold=True, color=Colors.HEADER_BG)
-    HEADER = Font(name="Calibri", size=11, bold=True, color=Colors.HEADER_TEXT)
-    SUBHEADER = Font(name="Calibri", size=11, bold=True, color=Colors.HEADER_TEXT)
-    DATA = Font(name="Calibri", size=10)
-    DATA_BOLD = Font(name="Calibri", size=10, bold=True)
-    NOTES = Font(name="Calibri", size=10, italic=True, color="666666")
+    TITLE = Font(
+        name="Segoe UI", size=18, bold=True, color=Colors.HEADER_BG
+    )  # Larger Title
+    HEADER = Font(name="Segoe UI", size=11, bold=True, color=Colors.HEADER_TEXT)
+    SUBHEADER = Font(name="Segoe UI", size=11, bold=True, color=Colors.HEADER_TEXT)
+    DATA = Font(name="Segoe UI", size=10)
+    DATA_BOLD = Font(name="Segoe UI", size=10, bold=True)
+    NOTES = Font(name="Segoe UI", size=9, italic=True, color="666666")
     MONOSPACE = Font(name="Consolas", size=10)
-    
+
     # Status fonts
-    PASS = Font(name="Calibri", size=10, bold=True, color=Colors.PASS_TEXT)
-    FAIL = Font(name="Calibri", size=10, bold=True, color=Colors.FAIL_TEXT)
-    WARN = Font(name="Calibri", size=10, bold=True, color=Colors.WARN_TEXT)
-    CRITICAL = Font(name="Calibri", size=10, bold=True, color=Colors.CRITICAL_TEXT)
-    INFO = Font(name="Calibri", size=10, bold=True, color=Colors.INFO_TEXT)  # Documented exception
-    NEW = Font(name="Calibri", size=10, bold=True, color=Colors.NEW_TEXT)
+    PASS = Font(name="Segoe UI", size=10, bold=True, color=Colors.PASS_TEXT)
+    FAIL = Font(name="Segoe UI", size=10, bold=True, color=Colors.FAIL_TEXT)
+    WARN = Font(name="Segoe UI", size=10, bold=True, color=Colors.WARN_TEXT)
+    CRITICAL = Font(name="Segoe UI", size=10, bold=True, color=Colors.CRITICAL_TEXT)
+    INFO = Font(name="Segoe UI", size=10, bold=True, color=Colors.INFO_TEXT)
+    NEW = Font(name="Segoe UI", size=10, bold=True, color=Colors.NEW_TEXT)
 
 
 # ============================================================================
 # Fills (Backgrounds)
 # ============================================================================
 
+
 class Fills:
     """Background fill patterns."""
-    
-    HEADER = PatternFill(start_color=Colors.HEADER_BG, end_color=Colors.HEADER_BG, fill_type="solid")
-    SUBHEADER = PatternFill(start_color=Colors.SUBHEADER_BG, end_color=Colors.SUBHEADER_BG, fill_type="solid")
-    
-    PASS = PatternFill(start_color=Colors.PASS_BG, end_color=Colors.PASS_BG, fill_type="solid")
-    FAIL = PatternFill(start_color=Colors.FAIL_BG, end_color=Colors.FAIL_BG, fill_type="solid")
-    WARN = PatternFill(start_color=Colors.WARN_BG, end_color=Colors.WARN_BG, fill_type="solid")
-    EXCEPTION = PatternFill(start_color=Colors.EXCEPTION_BG, end_color=Colors.EXCEPTION_BG, fill_type="solid")
-    INFO = PatternFill(start_color=Colors.INFO_BG, end_color=Colors.INFO_BG, fill_type="solid")
-    
-    MANUAL = PatternFill(start_color=Colors.MANUAL_BG, end_color=Colors.MANUAL_BG, fill_type="solid")
-    DISABLED = PatternFill(start_color=Colors.DISABLED_BG, end_color=Colors.DISABLED_BG, fill_type="solid")
-    CRITICAL = PatternFill(start_color=Colors.CRITICAL_BG, end_color=Colors.CRITICAL_BG, fill_type="solid")
-    
-    NEW = PatternFill(start_color=Colors.NEW_BG, end_color=Colors.NEW_BG, fill_type="solid")
-    CHANGED = PatternFill(start_color=Colors.CHANGED_BG, end_color=Colors.CHANGED_BG, fill_type="solid")
-    ACTION = PatternFill(start_color=Colors.ACTION_BG, end_color=Colors.ACTION_BG, fill_type="solid")
-    
-    SERVER_ALT = PatternFill(start_color=Colors.SERVER_ALT_BG, end_color=Colors.SERVER_ALT_BG, fill_type="solid")
-    ROW_ALT = PatternFill(start_color=Colors.ROW_ALT_BG, end_color=Colors.ROW_ALT_BG, fill_type="solid")
+
+    HEADER = PatternFill(
+        start_color=Colors.HEADER_BG, end_color=Colors.HEADER_BG, fill_type="solid"
+    )
+    SUBHEADER = PatternFill(
+        start_color=Colors.SUBHEADER_BG,
+        end_color=Colors.SUBHEADER_BG,
+        fill_type="solid",
+    )
+
+    PASS = PatternFill(
+        start_color=Colors.PASS_BG, end_color=Colors.PASS_BG, fill_type="solid"
+    )
+    FAIL = PatternFill(
+        start_color=Colors.FAIL_BG, end_color=Colors.FAIL_BG, fill_type="solid"
+    )
+    WARN = PatternFill(
+        start_color=Colors.WARN_BG, end_color=Colors.WARN_BG, fill_type="solid"
+    )
+    EXCEPTION = PatternFill(
+        start_color=Colors.EXCEPTION_BG,
+        end_color=Colors.EXCEPTION_BG,
+        fill_type="solid",
+    )
+    INFO = PatternFill(
+        start_color=Colors.INFO_BG, end_color=Colors.INFO_BG, fill_type="solid"
+    )
+
+    MANUAL = PatternFill(
+        start_color=Colors.MANUAL_BG, end_color=Colors.MANUAL_BG, fill_type="solid"
+    )
+    DISABLED = PatternFill(
+        start_color=Colors.DISABLED_BG, end_color=Colors.DISABLED_BG, fill_type="solid"
+    )
+    CRITICAL = PatternFill(
+        start_color=Colors.CRITICAL_BG, end_color=Colors.CRITICAL_BG, fill_type="solid"
+    )
+
+    NEW = PatternFill(
+        start_color=Colors.NEW_BG, end_color=Colors.NEW_BG, fill_type="solid"
+    )
+    CHANGED = PatternFill(
+        start_color=Colors.CHANGED_BG, end_color=Colors.CHANGED_BG, fill_type="solid"
+    )
+    ACTION = PatternFill(
+        start_color=Colors.ACTION_BG, end_color=Colors.ACTION_BG, fill_type="solid"
+    )
+
+    SERVER_ALT = PatternFill(
+        start_color=Colors.SERVER_ALT_BG,
+        end_color=Colors.SERVER_ALT_BG,
+        fill_type="solid",
+    )
+    ROW_ALT = PatternFill(
+        start_color=Colors.ROW_ALT_BG, end_color=Colors.ROW_ALT_BG, fill_type="solid"
+    )
 
 
 # ============================================================================
 # Borders
 # ============================================================================
 
+
 class Borders:
     """Border styles."""
-    
+
     THIN = Border(
         left=Side(style="thin", color="B4B4B4"),
         right=Side(style="thin", color="B4B4B4"),
         top=Side(style="thin", color="B4B4B4"),
-        bottom=Side(style="thin", color="B4B4B4")
+        bottom=Side(style="thin", color="B4B4B4"),
     )
-    
+
     HEADER = Border(
         left=Side(style="thin", color="1F4E79"),
         right=Side(style="thin", color="1F4E79"),
         top=Side(style="thin", color="1F4E79"),
-        bottom=Side(style="medium", color="1F4E79")
+        bottom=Side(style="medium", color="1F4E79"),
     )
-    
-    SERVER_BOTTOM = Border(
-        bottom=Side(style="medium", color="1F4E79")
-    )
-    
+
+    SERVER_BOTTOM = Border(bottom=Side(style="medium", color="1F4E79"))
+
     NONE = Border()
 
 
@@ -235,9 +249,10 @@ class Borders:
 # Alignments
 # ============================================================================
 
+
 class Alignments:
     """Text alignment definitions."""
-    
+
     CENTER = Alignment(horizontal="center", vertical="center", wrap_text=False)
     CENTER_WRAP = Alignment(horizontal="center", vertical="center", wrap_text=True)
     LEFT = Alignment(horizontal="left", vertical="center", wrap_text=False)
@@ -249,8 +264,10 @@ class Alignments:
 # Status Enum
 # ============================================================================
 
+
 class Status(Enum):
     """Assessment status values."""
+
     PASS = "pass"
     FAIL = "fail"
     WARN = "warn"
@@ -265,11 +282,12 @@ class Status(Enum):
 # Column Definition
 # ============================================================================
 
+
 @dataclass
 class ColumnDef:
     """
     Column definition for a report sheet.
-    
+
     Attributes:
         name: Column header text
         width: Column width in characters
@@ -278,6 +296,7 @@ class ColumnDef:
         is_monospace: If True, use monospace font
         is_status: If True, apply status-based formatting
     """
+
     name: str
     width: int = 12
     alignment: Alignment = Alignments.LEFT
@@ -290,10 +309,11 @@ class ColumnDef:
 # Helper Functions
 # ============================================================================
 
+
 def apply_header_row(ws: Worksheet, columns: list[ColumnDef], row: int = 1) -> None:
     """
     Apply header styling to a row.
-    
+
     Args:
         ws: Worksheet
         columns: List of column definitions
@@ -306,7 +326,7 @@ def apply_header_row(ws: Worksheet, columns: list[ColumnDef], row: int = 1) -> N
         cell.fill = Fills.HEADER
         cell.alignment = Alignments.CENTER_WRAP
         cell.border = Borders.HEADER
-        
+
         # Set column width
         ws.column_dimensions[get_column_letter(col_idx)].width = col_def.width
 
@@ -314,16 +334,16 @@ def apply_header_row(ws: Worksheet, columns: list[ColumnDef], row: int = 1) -> N
 def apply_status_styling(cell, status: str | Status) -> None:
     """
     Apply status-based styling to a cell.
-    
+
     Args:
         cell: openpyxl cell
         status: Status value (string or Status enum)
     """
     if isinstance(status, Status):
         status = status.value
-    
+
     status = status.lower() if status else ""
-    
+
     if status == "pass":
         cell.font = Fonts.PASS
         cell.fill = Fills.PASS
@@ -357,7 +377,7 @@ def apply_status_styling(cell, status: str | Status) -> None:
 def apply_boolean_styling(cell, value: bool | int | None, invert: bool = False) -> None:
     """
     Apply styling for boolean values (checkmarks/crosses).
-    
+
     Args:
         cell: openpyxl cell
         value: Boolean value (True/False/1/0/None)
@@ -366,9 +386,9 @@ def apply_boolean_styling(cell, value: bool | int | None, invert: bool = False) 
     if value is None:
         cell.value = ""
         return
-    
+
     is_true = bool(value)
-    
+
     if invert:
         # True = bad, False = good
         if is_true:
@@ -389,20 +409,22 @@ def apply_boolean_styling(cell, value: bool | int | None, invert: bool = False) 
             cell.value = Icons.FAIL
             cell.font = Fonts.FAIL
             cell.fill = Fills.FAIL
-    
+
     cell.alignment = Alignments.CENTER
 
 
 def apply_service_status_styling(cell, status: str) -> None:
     """Apply styling for service status (Running/Stopped)."""
     status_lower = (status or "").lower()
-    
+
     if status_lower == "running":
         cell.value = f"{Icons.RUNNING} Running"
         cell.font = Fonts.PASS
     elif status_lower == "stopped":
         cell.value = f"{Icons.STOPPED} Stopped"
-        cell.font = Font(name="Calibri", size=10, color=Colors.DISABLED_BG.replace("BF", "00"))
+        cell.font = Font(
+            name="Calibri", size=10, color=Colors.DISABLED_BG.replace("BF", "00")
+        )
     else:
         cell.value = status or ""
 
@@ -410,7 +432,7 @@ def apply_service_status_styling(cell, status: str) -> None:
 def freeze_panes(ws: Worksheet, row: int = 2, col: int = 1) -> None:
     """
     Freeze panes in a worksheet.
-    
+
     Args:
         ws: Worksheet
         row: First unfrozen row (freeze rows above)
@@ -419,10 +441,12 @@ def freeze_panes(ws: Worksheet, row: int = 2, col: int = 1) -> None:
     ws.freeze_panes = ws.cell(row=row, column=col)
 
 
-def add_autofilter(ws: Worksheet, columns: list[ColumnDef], header_row: int = 1) -> None:
+def add_autofilter(
+    ws: Worksheet, columns: list[ColumnDef], header_row: int = 1
+) -> None:
     """
     Add autofilter to header row.
-    
+
     Args:
         ws: Worksheet
         columns: Column definitions
@@ -438,11 +462,11 @@ def merge_server_cells(
     start_row: int,
     end_row: int,
     server_name: str,
-    is_alt: bool = False
+    is_alt: bool = False,
 ) -> None:
     """
     Merge cells vertically for server grouping.
-    
+
     Args:
         ws: Worksheet
         server_col: Column index for server name
@@ -456,14 +480,14 @@ def merge_server_cells(
             start_row=start_row,
             start_column=server_col,
             end_row=end_row,
-            end_column=server_col
+            end_column=server_col,
         )
-    
+
     cell = ws.cell(row=start_row, column=server_col)
     cell.value = server_name
     cell.font = Fonts.DATA_BOLD
     cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
     cell.border = Borders.THIN
-    
+
     if is_alt:
         cell.fill = Fills.SERVER_ALT

@@ -51,7 +51,7 @@ BACKUP_COLUMNS = (
     STATUS_COLUMN,  # Review Status dropdown
     ColumnDef("Justification", 35, Alignments.LEFT, is_manual=True),
     LAST_REVIEWED_COLUMN,
-    ColumnDef("Notes", 25, Alignments.LEFT, is_manual=True),
+    ColumnDef("Notes", 25, Alignments.LEFT_WRAP, is_manual=True),
 )
 
 BACKUP_CONFIG = SheetConfig(name="Backups", columns=BACKUP_COLUMNS)
@@ -62,9 +62,9 @@ BACKUP_FAIL_DAYS = 7
 
 class BackupSheetMixin(ServerGroupMixin, BaseSheetMixin):
     """Mixin for Backups sheet with server/instance grouping."""
-    
+
     _backup_sheet = None
-    
+
     def add_backup_info(
         self,
         server_name: str,
@@ -81,12 +81,12 @@ class BackupSheetMixin(ServerGroupMixin, BaseSheetMixin):
             self._backup_sheet = self._ensure_sheet_with_uuid(BACKUP_CONFIG)
             self._init_grouping(self._backup_sheet, BACKUP_CONFIG)
             self._add_backup_dropdowns()
-        
+
         ws = self._backup_sheet
-        
+
         # Track grouping and get row color
         row_color = self._track_group(server_name, instance_name, BACKUP_CONFIG.name)
-        
+
         # Determine compliance status
         if days_since is None or days_since > BACKUP_FAIL_DAYS:
             status = "fail"
@@ -97,11 +97,11 @@ class BackupSheetMixin(ServerGroupMixin, BaseSheetMixin):
         else:
             status = "pass"
             self._increment_pass()
-        
+
         backup_date_str = format_date(last_backup_date) if last_backup_date else "NEVER"
         days_str = str(days_since) if days_since is not None else "N/A"
         size_str = format_size_mb(backup_size_mb) if backup_size_mb else ""
-        
+
         data = [
             None,  # Action indicator (column B)
             server_name,  # Column C
@@ -113,42 +113,46 @@ class BackupSheetMixin(ServerGroupMixin, BaseSheetMixin):
             backup_path or "",
             size_str,
             None,  # Status
-            "",    # Notes
+            "",  # Notes
         ]
-        
+
         row, row_uuid = self._write_row_with_uuid(ws, BACKUP_CONFIG, data)
-        
+
         # Apply action indicator - show ⏳ for FAIL/WARN backup status
         needs_action = status != "pass"
         apply_action_needed_styling(ws.cell(row=row, column=2), needs_action)
-        
+
         # Apply row color (A=UUID, B=Action, C=Server, D=Instance, E=Database, F=Recovery, G=LastBackup, H=Days, I=Path, J=Size)
-        self._apply_row_color(row, row_color, data_cols=[3, 4, 5, 6, 7, 8, 9, 10], ws=ws)
-        
+        self._apply_row_color(
+            row, row_color, data_cols=[3, 4, 5, 6, 7, 8, 9, 10], ws=ws
+        )
+
         # Apply status styling (Status is column K = 11)
         apply_status_styling(ws.cell(row=row, column=11), status)
-        
+
         if backup_date_str == "NEVER":
-            ws.cell(row=row, column=7).fill = Fills.FAIL  # Last Full Backup column G = 7
+            ws.cell(row=row, column=7).fill = (
+                Fills.FAIL
+            )  # Last Full Backup column G = 7
             ws.cell(row=row, column=7).font = Fonts.FAIL
-    
+
     def _finalize_backups(self) -> None:
         """Finalize backups sheet - merge remaining groups."""
         if self._backup_sheet:
             self._finalize_grouping(BACKUP_CONFIG.name)
             self._finalize_sheet_with_uuid(self._backup_sheet)
-    
+
     def _add_backup_dropdowns(self) -> None:
         """Add dropdown validations for status columns."""
         from autodbaudit.infrastructure.excel.base import (
-            add_dropdown_validation, add_review_status_conditional_formatting, STATUS_VALUES
+            add_dropdown_validation,
+            add_review_status_conditional_formatting,
+            STATUS_VALUES,
         )
-        
+
         ws = self._backup_sheet
         # Status column (K) - column 11 (A=UUID, B=Action, ..., K=Status)
         add_dropdown_validation(ws, "K", ["PASS", "WARN", "FAIL"])
         # Review Status column (L) - column 12
         add_dropdown_validation(ws, "L", STATUS_VALUES.all())
         add_review_status_conditional_formatting(ws, "L")
-
-

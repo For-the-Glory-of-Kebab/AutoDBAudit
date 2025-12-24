@@ -49,7 +49,7 @@ SA_ACCOUNT_COLUMNS = (
     STATUS_COLUMN,  # Column J: Review Status dropdown
     ColumnDef("Justification", 40, Alignments.LEFT, is_manual=True),  # Column K
     LAST_REVIEWED_COLUMN,  # Column L
-    ColumnDef("Notes", 35, Alignments.LEFT, is_manual=True),  # Column M
+    ColumnDef("Notes", 35, Alignments.LEFT_WRAP, is_manual=True),  # Column M
 )
 
 SA_ACCOUNT_CONFIG = SheetConfig(name="SA Account", columns=SA_ACCOUNT_COLUMNS)
@@ -72,12 +72,12 @@ COL_NOTES = 13
 
 class SAAccountSheetMixin(BaseSheetMixin):
     """Mixin for SA Account sheet with server grouping."""
-    
+
     _sa_account_sheet = None
     _sa_last_server: str = ""
     _sa_server_start_row: int = 2
     _sa_server_idx: int = 0
-    
+
     def add_sa_account(
         self,
         server_name: str,
@@ -94,24 +94,24 @@ class SAAccountSheetMixin(BaseSheetMixin):
             self._sa_server_start_row = 2
             self._sa_server_idx = 0
             self._add_sa_dropdowns()
-        
+
         ws = self._sa_account_sheet
         current_row = self._row_counters[SA_ACCOUNT_CONFIG.name]
-        
+
         # Check if server changed
         if server_name != self._sa_last_server:
             if self._sa_last_server:
                 self._merge_sa_server(ws)
                 self._sa_server_idx += 1
-            
+
             self._sa_server_start_row = current_row
             self._sa_last_server = server_name
-        
+
         # Get color
         color_main, color_light = SERVER_GROUP_COLORS[
             self._sa_server_idx % len(SERVER_GROUP_COLORS)
         ]
-        
+
         # Determine compliance status
         if is_disabled and is_renamed:
             status = "pass"
@@ -122,7 +122,7 @@ class SAAccountSheetMixin(BaseSheetMixin):
         else:
             status = "fail"
             self._increment_issue()
-        
+
         # Data for columns B onwards (UUID is handled automatically)
         data = [
             None,  # Action indicator (column B)
@@ -138,25 +138,27 @@ class SAAccountSheetMixin(BaseSheetMixin):
             "",  # Last Reviewed (column L)
             "",  # Notes (column M)
         ]
-        
+
         row, row_uuid = self._write_row_with_uuid(ws, SA_ACCOUNT_CONFIG, data)
-        
+
         # Apply action indicator - show ⏳ for non-pass items
         needs_action = status != "pass"
         apply_action_needed_styling(ws.cell(row=row, column=COL_ACTION), needs_action)
-        
+
         # Apply light color to Server, Instance, Current Name, Default DB
-        fill = PatternFill(start_color=color_light, end_color=color_light, fill_type="solid")
+        fill = PatternFill(
+            start_color=color_light, end_color=color_light, fill_type="solid"
+        )
         for col in [COL_SERVER, COL_INSTANCE, COL_CURRENT_NAME, COL_DEFAULT_DB]:
             ws.cell(row=row, column=col).fill = fill
-        
+
         # Apply status styling
         apply_status_styling(ws.cell(row=row, column=COL_STATUS), status)
         apply_boolean_styling(ws.cell(row=row, column=COL_IS_DISABLED), is_disabled)
         apply_boolean_styling(ws.cell(row=row, column=COL_IS_RENAMED), is_renamed)
-        
+
         return row, row_uuid
-    
+
     def _merge_sa_server(self, ws) -> None:
         """Merge Server cells for current server group."""
         current_row = self._row_counters[SA_ACCOUNT_CONFIG.name]
@@ -176,19 +178,21 @@ class SAAccountSheetMixin(BaseSheetMixin):
             merged.fill = PatternFill(
                 start_color=color_main, end_color=color_main, fill_type="solid"
             )
-    
+
     def _finalize_sa_accounts(self) -> None:
         """Finalize SA Account sheet - merge remaining server group and apply UUID protection."""
         if self._sa_account_sheet and self._sa_last_server:
             self._merge_sa_server(self._sa_account_sheet)
             self._finalize_sheet_with_uuid(self._sa_account_sheet)
-    
+
     def _add_sa_dropdowns(self) -> None:
         """Add dropdown validations for status columns."""
         from autodbaudit.infrastructure.excel.base import (
-            add_dropdown_validation, add_review_status_conditional_formatting, STATUS_VALUES
+            add_dropdown_validation,
+            add_review_status_conditional_formatting,
+            STATUS_VALUES,
         )
-        
+
         ws = self._sa_account_sheet
         # Column letters with UUID: A=UUID, B=Action, C=Server, ..., E=Status, F=IsDisabled, G=IsRenamed, J=ReviewStatus
         add_dropdown_validation(ws, "E", ["PASS", "FAIL", "WARN"])  # Status
@@ -196,4 +200,3 @@ class SAAccountSheetMixin(BaseSheetMixin):
         add_dropdown_validation(ws, "G", ["✓", "✗"])  # Is Renamed
         add_dropdown_validation(ws, "J", STATUS_VALUES.all())  # Review Status
         add_review_status_conditional_formatting(ws, "J")
-

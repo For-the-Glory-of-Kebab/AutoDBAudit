@@ -42,7 +42,7 @@ CONFIG_COLUMNS = (
     ColumnDef("Status", 12, Alignments.CENTER, is_status=True),  # Column H
     ColumnDef("Risk", 10, Alignments.CENTER),  # Column I
     STATUS_COLUMN,  # Review Status dropdown
-    ColumnDef("Exception Reason", 45, Alignments.LEFT, is_manual=True),
+    ColumnDef("Justification", 45, Alignments.LEFT, is_manual=True),
     LAST_REVIEWED_COLUMN,
 )
 
@@ -90,7 +90,7 @@ class ConfigSheetMixin(ServerGroupMixin, BaseSheetMixin):
             str(required_value),
             None,  # Status
             (risk_level or "Low").title(),
-            "",  # Exception Reason
+            "",  # Justification
         ]
 
         row, row_uuid = self._write_row_with_uuid(ws, CONFIG_CONFIG, data)
@@ -106,10 +106,28 @@ class ConfigSheetMixin(ServerGroupMixin, BaseSheetMixin):
         apply_status_styling(ws.cell(row=row, column=8), status)
 
         # Highlight risk column (Risk is column I = 9)
-        if risk_level.lower() == "critical":
-            ws.cell(row=row, column=9).fill = Fills.CRITICAL
-        elif risk_level.lower() == "high":
-            ws.cell(row=row, column=9).fill = Fills.FAIL
+        # Highlight risk column (Risk is column I = 9)
+        risk_cell = ws.cell(row=row, column=9)
+        r_val = risk_level.lower()
+
+        from autodbaudit.infrastructure.excel_styles import Fonts, Icons
+
+        if r_val == "critical":
+            risk_cell.fill = Fills.CRITICAL
+            risk_cell.font = Fonts.CRITICAL
+            risk_cell.value = f"{Icons.FAIL} Critical"
+        elif r_val == "high":
+            risk_cell.fill = Fills.FAIL
+            risk_cell.font = Fonts.FAIL
+            risk_cell.value = f"{Icons.FAIL} High"
+        elif r_val == "medium":
+            risk_cell.fill = Fills.WARN
+            risk_cell.font = Fonts.WARN
+            risk_cell.value = f"{Icons.WARN} Medium"
+        elif r_val == "low":
+            risk_cell.fill = Fills.PASS
+            risk_cell.font = Fonts.PASS
+            risk_cell.value = "Low"
 
     def _finalize_config(self) -> None:
         """Finalize config sheet - merge remaining groups."""
@@ -117,11 +135,12 @@ class ConfigSheetMixin(ServerGroupMixin, BaseSheetMixin):
             self._finalize_grouping(CONFIG_CONFIG.name)
             self._finalize_sheet_with_uuid(self._config_sheet)
 
-
     def _add_config_dropdowns(self) -> None:
         """Add dropdown validations for status columns."""
         from autodbaudit.infrastructure.excel.base import (
-            add_dropdown_validation, add_review_status_conditional_formatting, STATUS_VALUES
+            add_dropdown_validation,
+            add_review_status_conditional_formatting,
+            STATUS_VALUES,
         )
 
         ws = self._config_sheet

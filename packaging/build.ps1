@@ -26,6 +26,9 @@ try {
     Write-BuildInfo "Execution Root: $PSScriptRoot"
 
 
+    # 0. Pre-Flight Checks
+    Write-BuildInfo "Requirement Check: Ensure you are using 'requirements.txt' (Prod) not 'requirements-dev.txt'"
+    
     # 1. Load Manifest
     $ManifestPath = Join-Path $PSScriptRoot "manifest.json"
     $Manifest = Get-BuildManifest -Path $ManifestPath

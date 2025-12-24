@@ -55,17 +55,17 @@ ACTION_COLUMNS = (
     ColumnDef("ID", 6, Alignments.CENTER),
     ColumnDef("Server", 16, Alignments.LEFT),
     ColumnDef("Instance", 14, Alignments.LEFT),
-    ColumnDef("Category", 16, Alignments.LEFT),
-    ColumnDef("Finding", 40, Alignments.LEFT_WRAP),
-    ColumnDef("Risk Level", 10, Alignments.CENTER),
-    ColumnDef("Change Description", 45, Alignments.LEFT_WRAP),  # What changed
+    ColumnDef("Category", 20, Alignments.LEFT),  # Wider category
+    ColumnDef("Finding", 50, Alignments.LEFT_WRAP),  # Wider finding description
+    ColumnDef("Risk Level", 12, Alignments.CENTER),
+    ColumnDef("Change Description", 55, Alignments.LEFT_WRAP),  # Wider change desc
     ColumnDef(
-        "Change Type", 12, Alignments.CENTER, is_status=True
+        "Change Type", 15, Alignments.CENTER, is_status=True
     ),  # Fixed/Regressed/New
     ColumnDef(
-        "Detected Date", 12, Alignments.CENTER
+        "Detected Date", 15, Alignments.CENTER
     ),  # When change detected (editable)
-    ColumnDef("Notes", 45, Alignments.LEFT_WRAP, is_manual=True),  # User commentary
+    ColumnDef("Notes", 60, Alignments.LEFT_WRAP, is_manual=True),  # Much wider notes
 )
 
 ACTION_CONFIG = SheetConfig(name="Actions", columns=ACTION_COLUMNS)
@@ -167,8 +167,10 @@ class ActionSheetMixin(BaseSheetMixin):
 
         # Style Change Type cell (column 8) - handle all status types
         status_cell = ws.cell(row=row, column=8)
-        status_lower = status.lower().replace("✓", "").replace("⚠", "").replace("⏳", "").strip()
-        
+        status_lower = (
+            status.lower().replace("✓", "").replace("⚠", "").replace("⏳", "").strip()
+        )
+
         if status_lower == "fixed":
             status_cell.value = f"{Icons.PASS} Fixed"
             status_cell.fill = Fills.PASS
@@ -229,4 +231,112 @@ class ActionSheetMixin(BaseSheetMixin):
         # Change Type column (H) - column 8
         add_dropdown_validation(
             ws, "H", ["⏳ Open", "✓ Fixed", "✓ Exception", "❌ Regression", "✓ Closed"]
+        )
+
+        # --- Add Conditional Formatting for dynamic styling ---
+        self._add_action_conditional_formatting()
+
+    def _add_action_conditional_formatting(self) -> None:
+        """Add Conditional Formatting rules for Risk Level and Change Type columns."""
+        from openpyxl.formatting.rule import FormulaRule
+        from openpyxl.styles import PatternFill, Font
+
+        ws = self._action_sheet
+        if ws is None:
+            return
+
+        # Define fills and fonts for CF
+        pass_fill = PatternFill(
+            start_color="C8E6C9", end_color="C8E6C9", fill_type="solid"
+        )  # Green
+        pass_font = Font(color="1B5E20", bold=True)
+        warn_fill = PatternFill(
+            start_color="FFE082", end_color="FFE082", fill_type="solid"
+        )  # Yellow/Orange
+        warn_font = Font(color="E65100", bold=True)
+        fail_fill = PatternFill(
+            start_color="FFCDD2", end_color="FFCDD2", fill_type="solid"
+        )  # Red
+        fail_font = Font(color="B71C1C", bold=True)
+
+        # Risk Level (Column F) - Dynamic based on value
+        f_range = f"F2:F{ws.max_row + 500}"
+
+        # Low = Green
+        ws.conditional_formatting.add(
+            f_range,
+            FormulaRule(
+                formula=['ISNUMBER(SEARCH("Low",F2))'],
+                stopIfTrue=True,
+                fill=pass_fill,
+                font=pass_font,
+            ),
+        )
+        # Medium = Orange/Yellow
+        ws.conditional_formatting.add(
+            f_range,
+            FormulaRule(
+                formula=['ISNUMBER(SEARCH("Medium",F2))'],
+                stopIfTrue=True,
+                fill=warn_fill,
+                font=warn_font,
+            ),
+        )
+        # High = Red
+        ws.conditional_formatting.add(
+            f_range,
+            FormulaRule(
+                formula=['ISNUMBER(SEARCH("High",F2))'],
+                stopIfTrue=True,
+                fill=fail_fill,
+                font=fail_font,
+            ),
+        )
+        # Critical = Dark Red (if ever used)
+        ws.conditional_formatting.add(
+            f_range,
+            FormulaRule(
+                formula=['ISNUMBER(SEARCH("Critical",F2))'],
+                stopIfTrue=True,
+                fill=fail_fill,
+                font=fail_font,
+            ),
+        )
+
+        # Change Type (Column H) - Dynamic based on value
+        h_range = f"H2:H{ws.max_row + 500}"
+
+        # Fixed/Closed/Exception = Green (Good news)
+        ws.conditional_formatting.add(
+            h_range,
+            FormulaRule(
+                formula=[
+                    'OR(ISNUMBER(SEARCH("Fixed",H2)), ISNUMBER(SEARCH("Closed",H2)), ISNUMBER(SEARCH("Exception",H2)))'
+                ],
+                stopIfTrue=True,
+                fill=pass_fill,
+                font=pass_font,
+            ),
+        )
+        # Regression = Red (Bad news)
+        ws.conditional_formatting.add(
+            h_range,
+            FormulaRule(
+                formula=['ISNUMBER(SEARCH("Regression",H2))'],
+                stopIfTrue=True,
+                fill=fail_fill,
+                font=fail_font,
+            ),
+        )
+        # Open/Pending = Orange (Needs attention)
+        ws.conditional_formatting.add(
+            h_range,
+            FormulaRule(
+                formula=[
+                    'OR(ISNUMBER(SEARCH("Open",H2)), ISNUMBER(SEARCH("Pending",H2)))'
+                ],
+                stopIfTrue=True,
+                fill=warn_fill,
+                font=warn_font,
+            ),
         )

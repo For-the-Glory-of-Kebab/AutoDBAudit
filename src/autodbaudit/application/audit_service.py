@@ -105,7 +105,7 @@ class AuditService:
         """
         # Step 1: Perform the scan (collect data)
         # This populates the writer and the database
-        writer, run_id, counts = self._perform_audit_scan(
+        writer, run_id, _counts = self._perform_audit_scan(
             targets_file, organization, writer
         )
 

@@ -10,13 +10,17 @@
     "requirements": {
         "_comment": "Security requirements for the audit",
         "minimum_sql_version": "2019",
-        "_expected_builds_comment": "Optional: Specify expected build for each SQL major version. If omitted, version is assumed current.",
+        "_expected_builds_comment": "Latest CU build numbers as of December 2024. Update periodically from sqlserverupdates.com",
         "expected_builds": {
-            "2025": "17.0.4082.0",
+            "2025": "17.0.1000.7",
             "2022": "16.0.4165.4",
-            "2019": "15.0.4385.2",
+            "2019": "15.0.4415.2",
             "2017": "14.0.3465.1",
-            "2016": "13.0.7024.30"
+            "2016": "13.0.7024.30",
+            "2014": "12.0.6449.1",
+            "2012": "11.0.7507.2",
+            "2008 R2": "10.50.6000.34",
+            "2008": "10.0.6556.0"
         }
     },
     "output": {
@@ -30,5 +34,13 @@
         "generate_scripts": true,
         "script_format": "sectioned",
         "include_rollback": true
+    },
+    "os_remediation": {
+        "_comment": "Options for OS-level fix application",
+        "use_ps_remoting": false,
+        "ps_script_path": "scripts/os_remediation.ps1",
+        "allowed_hosts": [
+            "localhost"
+        ]
     }
 }

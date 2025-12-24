@@ -63,7 +63,7 @@ CLIENT_PROTOCOL_COLUMNS = (
     ColumnDef("Enabled", 10, Alignments.CENTER),  # Column F
     ColumnDef("Port", 10, Alignments.CENTER),  # Column G
     ColumnDef("Status", 14, Alignments.CENTER),  # Column H
-    ColumnDef("Notes", 30, Alignments.LEFT),  # Column I
+    ColumnDef("Notes", 30, Alignments.LEFT_WRAP),  # Column I
     STATUS_COLUMN,  # Review Status dropdown
     ColumnDef("Justification", 40, Alignments.LEFT, is_manual=True),
     LAST_REVIEWED_COLUMN,
@@ -99,7 +99,9 @@ class ClientProtocolSheetMixin(ServerGroupMixin, BaseSheetMixin):
             notes: Additional notes about configuration
         """
         if self._client_protocol_sheet is None:
-            self._client_protocol_sheet = self._ensure_sheet_with_uuid(CLIENT_PROTOCOL_CONFIG)
+            self._client_protocol_sheet = self._ensure_sheet_with_uuid(
+                CLIENT_PROTOCOL_CONFIG
+            )
             self._init_grouping(self._client_protocol_sheet, CLIENT_PROTOCOL_CONFIG)
             self._add_protocol_dropdowns()
 
@@ -149,9 +151,10 @@ class ClientProtocolSheetMixin(ServerGroupMixin, BaseSheetMixin):
         apply_action_needed_styling(ws.cell(row=row, column=2), needs_action)
 
         # Apply row color to data columns (A=UUID, B=Action, C=Server, D=Instance, E=Protocol, F=Enabled, G=Port, H=Status, I=Notes)
+        # Fix: Ensure Port (7) is colored.
         self._apply_row_color(row, row_color, data_cols=[3, 4, 5, 7, 9], ws=ws)
 
-        # Style Enabled column (column F = 6)
+        # Style Enabled column (column F = 6) - Initial static style (CF will override if value changes)
         enabled_cell = ws.cell(row=row, column=6)
         if is_enabled:
             enabled_cell.value = "✓ Yes"
@@ -163,9 +166,11 @@ class ClientProtocolSheetMixin(ServerGroupMixin, BaseSheetMixin):
                 enabled_cell.font = Fonts.WARN
         else:
             enabled_cell.value = "✗ No"
+            # DISABLED style
             enabled_cell.fill = PatternFill(
-                start_color="F5F5F5", end_color="F5F5F5", fill_type="solid"
+                start_color="F2F2F2", end_color="F2F2F2", fill_type="solid"
             )
+            enabled_cell.font = Fonts.DATA
 
         # Style Status column (column H = 8)
         status_cell = ws.cell(row=row, column=8)
@@ -177,8 +182,10 @@ class ClientProtocolSheetMixin(ServerGroupMixin, BaseSheetMixin):
             status_cell.fill = Fills.WARN
             status_cell.font = Fonts.WARN
             self._increment_warn()
-        else:
-            pass  # No special styling for neutral status
+        elif "Disabled" in status:  # Info Disabled
+            status_cell.fill = PatternFill(
+                start_color="F2F2F2", end_color="F2F2F2", fill_type="solid"
+            )
 
     def _finalize_client_protocols(self) -> None:
         """Finalize client protocols sheet - merge remaining groups."""
@@ -206,3 +213,83 @@ class ClientProtocolSheetMixin(ServerGroupMixin, BaseSheetMixin):
         # Review Status column (J) - column 10 (Notes=I)
         add_dropdown_validation(ws, "J", STATUS_VALUES.all())
         add_review_status_conditional_formatting(ws, "J")
+
+        # --- Dynamic CF for Enabled/Status ---
+        from openpyxl.formatting.rule import FormulaRule
+        from autodbaudit.infrastructure.excel_styles import Fills, Fonts
+
+        # Enabled (Col F)
+        # Yes -> Check if acceptable?
+        # Requires logic. Actually, "Yes" isn't always good (Named Pipes).
+        # We can't easily do complex logic in Excel CF without helper columns.
+        # But we can do basic: "✓ Yes" -> Green? No, Named Pipes Yes is Bad.
+        # Protocol name is in Col E.
+        # Rule: =AND($F2="✓ Yes", OR($E2="Shared Memory", $E2="TCP/IP")) -> Green
+        # Rule: =AND($F2="✓ Yes", NOT(OR($E2="Shared Memory", $E2="TCP/IP"))) -> Warn (Orange)
+        # Rule: =$F2="✗ No" -> Gray
+
+        f_range = f"F2:F{ws.max_row+100}"
+
+        # 1. Enabled + Safe = Green
+        ws.conditional_formatting.add(
+            f_range,
+            FormulaRule(
+                formula=[
+                    'AND(ISNUMBER(SEARCH("Yes",F2)), OR(ISNUMBER(SEARCH("Shared Memory",E2)), ISNUMBER(SEARCH("TCP/IP",E2))))'
+                ],
+                stopIfTrue=True,
+                fill=Fills.PASS,
+                font=Fonts.PASS,
+            ),
+        )
+
+        # 2. Enabled + Unsafe = Warn
+        ws.conditional_formatting.add(
+            f_range,
+            FormulaRule(
+                formula=[
+                    'AND(ISNUMBER(SEARCH("Yes",F2)), NOT(OR(ISNUMBER(SEARCH("Shared Memory",E2)), ISNUMBER(SEARCH("TCP/IP",E2)))))'
+                ],
+                stopIfTrue=True,
+                fill=Fills.WARN,
+                font=Fonts.WARN,
+            ),
+        )
+
+        # 3. Disabled = Gray
+        from openpyxl.styles import PatternFill
+
+        gray_fill = PatternFill(
+            start_color="F2F2F2", end_color="F2F2F2", fill_type="solid"
+        )
+        ws.conditional_formatting.add(
+            f_range,
+            FormulaRule(
+                formula=['ISNUMBER(SEARCH("No",F2))'], stopIfTrue=True, fill=gray_fill
+            ),
+        )
+
+        # Status (Col H)
+        # Compliant/Disabled(Good) -> Green
+        # Needs Review -> Orange
+        h_range = f"H2:H{ws.max_row+100}"
+
+        ws.conditional_formatting.add(
+            h_range,
+            FormulaRule(
+                formula=['OR(ISNUMBER(SEARCH("Compliant",H2)), H2="✅ Disabled")'],
+                stopIfTrue=True,
+                fill=Fills.PASS,
+                font=Fonts.PASS,
+            ),
+        )
+
+        ws.conditional_formatting.add(
+            h_range,
+            FormulaRule(
+                formula=['ISNUMBER(SEARCH("Needs Review",H2))'],
+                stopIfTrue=True,
+                fill=Fills.WARN,
+                font=Fonts.WARN,
+            ),
+        )

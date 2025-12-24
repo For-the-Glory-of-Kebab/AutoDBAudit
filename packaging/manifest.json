@@ -25,11 +25,6 @@
       "Description": "User Guide"
     },
     {
-      "Source": "tools",
-      "Destination": "tools",
-      "Description": "Core Tools Directory"
-    },
-    {
       "Source": "resources",
       "Destination": "resources",
       "Description": "Extensible Resources Directory"
@@ -38,6 +33,24 @@
       "Source": "packaging/extras/Startup.bat",
       "Destination": "Startup.bat",
       "Description": "Startup Script",
+      "Optional": true
+    },
+    {
+      "Source": "assets/Microsoft.WindowsTerminal_1.23.13503.0_x64.zip",
+      "Destination": "tools/Microsoft.WindowsTerminal_1.23.13503.0_x64.zip",
+      "Description": "Windows Terminal Installer",
+      "Optional": true
+    },
+    {
+      "Source": "assets/PowerShell-7.5.4-win-x64.zip",
+      "Destination": "tools/PowerShell-7.5.4-win-x64.zip",
+      "Description": "PowerShell 7 Portable",
+      "Optional": true
+    },
+    {
+      "Source": "assets/sublime_text_build_4200_x64.rar",
+      "Destination": "tools/sublime_text_build_4200_x64.rar",
+      "Description": "Sublime Text Editor",
       "Optional": true
     }
   ]

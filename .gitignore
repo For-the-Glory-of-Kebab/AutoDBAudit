@@ -13,9 +13,18 @@ dist/
 .pytest_cache/
 .mypy_cache/
 
+# Asset archives (large files, not tracked in git)
+assets/*.zip
+assets/*.rar
+
 # PyInstaller
 *.spec
 !packaging/*.spec
+
+# Build Artifacts
+dist/
+build/
+*.exe
 
 # IDEs
 .vscode/
@@ -23,7 +32,15 @@ dist/
 *.swp
 *.swo
 
-# Project-specific
+# Temp / Test Artifacts
+*.log
+*.tmp
+user_temp_log.txt
+dummy.db
+tests/pain*.txt
+tests/user_temp_log.txt
+.test_output/
+.test_workspace/
 output/
 hotfixes/
 
