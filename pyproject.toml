@@ -38,6 +38,9 @@ dependencies = [
 dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
+    "hypothesis>=6.0",
+    "allpairspy>=2.5",
+    "faker>=18.0",
     "mypy>=1.0",
     "ruff>=0.1.0",
 ]
@@ -76,5 +79,6 @@ ignore = ["E501"]  # Line length handled by formatter
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["src"]
 python_files = ["test_*.py"]
 addopts = "-v --tb=short"

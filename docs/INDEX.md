@@ -1,24 +1,29 @@
-# AutoDBAudit Documentation
+# AutoDBAudit Documentation Index
 
-Welcome to the AutoDBAudit documentation.
+## Active Documentation
 
-## 🏁 Starting Point
-*   **[Project Status](STATUS.md)**: Current features, test results, and roadmap.
-*   **[User Guide](USER_GUIDE.md)**: Handbook for auditing, remediating, and syncing.
-*   **[CLI Reference](CLI.md)**: Command line detailed usage.
+| Document | Purpose |
+|----------|---------|
+| [ARCHITECTURE.md](ARCHITECTURE.md) | System architecture overview |
+| [DATABASE_SCHEMA.md](DATABASE_SCHEMA.md) | SQLite database schema |
+| [DATA_KEYS.md](DATA_KEYS.md) | Entity key format specifications |
+| [REPORT_SCHEMA.md](REPORT_SCHEMA.md) | Excel report column definitions |
+| [SYNC_ENGINE.md](SYNC_ENGINE.md) | Sync engine behavior and logic |
+| [TEST_ARCHITECTURE.md](TEST_ARCHITECTURE.md) | **Comprehensive test architecture** |
+| [USER_GUIDE.md](USER_GUIDE.md) | End-user documentation |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Development guidelines |
+| [STATUS.md](STATUS.md) | Project status summary |
 
-## 📐 Architecture & Design
-*   **[System Architecture](ARCHITECTURE.md)**: High-level system design.
-*   **[Sync Engine](SYNC_ENGINE.md)**: Deep dive into State Machine and Action Log.
-*   **[Data Keys & UUIDs](DATA_KEYS.md)**: How rows are identified (UUID vs Composite).
+## Implementation Plans
 
-## 🗄️ Schemas
-*   **[Report Schema](REPORT_SCHEMA.md)**: Definition of all 20 Excel sheets.
-*   **[Database Schema](DATABASE_SCHEMA.md)**: SQLite tables and columns.
+| Document | Purpose |
+|----------|---------|
+| [REMEDIATION_IMPLEMENTATION_PLAN.md](REMEDIATION_IMPLEMENTATION_PLAN.md) | Remediation feature plan |
 
-## 🛠️ For Developers
-*   **[Testing Strategy](TESTING.md)**: E2E framework, coverage, and scenarios.
-*   **[Contributing](CONTRIBUTING.md)**: Standards, setup, and workflow guidelines.
+## Deprecated
 
-## 📦 Archive
-*   See `docs/archive/` for historical documents and session logs.
+Old documents moved to `docs/archive/` - do not reference.
+
+---
+
+*Last updated: 2025-12-25*

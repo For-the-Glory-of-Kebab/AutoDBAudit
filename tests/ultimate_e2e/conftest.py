@@ -77,6 +77,7 @@ class TestContext:
         self.run_id = cursor.lastrowid
 
         self.cycle_count = 0
+        self._last_sync_result: dict = {}  # For atom-based verification
 
     def cleanup(self) -> None:
         """Clean up resources."""

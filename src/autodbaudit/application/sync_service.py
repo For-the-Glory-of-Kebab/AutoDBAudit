@@ -337,6 +337,46 @@ class SyncService:
             logger.info("Recorded %d actions", recorded)
 
             # ─────────────────────────────────────────────────────────────
+            # PHASE 5b: Clear Exception Status for FIXED Items
+            # ─────────────────────────────────────────────────────────────
+            # When an item transitions to FIXED, clear its exception status
+            # but keep justification as historical documentation
+            import sqlite3
+
+            fixed_conn = sqlite3.connect(str(self.db_path))
+            fixed_conn.row_factory = sqlite3.Row
+
+            for action in consolidated:
+                if action.change_type == ChangeType.FIXED:
+                    entity_key = action.entity_key
+                    parts = entity_key.split("|", 1)
+                    if len(parts) == 2:
+                        etype, ekey = parts
+                        # Check if this item had an exception
+                        cursor = fixed_conn.execute(
+                            """SELECT review_status FROM row_annotations
+                               WHERE entity_type = ? AND entity_key LIKE ?""",
+                            (etype, f"%{ekey}%"),
+                        )
+                        row = cursor.fetchone()
+                        if row and row["review_status"]:
+                            # Clear review_status (keep justification as docs)
+                            set_annotation(
+                                connection=fixed_conn,
+                                entity_type=etype,
+                                entity_key=ekey,
+                                field_name="review_status",
+                                field_value="",  # Clear exception status
+                            )
+                            logger.info(
+                                "Cleared exception status for FIXED item: %s",
+                                entity_key[:60],
+                            )
+
+            fixed_conn.commit()
+            fixed_conn.close()
+
+            # ─────────────────────────────────────────────────────────────
             # PHASE 6: Calculate Stats
             # ─────────────────────────────────────────────────────────────
             prev_run_id = self.store.get_previous_sync_run(current_run_id)

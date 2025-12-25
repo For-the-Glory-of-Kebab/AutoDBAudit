@@ -108,7 +108,7 @@ CONFIGURATION_SPEC = SheetSpec(
     },
     editable_cols={
         "Review Status": "review_status",
-        "Exception Reason": "justification",  # Note: uses "Exception Reason" not "Justification"
+        "Justification": "justification",  # Matches actual Excel column header
         "Last Reviewed": "last_reviewed",
     },
     expected_key_pattern="config|testserver|inst1|xp_cmdshell",
