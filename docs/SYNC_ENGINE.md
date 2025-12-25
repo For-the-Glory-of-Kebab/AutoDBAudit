@@ -116,10 +116,55 @@ It calculates:
 
 ---
 
-## 7. Edge Cases
+## 7. Baseline Logic (Source of Truth)
 
-### 7.1 Instance Unavailable
+### 7.1 First Run = Baseline
+The **first audit run** becomes the baseline (source of truth). All subsequent syncs compare against this baseline.
+
+```
+First Audit (Run 1) → BASELINE
+Sync (Run 2)        → Compares to BASELINE
+Sync (Run 3)        → Compares to BASELINE
+...
+Finalize            → Locks BASELINE
+```
+
+### 7.2 New Server Mid-Audit
+If a server appears **after** the baseline:
+- Its baseline starts from its **first appearance**
+- Previous syncs don't show it as "new" retroactively
+- Findings for that server use its first appearance as reference
+
+### 7.3 Server Unavailable at Start
+If a server is unavailable during baseline:
+- No data is recorded for that server
+- When it becomes available in subsequent syncs, that becomes its baseline
+- No "ghost" findings from unavailable periods
+
+### 7.4 Server Unavailable at Finalize
+If a server is unavailable at finalize time:
+- System issues a **WARNING**
+- User must confirm or use `--force` to proceed
+- Missing servers are documented in the final report
+
+---
+
+## 8. Edge Cases
+
+### 8.1 Instance Unavailable During Sync
 If a server is offline during sync, its missing findings are **NOT** marked as fixed. The system requires successful connectivity to validate a fix.
 
-### 7.2 Restoration
+### 8.2 Orphan Annotations
+Annotations (notes, justifications) for findings that no longer exist:
+- Are preserved in the database
+- Can be flagged as "orphan" during finalize
+- Allow documentation to persist across intermittent issues
+
+### 8.3 Restoration
 If `sql_audit.xlsx` is lost, it can be regenerated fully from `audit_history.db` using the `--regenerate-excel` command (future feature).
+
+### 8.4 Exception Cleared on FIXED
+When a FAIL+Exception item becomes PASS (FIXED):
+- `justification` is **kept** as documentation
+- `review_status` is **cleared** to ""
+- Action log shows **FIXED** (not EXCEPTION_REMOVED)

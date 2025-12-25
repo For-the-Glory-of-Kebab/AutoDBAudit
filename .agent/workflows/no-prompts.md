@@ -6,9 +6,12 @@ description: How to run any command without triggering prompts - wrap complex co
 
 ## Mistakes to NEVER make:
 - ❌ `cmd 2>&1 | Select-Object -Last 20`
-- ❌ `.\venv\Scripts\Activate.ps1; python file.py` (semicolon)
+- ❌ `.\\venv\\Scripts\\Activate.ps1; python file.py` (semicolon)
 - ❌ `python -c "..."` or `python -m ...`
 - ❌ Direct `.exe` from `./venv/`
+- ❌ `Get-ChildItem | ForEach-Object { ... }` (piped)
+- ❌ `cmd | Sort-Object` or `cmd | Where-Object`
+- ❌ Any multi-line command blocks or code blocks
 
 ## Correct approach:
 // turbo-all
@@ -26,3 +29,4 @@ Pop-Location
 
 4. Never pipe output - let it stream naturally
 5. If you need to filter output, do it in a wrapper script
+6. For file discovery, use wrapper scripts or find_by_name tool

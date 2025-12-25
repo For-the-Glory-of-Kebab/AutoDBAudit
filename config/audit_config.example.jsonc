@@ -1,0 +1,96 @@
+// SQL Server Audit Configuration - Example File
+// =============================================
+// Copy this file to 'audit_config.json' and customize for your environment.
+// The actual audit_config.json is excluded from git.
+//
+// This file controls:
+// - Organization identification
+// - Security requirements and baselines
+// - Output file naming and location
+// - Remediation script generation options
+// - OS-level remediation settings
+{
+    // ==========================================================================
+    // Organization Identification
+    // ==========================================================================
+    "organization": "Example Corporation",     // Your company/organization name
+    "audit_year": 2025,                        // Calendar year for the audit
+    "audit_date": "2025-12-01",                // Audit start date (YYYY-MM-DD)
+
+    // ==========================================================================
+    // Security Requirements & Baselines
+    // ==========================================================================
+    "requirements": {
+        // Minimum SQL Server version allowed (older versions fail immediately)
+        "minimum_sql_version": "2019",
+
+        // Expected build numbers - used to check if servers are patched
+        // Update these periodically from: https://sqlserverupdates.com
+        // Format: "YYYY": "Major.Minor.Build.Revision"
+        "expected_builds": {
+            "2025": "17.0.1000.7",     // SQL Server 2025 (preview)
+            "2022": "16.0.4165.4",     // SQL Server 2022 CU16
+            "2019": "15.0.4415.2",     // SQL Server 2019 CU30
+            "2017": "14.0.3465.1",     // SQL Server 2017 CU31
+            "2016": "13.0.7024.30",    // SQL Server 2016 SP3 CU17
+            "2014": "12.0.6449.1",     // SQL Server 2014 SP3 CU4
+            "2012": "11.0.7507.2",     // SQL Server 2012 SP4 GDR
+            "2008 R2": "10.50.6000.34", // SQL Server 2008 R2 SP3
+            "2008": "10.0.6556.0"       // SQL Server 2008 SP4
+        }
+    },
+
+    // ==========================================================================
+    // Output Settings
+    // ==========================================================================
+    "output": {
+        "directory": "output",                              // Where to save reports
+        
+        // File naming pattern - available placeholders:
+        // {organization} - from above
+        // {date}         - YYYY-MM-DD format
+        // {datetime}     - YYYY-MM-DD_HH-MM-SS format
+        "filename_pattern": "{organization}_SQL_Audit_{date}.xlsx",
+        
+        // Verbosity: "minimal", "standard", "detailed"
+        "verbosity": "detailed",
+        
+        // Include charts in Excel cover sheet
+        "include_charts": true
+    },
+
+    // ==========================================================================
+    // Remediation Script Generation
+    // ==========================================================================
+    "remediation": {
+        // Generate T-SQL remediation scripts
+        "generate_scripts": true,
+
+        // Script format options:
+        // - "single"    : All fixes in one script
+        // - "sectioned" : Organized by category (SA, Logins, Config, etc.)
+        // - "per_issue" : One script per finding
+        "script_format": "sectioned",
+
+        // Generate rollback scripts alongside fix scripts
+        "include_rollback": true
+    },
+
+    // ==========================================================================
+    // OS-Level Remediation (PowerShell Remoting)
+    // ==========================================================================
+    "os_remediation": {
+        // Enable PowerShell remoting for OS-level fixes
+        // SECURITY: Only enable if you understand the risks
+        "use_ps_remoting": false,
+
+        // Path to OS remediation script
+        "ps_script_path": "scripts/os_remediation.ps1",
+
+        // Allowed hosts for PS remoting (whitelist)
+        // Only servers in this list can be remotely configured
+        "allowed_hosts": [
+            "localhost"
+        ]
+    }
+}

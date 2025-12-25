@@ -128,6 +128,60 @@ class ConfigLoader:
 
         logger.info("ConfigLoader initialized with directory: %s", self.config_dir)
 
+    def _load_json_file(self, filepath: Path, required: bool = True) -> dict | None:
+        """
+        Load and parse a JSON file with robust error handling.
+
+        Provides clear error messages for common failure scenarios:
+        - File not found
+        - File corrupted (invalid JSON syntax)
+        - File empty
+        - Permission denied
+
+        Args:
+            filepath: Absolute or relative path to JSON file
+            required: If True, raises exception on error. If False, returns None.
+
+        Returns:
+            Parsed JSON as dict, or None if optional file not found
+
+        Raises:
+            FileNotFoundError: If required file doesn't exist
+            ValueError: If JSON is malformed or empty
+            PermissionError: If file cannot be read
+        """
+        if not filepath.exists():
+            if required:
+                raise FileNotFoundError(
+                    f"Configuration file not found: {filepath}\n"
+                    f"Hint: Copy the .example.json file and customize it."
+                )
+            logger.debug("Optional config not found: %s", filepath)
+            return None
+
+        try:
+            content = filepath.read_text(encoding="utf-8")
+        except PermissionError as e:
+            raise PermissionError(
+                f"Cannot read config file (permission denied): {filepath}\n"
+                f"Hint: Check file permissions or if another process has it locked."
+            ) from e
+
+        if not content.strip():
+            raise ValueError(
+                f"Configuration file is empty: {filepath}\n"
+                f"Hint: Add valid JSON content or copy from .example.json"
+            )
+
+        try:
+            return json.loads(content)
+        except json.JSONDecodeError as e:
+            raise ValueError(
+                f"Invalid JSON in config file: {filepath}\n"
+                f"Error at line {e.lineno}, column {e.colno}: {e.msg}\n"
+                f"Hint: Validate JSON syntax. Note: .json files cannot have comments."
+            ) from e
+
     def load_sql_targets(self, filename: str = "sql_targets.json") -> List[SqlTarget]:
         """
         Load SQL Server target configurations.
@@ -145,11 +199,7 @@ class ConfigLoader:
         filepath = self.config_dir / filename
         logger.info("Loading SQL targets from: %s", filepath)
 
-        if not filepath.exists():
-            raise FileNotFoundError(f"SQL targets config not found: {filepath}")
-
-        with open(filepath, "r", encoding="utf-8") as f:
-            data = json.load(f)
+        data = self._load_json_file(filepath, required=True)
 
         targets = []
         for item in data.get("targets", []):
@@ -199,13 +249,12 @@ class ConfigLoader:
             # Try relative to project root (parent of config_dir)
             path = self.config_dir.parent / filepath
 
-        if not path.exists():
+        logger.debug("Loading credentials from: %s", path)
+        data = self._load_json_file(path, required=False)
+
+        if data is None:
             logger.warning("Credential file not found: %s", filepath)
             return {}
-
-        logger.debug("Loading credentials from: %s", path)
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
 
         return {
             "username": data.get("username"),
@@ -228,11 +277,7 @@ class ConfigLoader:
         filepath = self.config_dir / filename
         logger.info("Loading audit config from: %s", filepath)
 
-        if not filepath.exists():
-            raise FileNotFoundError(f"Audit config not found: {filepath}")
-
-        with open(filepath, "r") as f:
-            data = json.load(f)
+        data = self._load_json_file(filepath, required=True)
 
         config = AuditConfig(
             organization=data["organization"],
