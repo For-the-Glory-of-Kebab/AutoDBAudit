@@ -53,7 +53,7 @@ INSTANCE_COLUMNS = (
     ColumnDef("CPU", 4, Alignments.CENTER),
     ColumnDef("RAM", 5, Alignments.CENTER),
     STATUS_COLUMN,
-    ColumnDef("Justification", 30, Alignments.LEFT, is_manual=True),
+    ColumnDef("Justification", 30, Alignments.LEFT_WRAP, is_manual=True),
     ColumnDef("Notes", 24, Alignments.LEFT_WRAP, is_manual=True),
     LAST_REVIEWED_COLUMN,
 )
