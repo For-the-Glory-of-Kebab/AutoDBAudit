@@ -98,6 +98,29 @@ class ServerPropertiesCollector(BaseCollector):
                     recommendation=f"Update to SQL Server {sql_year} build {expected}",
                 )
 
+            # Instance naming check - default instance is a security risk
+            # (Requirement 14: No SQL instance should use the default instance name)
+            instance_name = self.ctx.instance_name or ""
+            if (
+                instance_name.upper() in ("MSSQLSERVER", "(DEFAULT)", "")
+                or not instance_name
+            ):
+                self.save_finding(
+                    finding_type="instance_naming",
+                    entity_name="default_instance_name",
+                    status="WARN",
+                    risk_level="medium",
+                    description=(
+                        "SQL Server is using the default instance name (MSSQLSERVER). "
+                        "Default instances are easier targets for attackers."
+                    ),
+                    recommendation=(
+                        "Consider migrating to a named instance. Note: This requires "
+                        "reinstallation on a named instance and data migration. "
+                        "Cannot be automated."
+                    ),
+                )
+
             return 1
         except Exception as e:
             logger.warning("Instance properties failed: %s", e)

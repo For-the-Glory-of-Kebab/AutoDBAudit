@@ -32,6 +32,8 @@ dependencies = [
     "pyodbc>=4.0.39",
     "openpyxl>=3.1.0",
     "pywin32>=306",
+    "jinja2>=3.0",
+    "pywinrm>=0.4.0",
 ]
 
 [project.optional-dependencies]
