@@ -130,7 +130,13 @@ class RealDBTestContext:
     def _find_excel(self) -> None:
         """Find the Excel file created by audit."""
         output_dir = self.project_root / "output"
-        excels = list(output_dir.glob("*.xlsx"))
+
+        # Search recursively - Excel may be in audit subdirectory
+        # e.g., output/audit_001/Audit_001_Latest.xlsx
+        excels = list(output_dir.glob("**/*.xlsx"))
+
+        # Exclude Persian translations
+        excels = [e for e in excels if "_fa" not in e.stem]
 
         if excels:
             # Get most recent
