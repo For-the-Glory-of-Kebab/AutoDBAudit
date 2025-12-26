@@ -52,10 +52,22 @@ The core audit functionality is complete and tested. The system can:
 | PERSIAN_REPORTS.md | ✅ Current |
 | PSREMOTE_INTEGRATION.md | ✅ Current |
 | REMEDIATION_ENGINE.md | ✅ Current |
-| REAL_DB_E2E_PLAN.md | ✅ NEW |
+| REAL_DB_E2E_PLAN.md | ✅ Current |
+
+## Real-DB E2E Test Progress
+
+| Layer | Status | Files | Tests |
+|-------|--------|-------|-------|
+| tests/shared/ | ✅ | 10 | - |
+| L1_foundation | ✅ | 4 | 7 |
+| L3_state | ✅ | 3 | 4 |
+| L6_cli | ✅ | 4 | 10 |
+| L8_stateful | ✅ | 2 | 12 |
+| **Total** | | **~38** | **~33** |
 
 ## Next Steps
 
-1. 🔄 **Implement Real-DB E2E Tests** - `tests/real_db/` with L1-L8 layers
-2. 🔜 **Wire Remediation to CLI** - `--remediate` command  
-3. 🔜 **L4 Integration Tests** - OS data + remediation tests
+1. ✅ **Real-DB E2E Infrastructure** - Complete
+2. 🔄 **Run Real Tests** - Test against SQL Server instances
+3. 🔜 **Wire Remediation to CLI** - `--remediate` command  
+4. 🔜 **L4 Integration Tests** - OS data + remediation tests

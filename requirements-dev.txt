@@ -7,12 +7,21 @@
 # PyInstaller for building standalone executable
 pyinstaller>=6.0.0,<7.0.0
 
-# Testing
+# Testing - Core
 pytest>=7.0.0
 pytest-mock
 pytest-cov
+
+# Testing - Real-DB E2E
+hypothesis>=6.100.0      # Property-based + stateful testing
+allpairspy>=2.5.1        # Pairwise combinatorial coverage
+faker>=33.0.0            # Random realistic test data
+pytest-ordering>=0.6     # Test execution order (pyramid cascade)
+pytest-timeout>=2.3.1    # Prevent hanging tests
+transitions>=0.9.0       # FSM modeling for state machine tests
 
 # Linting & Formatting
 black
 pylint
 mypy
+
