@@ -18,10 +18,14 @@ from autodbaudit.infrastructure.psremote.client import (
     ConnectionConfig,
 )
 
+from autodbaudit.utils.resources import get_base_path
+
 logger = logging.getLogger(__name__)
 
-# Path to bundled scripts
-SCRIPTS_DIR = Path(__file__).parent.parent.parent.parent.parent / "assets" / "scripts"
+
+def _get_scripts_dir() -> Path:
+    """Get scripts directory with PyInstaller support."""
+    return get_base_path() / "assets" / "scripts"
 
 
 @dataclass
@@ -77,7 +81,7 @@ class ScriptExecutor:
         Returns:
             ExecutionResult with parsed OS data
         """
-        script_path = SCRIPTS_DIR / "Get-SqlServerOSData.ps1"
+        script_path = _get_scripts_dir() / "Get-SqlServerOSData.ps1"
 
         if not script_path.exists():
             return ExecutionResult(
@@ -114,7 +118,7 @@ $InstanceName = '{instance_name}'
         Returns:
             ExecutionResult with restart status
         """
-        script_path = SCRIPTS_DIR / "Restart-SqlServerService.ps1"
+        script_path = _get_scripts_dir() / "Restart-SqlServerService.ps1"
 
         if not script_path.exists():
             return ExecutionResult(
@@ -151,7 +155,7 @@ $StartTimeoutSeconds = {start_timeout}
         Returns:
             ExecutionResult with protocol change status
         """
-        script_path = SCRIPTS_DIR / "Set-ClientProtocol.ps1"
+        script_path = _get_scripts_dir() / "Set-ClientProtocol.ps1"
 
         if not script_path.exists():
             return ExecutionResult(
