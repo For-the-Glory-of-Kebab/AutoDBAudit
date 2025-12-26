@@ -270,11 +270,14 @@ results = seq.run(ctx)
 | Library | Version | Purpose |
 |---------|---------|---------|
 | pytest | ≥7.0 | Test framework |
-| hypothesis | 6.148+ | Property-based testing |
-| allpairspy | 2.5+ | Pairwise combinatorial |
+| hypothesis | 6.148+ | Property-based testing, stateful testing |
+| allpairspy | 2.5+ | Pairwise combinatorial coverage |
 | pytest-cov | ≥4.0 | Coverage reporting |
 | faker | 33.0+ | Random test data |
 | openpyxl | ≥3.1 | Excel file handling |
+| **pytest-ordering** | ≥0.6 | **NEW**: Test execution order (pyramid cascade) |
+| **pytest-timeout** | ≥2.3 | **NEW**: Prevent hanging tests |
+| **transitions** | ≥0.9 | **NEW**: FSM modeling for state tests |
 
 ---
 
@@ -292,6 +295,7 @@ Defined in `tests/conftest.py`:
 @pytest.mark.sheet         # Per-sheet parametrized
 @pytest.mark.finalize      # Finalize/Definalize tests
 @pytest.mark.remediation   # Remediation script tests
+@pytest.mark.realdb        # NEW: Real SQL Server tests (skip in CI)
 ```
 
 ---
@@ -308,22 +312,66 @@ Defined in `tests/conftest.py`:
 .\scripts\run_ultimate_e2e.ps1
 ```
 
-### Atom Tests
+### Real-DB Tests (requires SQL Server)
 ```powershell
-.\scripts\run_atom_tests.ps1
-```
-
-### Layer Tests
-```powershell
-.\scripts\run_layer_tests.ps1
+.\scripts\run_pytest.ps1 tests/real_db/ -m realdb
 ```
 
 ### By Marker
 ```powershell
 pytest -m "unit"           # Only unit tests
 pytest -m "not slow"       # Skip slow tests
-pytest -m "scenario"       # Only scenario tests
+pytest -m "not realdb"     # Skip real-DB tests
 ```
+
+---
+
+## Real-DB E2E Testing (NEW)
+
+### Purpose
+
+Tests against **actual SQL Server instances** to verify:
+- T-SQL queries return expected data
+- CLI commands execute correctly
+- State transitions work in real scenarios
+- Randomized sync sequences don't break logic
+
+### Architecture
+
+```
+tests/real_db/
+├── contexts/           # Test infrastructure
+│   ├── real_db_context.py   # Connection + CLI runner
+│   └── baseline_manager.py  # Pre-existing discrepancy handling
+├── fixtures/           # SQL scripts (deterministic)
+│   ├── base/           # Full discrepancy sets
+│   └── atomic/         # Single-purpose (FIXED, REGRESSION)
+└── L1-L8/              # 8-layer pyramid
+```
+
+### Baseline Snapshot Strategy
+
+Pre-existing discrepancies (like `King` login) are handled via:
+1. Capture baseline → JSON before tests
+2. Apply test fixtures → track additions
+3. Assert DELTAS only → ignore pre-existing
+
+### Stateful Testing
+
+Uses **Hypothesis RuleBasedStateMachine** to generate random sequences:
+- `apply_random_discrepancy()`
+- `fix_random_discrepancy()`
+- `add_exception_to_random()`
+- `run_sync()`
+
+With **invariants** verified after every action.
+
+### Instance Configuration
+
+Configured in `config/sql_targets.json`:
+- 2022 "InTheEnd": port 13727
+- 2008 "BigBad2008": port 10525
+- Docker 2025: port 1444
 
 ---
 
@@ -355,8 +403,9 @@ The following documents are superseded by this one:
 
 ## Next Steps
 
-1. **Fix Layer Tests**: Resolve hypothesis/fixture compatibility issue
-2. **Complete L6 E2E**: Add finalize/definalize tests
-3. **SyncService Injection**: Refactor for test isolation (Option A)
-4. **Coverage Report**: Generate pytest-cov coverage report
-5. **CI Integration**: Add GitHub Actions workflow for tests
+1. ✅ **Real-DB E2E Architecture**: Planned (this document)
+2. 🔄 **Implement Real-DB Tests**: `tests/real_db/` with L1-L8 layers
+3. 🔄 **Add Missing Dependencies**: pytest-ordering, pytest-timeout, transitions
+4. 🔜 **Coverage Report**: Generate pytest-cov coverage report
+5. 🔜 **CI Integration**: Add GitHub Actions (mock tests only)
+

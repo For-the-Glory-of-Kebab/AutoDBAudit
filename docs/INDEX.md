@@ -28,6 +28,7 @@
 
 | Document | Purpose |
 |----------|---------|
+| [REAL_DB_E2E_PLAN.md](REAL_DB_E2E_PLAN.md) | Real SQL Server E2E testing architecture |
 | [REMEDIATION_IMPLEMENTATION_PLAN.md](REMEDIATION_IMPLEMENTATION_PLAN.md) | Remediation feature implementation |
 | [REMEDIATION_REQUIREMENTS.md](REMEDIATION_REQUIREMENTS.md) | Remediation feature requirements |
 

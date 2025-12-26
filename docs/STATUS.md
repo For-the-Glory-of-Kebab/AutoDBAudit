@@ -46,15 +46,16 @@ The core audit functionality is complete and tested. The system can:
 |----------|--------|
 | INDEX.md | ✅ Current |
 | USER_GUIDE.md | ✅ Current |
-| TEST_ARCHITECTURE.md | ✅ Current |
+| TEST_ARCHITECTURE.md | ✅ Updated (Real-DB section) |
 | SYNC_ENGINE.md | ✅ Current |
 | ROADMAP.md | ✅ Current |
-| PERSIAN_REPORTS.md | ✅ NEW |
+| PERSIAN_REPORTS.md | ✅ Current |
 | PSREMOTE_INTEGRATION.md | ✅ Current |
 | REMEDIATION_ENGINE.md | ✅ Current |
+| REAL_DB_E2E_PLAN.md | ✅ NEW |
 
 ## Next Steps
 
-1. **Verify Unverified Components** - Manual E2E testing of Persian, PSRemote, Remediation
-2. **Wire Remediation to CLI** - `--remediate` command  
-3. **L4 Integration Tests** - OS data + remediation tests
+1. 🔄 **Implement Real-DB E2E Tests** - `tests/real_db/` with L1-L8 layers
+2. 🔜 **Wire Remediation to CLI** - `--remediate` command  
+3. 🔜 **L4 Integration Tests** - OS data + remediation tests
