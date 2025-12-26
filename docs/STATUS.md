@@ -59,15 +59,20 @@ The core audit functionality is complete and tested. The system can:
 | Layer | Status | Files | Tests |
 |-------|--------|-------|-------|
 | tests/shared/ | ✅ | 10 | - |
-| L1_foundation | ✅ | 4 | 7 |
-| L3_state | ✅ | 3 | 4 |
-| L6_cli | ✅ | 4 | 10 |
+| L1_foundation | ✅ | 4 | 10 |
+| L2_annotation | ✅ | 6 | 22 |
+| L3_state | ✅ | 4 | 24 |
+| L4_action_log | ✅ | 2 | 9 |
+| L5_stats | ✅ | 3 | 13 |
+| L6_cli + sheet | ✅ | 5 | 55 |
+| L7_error | ✅ | 2 | 5 |
 | L8_stateful | ✅ | 2 | 12 |
-| **Total** | | **~38** | **~33** |
+| L9_e2e | ✅ | 2 | 6 |
+| **Total** | ✅ | **~55** | **~160** |
 
 ## Next Steps
 
 1. ✅ **Real-DB E2E Infrastructure** - Complete
-2. 🔄 **Run Real Tests** - Test against SQL Server instances
-3. 🔜 **Wire Remediation to CLI** - `--remediate` command  
-4. 🔜 **L4 Integration Tests** - OS data + remediation tests
+2. ✅ **Comprehensive Tests** - 160+ tests created
+3. 🔄 **Run Against SQL Server** - Validate with real instances
+4. 🔜 **Wire Remediation to CLI** - `--remediate` command
