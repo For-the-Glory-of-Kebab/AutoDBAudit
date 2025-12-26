@@ -61,23 +61,29 @@ The core audit functionality is complete and tested. The system can:
 | tests/shared/assertions (deep) | ✅ | 8 | ~1000 |
 | L1_foundation | ✅ | 6 | ~300 |
 | L2_annotation | ✅ | 8 | ~400 |
-| L3_state | ✅ | 6 | ~450 |
+| L3_state | ✅ | 7 | ~650 |
 | L4_action_log | ✅ | 4 | ~350 |
 | L5_stats | ✅ | 4 | ~250 |
-| L6_cli + sheet | ✅ | 6 | ~350 |
-| L7_error | ✅ | 4 | ~300 |
+| L6_cli (all commands) | ✅ | 8 | ~700 |
+| L7_error (config, lock) | ✅ | 5 | ~450 |
 | L8_stateful | ✅ | 2 | ~180 |
-| L9_e2e | ✅ | 3 | ~200 |
-| **Total** | ✅ | **~70** | **~4000+** |
+| L9_e2e (PSRemote, full) | ✅ | 4 | ~350 |
+| **Total** | ✅ | **~80** | **~5000+** |
 
-### Deep Assertion Modules (NEW)
+### Deep Assertion Modules
 - `deep_excel.py`: RowData, find_row_by_entity, cell style verification
-- `deep_action_log.py`: Entry content, timestamp, cross-reference verification
-- `deep_state.py`: StateSnapshot comparison, transition verification
-- `baseline.py`: Protected entities, delta assertions
+- `deep_action_log.py`: Entry content, timestamp, cross-reference
+- `deep_state.py`: StateSnapshot, transition verification  
+- `baseline.py`: Protected entities (King), delta assertions
+
+### CLI Coverage
+- All commands tested (audit, sync, finalize, definalize, status, list)
+- Config validation (valid, missing, malformed, invalid fields)
+- Flag combinations (verbose, dry-run, quiet, json, persian)
+- State combinations (11 parametrized scenarios)
 
 ## Next Steps
 
-1. ✅ **Deep Assertion Framework** - Complete
-2. 🔄 **Run Against SQL Server** - Find bugs with comprehensive assertions
+1. ✅ **Comprehensive Test Suite** - ~300 tests, ~5000 lines
+2. 🔄 **Run Against SQL Server** - Find bugs
 3. 🔜 **Fix Discovered Bugs** - Each failure = bug found
