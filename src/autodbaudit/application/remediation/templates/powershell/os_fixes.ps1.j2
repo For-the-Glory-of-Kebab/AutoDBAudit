@@ -1,0 +1,180 @@
+{# 
+    PowerShell OS-Level Fixes Template
+    
+    For remediation that requires OS access (protocols, services, restarts).
+    Only generated when PSRemote is available.
+#}
+<#
+.SYNOPSIS
+    AutoDBAudit OS-Level Remediation Script
+
+.DESCRIPTION
+    Performs OS-level SQL Server remediation:
+    - Client protocol changes (TCP, Named Pipes, Shared Memory)
+    - Service account changes
+    - SQL Server service restart if needed
+    
+    Generated: {{ generated_at }}
+    Target: {{ ctx.instance_label }}
+    Aggressiveness: {{ aggressiveness }}
+
+.NOTES
+    This script requires:
+    - Administrator privileges
+    - PSRemoting access to target server
+    - SQL Server service restart capability
+#>
+
+#Requires -RunAsAdministrator
+#Requires -Version 5.1
+
+param(
+    [switch]$WhatIf,
+    [switch]$Force
+)
+
+$ErrorActionPreference = "Stop"
+$TargetServer = "{{ ctx.server_name }}"
+$InstanceName = "{{ ctx.instance_name or 'MSSQLSERVER' }}"
+
+# ============================================================================
+# Visual Logging Functions
+# ============================================================================
+function Write-RemediationHeader($message) {
+    Write-Host ""
+    Write-Host "╔══════════════════════════════════════════════════════════════════════════╗" -ForegroundColor Cyan
+    Write-Host "║ $message" -ForegroundColor Cyan
+    Write-Host "╚══════════════════════════════════════════════════════════════════════════╝" -ForegroundColor Cyan
+}
+
+function Write-RemediationStep($step, $description) {
+    Write-Host "  [$step] $description" -ForegroundColor Yellow
+}
+
+function Write-RemediationSuccess($message) {
+    Write-Host "  ✅ $message" -ForegroundColor Green
+}
+
+function Write-RemediationWarning($message) {
+    Write-Host "  ⚠️ $message" -ForegroundColor Yellow
+}
+
+function Write-RemediationError($message) {
+    Write-Host "  ❌ $message" -ForegroundColor Red
+}
+
+Write-RemediationHeader "AutoDBAudit OS-Level Remediation"
+Write-Host "  Target: $TargetServer\$InstanceName"
+Write-Host "  Mode: $(if ($WhatIf) { 'DRY RUN' } else { 'LIVE' })"
+Write-Host ""
+
+{% if 'protocol' in ctx.items_by_type %}
+# ============================================================================
+# Protocol Remediation
+# ============================================================================
+Write-RemediationHeader "Client Protocol Remediation"
+
+$ProtocolFixes = @(
+{% for item in ctx.items_by_type.get('protocol', []) %}
+{% if item.is_exceptionalized and aggressiveness < 3 %}
+    # ❌ EXCEPTIONALIZED: {{ item.entity_name }} ({{ item.justification[:40] }}...)
+    # @{ Protocol = "{{ item.entity_name }}"; Enabled = $false; Apply = $true }
+{% else %}
+    @{ Protocol = "{{ item.entity_name }}"; Enabled = $false; Apply = $true }
+{% endif %}
+{% endfor %}
+)
+
+foreach ($fix in $ProtocolFixes) {
+    if (-not $fix.Apply) { continue }
+    
+    Write-RemediationStep "PROTOCOL" "Setting $($fix.Protocol) to Enabled=$($fix.Enabled)"
+    
+    if (-not $WhatIf) {
+        try {
+            # Call Set-ClientProtocol.ps1 on target
+            $scriptPath = Join-Path $PSScriptRoot "Set-ClientProtocol.ps1"
+            $result = & $scriptPath -InstanceName $InstanceName -Protocol $fix.Protocol -Enabled $fix.Enabled
+            
+            if ($result.success) {
+                Write-RemediationSuccess "Protocol $($fix.Protocol) updated"
+            } else {
+                Write-RemediationError "Failed: $($result.error)"
+            }
+        }
+        catch {
+            Write-RemediationError "Exception: $_"
+        }
+    } else {
+        Write-RemediationWarning "[DRY RUN] Would set $($fix.Protocol) = $($fix.Enabled)"
+    }
+}
+{% endif %}
+
+{% if 'service' in ctx.items_by_type %}
+# ============================================================================
+# Service Remediation
+# ============================================================================
+Write-RemediationHeader "Service Remediation"
+
+$ServiceFixes = @(
+{% for item in ctx.items_by_type.get('service', []) %}
+{% if item.is_exceptionalized and aggressiveness < 3 %}
+    # ❌ EXCEPTIONALIZED: {{ item.entity_name }} ({{ item.justification[:40] }}...)
+    # @{ ServiceName = "{{ item.entity_name }}"; Action = "Stop"; Apply = $true }
+{% else %}
+    @{ ServiceName = "{{ item.entity_name }}"; Action = "Stop"; Apply = $true }
+{% endif %}
+{% endfor %}
+)
+
+foreach ($fix in $ServiceFixes) {
+    if (-not $fix.Apply) { continue }
+    
+    Write-RemediationStep "SERVICE" "$($fix.Action) $($fix.ServiceName)"
+    
+    if (-not $WhatIf) {
+        try {
+            if ($fix.Action -eq "Stop") {
+                Stop-Service $fix.ServiceName -Force
+                Set-Service $fix.ServiceName -StartupType Disabled
+            }
+            Write-RemediationSuccess "Service $($fix.ServiceName) updated"
+        }
+        catch {
+            Write-RemediationError "Exception: $_"
+        }
+    } else {
+        Write-RemediationWarning "[DRY RUN] Would $($fix.Action) $($fix.ServiceName)"
+    }
+}
+{% endif %}
+
+# ============================================================================
+# Service Restart (if needed for config changes)
+# ============================================================================
+$NeedsRestart = $false  # Set to $true if sp_configure changes require restart
+
+if ($NeedsRestart -and -not $WhatIf) {
+    Write-RemediationHeader "SQL Server Service Restart"
+    Write-RemediationWarning "Restarting SQL Server to apply configuration changes..."
+    
+    try {
+        $scriptPath = Join-Path $PSScriptRoot "Restart-SqlServerService.ps1"
+        $result = & $scriptPath -InstanceName $InstanceName
+        
+        if ($result.success) {
+            Write-RemediationSuccess "SQL Server restarted in $($result.restart_time_ms)ms"
+        } else {
+            Write-RemediationError "Restart failed: $($result.error)"
+        }
+    }
+    catch {
+        Write-RemediationError "Exception during restart: $_"
+    }
+}
+
+Write-Host ""
+Write-RemediationHeader "Remediation Complete"
+Write-Host "  Review the output above for any errors."
+Write-Host ""

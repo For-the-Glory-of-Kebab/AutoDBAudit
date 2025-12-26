@@ -1,6 +1,6 @@
 # Project Status
 
-**Last Updated**: 2025-12-25
+**Last Updated**: 2025-12-26
 **Version**: 0.1.0 (Pre-release)
 
 ## Current State: ✅ FUNCTIONAL
@@ -18,21 +18,24 @@ The core audit functionality is complete and tested. The system can:
 |-------|-------|--------|
 | Ultimate E2E | 198 | ✅ Passing |
 | L6 Edge Cases | 18 | ✅ Passing |
+| L2 State | 11 | ✅ Passing |
 | Build | 11 | ✅ Passing |
 | State Machine | 26 | ✅ Passing |
-| **Total** | **253+** | ✅ |
+| **Total** | **264+** | ✅ |
 
 ## Component Status
 
 | Component | Status | Notes |
 |-----------|--------|-------|
-| CLI Interface | ✅ | `--audit`, `--sync`, `--finalize` |
+| CLI Interface | ✅ | `--audit`, `--sync`, `--finalize`, `--prepare` |
 | Report Generation | ✅ | 20 sheet types |
 | Annotation Sync | ✅ | Excel ↔ DB bidirectional |
 | State Machine | ✅ | FIXED, REGRESSION, etc. |
 | Action Log | ✅ | Append-only audit trail |
-| Exception Handling | ✅ | Phase 5b fix implemented |
-| Remediation Scripts | 🔄 | Planned next |
+| Exception Handling | ✅ | Aggressiveness levels 1-3 |
+| Access Preparation | ✅ | 8-layer PSRemote strategy |
+| OS Data Puller | 🔄 | Done, unverified |
+| Remediation Scripts | 🔄 | Done, unverified |
 
 ## Documentation
 
@@ -41,10 +44,12 @@ The core audit functionality is complete and tested. The system can:
 | TEST_ARCHITECTURE.md | ✅ Current |
 | SYNC_ENGINE.md | ✅ Current |
 | USER_GUIDE.md | ✅ Current |
-| Config JSONC examples | ✅ Created |
+| REMEDIATION_REQUIREMENTS.md | ✅ NEW |
+| PSREMOTE_INTEGRATION.md | ✅ NEW |
+| ROADMAP.md | ✅ NEW |
 
 ## Next Steps
 
-1. **Remediation Automation** - Generate T-SQL fix scripts
-2. **Schema Refactoring** - Split schema.py (1369 lines)
+1. **Wire Remediation to CLI** - `--remediate` command
+2. **L4 Integration Tests** - OS data + remediation tests
 3. **Coverage Report** - Add pytest-cov to CI

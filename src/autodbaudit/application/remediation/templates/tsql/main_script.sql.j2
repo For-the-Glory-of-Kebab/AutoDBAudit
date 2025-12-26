@@ -1,0 +1,254 @@
+{# 
+    Main T-SQL Remediation Script Template
+    
+    SQL 2008+ Compatible:
+    - No multi-row VALUES constructor (2008 doesn't support it)
+    - Uses individual INSERTs but they're all in one block for easy commenting
+    - Visual separation and feedback
+    
+    Aggressiveness:
+    - 1: Exceptionalized items commented out
+    - 2: Exceptionalized items commented with warning
+    - 3: All items active with indicator only
+#}
+-- ╔══════════════════════════════════════════════════════════════════════════════╗
+-- ║  AutoDBAudit Remediation Script                                              ║
+-- ║  ──────────────────────────────────────────────────────────────────────────  ║
+-- ║  Generated: {{ generated_at }}                                               ║
+-- ║  Target: {{ ctx.instance_label }}                                            ║
+-- ║  Aggressiveness: {{ aggressiveness }} (1=Safe, 2=Normal, 3=Aggressive)       ║
+-- ╚══════════════════════════════════════════════════════════════════════════════╝
+--
+-- INSTRUCTIONS:
+-- 1. Review each section below before executing
+-- 2. Comment/uncomment individual INSERT lines to control what gets fixed
+-- 3. Exceptionalized items are {% if aggressiveness < 3 %}COMMENTED OUT{% else %}MARKED but ACTIVE{% endif %}
+-- 4. Items involving {{ connecting_user or 'your login' }} require EXTRA CAUTION
+--
+-- ============================================================================
+
+SET NOCOUNT ON;
+GO
+
+{% if 'login' in ctx.items_by_type or 'sa_account' in ctx.items_by_type %}
+-- ╔══════════════════════════════════════════════════════════════════════════════╗
+-- ║ SECTION: LOGIN SECURITY                                                      ║
+-- ║ Fixes: Disable risky logins, SA accounts                                     ║
+-- ╚══════════════════════════════════════════════════════════════════════════════╝
+PRINT '═══════════════════════════════════════════════════════════════════════════';
+PRINT '  [LOGINS] Starting login remediation...';
+PRINT '═══════════════════════════════════════════════════════════════════════════';
+
+-- Table variable to collect logins for processing
+-- NOTE: Each INSERT is on its own line so you can comment individual items
+DECLARE @LoginsToFix TABLE (
+    login_name NVARCHAR(256) NOT NULL,
+    action_type VARCHAR(20) NOT NULL DEFAULT 'DISABLE'
+);
+
+-- ┌──────────────────────────────────────────────────────────────────────────────┐
+-- │ INSERT LOGINS TO REMEDIATE BELOW                                             │
+-- │ Comment out any line you want to SKIP                                        │
+-- └──────────────────────────────────────────────────────────────────────────────┘
+{% for item in ctx.items_by_type.get('login', []) + ctx.items_by_type.get('sa_account', []) %}
+{% set is_connecting = item.entity_name.lower() == (connecting_user or '').lower() %}
+{% if is_connecting %}
+-- ╔════════════════════════════════════════════════════════════════════════════╗
+-- ║ ⚠️🔴🔴🔴 EXTREME DANGER: {{ item.entity_name | upper }} 🔴🔴🔴⚠️           ║
+-- ║ THIS IS THE LOGIN YOU USED TO CONNECT TO THIS AUDIT!                       ║
+-- ║ MODIFYING IT WILL LOCK YOU OUT IMMEDIATELY!                                ║
+-- ║ This is NEVER auto-uncommented, not even at aggressiveness 3.              ║
+-- ║ Only uncomment if you have ANOTHER sysadmin account ready!                 ║
+-- ╚════════════════════════════════════════════════════════════════════════════╝
+-- INSERT INTO @LoginsToFix (login_name, action_type) VALUES (N'{{ item.entity_name }}', 'DISABLE');
+{% elif item.is_exceptionalized and aggressiveness < 3 %}
+-- ❌ EXCEPTIONALIZED: {{ item.entity_name }}
+-- ❌ Justification: "{{ item.justification[:60] }}"
+-- INSERT INTO @LoginsToFix (login_name, action_type) VALUES (N'{{ item.entity_name }}', 'DISABLE');
+{% elif item.is_exceptionalized %}
+-- ⚠️ EXCEPTIONALIZED (but active at level 3): {{ item.entity_name }}
+INSERT INTO @LoginsToFix (login_name, action_type) VALUES (N'{{ item.entity_name }}', 'DISABLE');
+{% else %}
+INSERT INTO @LoginsToFix (login_name, action_type) VALUES (N'{{ item.entity_name }}', 'DISABLE');
+{% endif %}
+{% endfor %}
+
+-- Execute login fixes (SQL 2008+ compatible cursor)
+DECLARE @login NVARCHAR(256), @action VARCHAR(20), @sql NVARCHAR(MAX);
+DECLARE login_cursor CURSOR LOCAL FAST_FORWARD FOR 
+    SELECT login_name, action_type FROM @LoginsToFix;
+
+OPEN login_cursor;
+FETCH NEXT FROM login_cursor INTO @login, @action;
+
+WHILE @@FETCH_STATUS = 0
+BEGIN
+    BEGIN TRY
+        IF @action = 'DISABLE'
+        BEGIN
+            SET @sql = N'ALTER LOGIN ' + QUOTENAME(@login) + N' DISABLE;';
+            PRINT '  → Disabling login: ' + @login;
+            EXEC sp_executesql @sql;
+            PRINT '    ✓ Success';
+        END
+    END TRY
+    BEGIN CATCH
+        PRINT '    ✗ ERROR: ' + ERROR_MESSAGE();
+    END CATCH
+    
+    FETCH NEXT FROM login_cursor INTO @login, @action;
+END
+
+CLOSE login_cursor;
+DEALLOCATE login_cursor;
+
+PRINT '';
+PRINT '  [LOGINS] Section complete.';
+PRINT '';
+GO
+{% endif %}
+
+{% if 'config' in ctx.items_by_type %}
+-- ╔══════════════════════════════════════════════════════════════════════════════╗
+-- ║ SECTION: sp_configure SETTINGS                                               ║
+-- ║ Fixes: Security-related server configuration                                 ║
+-- ╚══════════════════════════════════════════════════════════════════════════════╝
+PRINT '═══════════════════════════════════════════════════════════════════════════';
+PRINT '  [CONFIG] Starting configuration remediation...';
+PRINT '═══════════════════════════════════════════════════════════════════════════';
+
+DECLARE @ConfigFixes TABLE (
+    setting_name VARCHAR(100) NOT NULL,
+    target_value INT NOT NULL
+);
+
+-- ┌──────────────────────────────────────────────────────────────────────────────┐
+-- │ INSERT CONFIGURATIONS TO CHANGE BELOW                                        │
+-- │ Comment out any line you want to SKIP                                        │
+-- └──────────────────────────────────────────────────────────────────────────────┘
+{% for item in ctx.items_by_type.get('config', []) %}
+{% if item.is_exceptionalized and aggressiveness < 3 %}
+-- ❌ EXCEPTIONALIZED: {{ item.entity_name }}
+-- ❌ Justification: "{{ item.justification[:50] }}"
+-- INSERT INTO @ConfigFixes (setting_name, target_value) VALUES ('{{ item.entity_name }}', 0);
+{% elif item.is_exceptionalized %}
+-- ⚠️ EXCEPTIONALIZED (but active at level 3): {{ item.entity_name }}
+INSERT INTO @ConfigFixes (setting_name, target_value) VALUES ('{{ item.entity_name }}', 0);
+{% else %}
+INSERT INTO @ConfigFixes (setting_name, target_value) VALUES ('{{ item.entity_name }}', 0);
+{% endif %}
+{% endfor %}
+
+-- Execute config changes
+DECLARE @setting VARCHAR(100), @val INT;
+DECLARE config_cursor CURSOR LOCAL FAST_FORWARD FOR 
+    SELECT setting_name, target_value FROM @ConfigFixes;
+
+OPEN config_cursor;
+FETCH NEXT FROM config_cursor INTO @setting, @val;
+
+WHILE @@FETCH_STATUS = 0
+BEGIN
+    BEGIN TRY
+        PRINT '  → Setting ' + @setting + ' = ' + CAST(@val AS VARCHAR(10));
+        EXEC sp_configure @setting, @val;
+        PRINT '    ✓ Success';
+    END TRY
+    BEGIN CATCH
+        PRINT '    ✗ ERROR: ' + ERROR_MESSAGE();
+    END CATCH
+    
+    FETCH NEXT FROM config_cursor INTO @setting, @val;
+END
+
+CLOSE config_cursor;
+DEALLOCATE config_cursor;
+
+-- Apply changes
+RECONFIGURE;
+PRINT '';
+PRINT '  [CONFIG] Section complete.';
+PRINT '  ⚠️ NOTE: Some settings require SQL Server restart to take effect.';
+PRINT '  Check: SELECT name, value, value_in_use FROM sys.configurations WHERE value <> value_in_use';
+PRINT '';
+GO
+{% endif %}
+
+{% if 'db_user' in ctx.items_by_type %}
+-- ╔══════════════════════════════════════════════════════════════════════════════╗
+-- ║ SECTION: DATABASE USERS                                                      ║
+-- ║ Fixes: Remove orphaned users, revoke excessive privileges                    ║
+-- ╚══════════════════════════════════════════════════════════════════════════════╝
+PRINT '═══════════════════════════════════════════════════════════════════════════';
+PRINT '  [DB USERS] Starting database user remediation...';
+PRINT '═══════════════════════════════════════════════════════════════════════════';
+
+DECLARE @UsersToFix TABLE (
+    database_name NVARCHAR(256) NOT NULL,
+    user_name NVARCHAR(256) NOT NULL,
+    action_type VARCHAR(20) NOT NULL DEFAULT 'DROP'
+);
+
+-- ┌──────────────────────────────────────────────────────────────────────────────┐
+-- │ INSERT USERS TO REMEDIATE BELOW                                              │
+-- │ Comment out any line you want to SKIP                                        │
+-- └──────────────────────────────────────────────────────────────────────────────┘
+{% for item in ctx.items_by_type.get('db_user', []) %}
+{% set parts = item.entity_name.split('.') %}
+{% set db_name = parts[0] if parts|length > 1 else 'master' %}
+{% set user_name = parts[-1] %}
+{% if item.is_exceptionalized and aggressiveness < 3 %}
+-- ❌ EXCEPTIONALIZED: {{ item.entity_name }}
+-- ❌ Justification: "{{ item.justification[:50] }}"
+-- INSERT INTO @UsersToFix (database_name, user_name, action_type) VALUES (N'{{ db_name }}', N'{{ user_name }}', 'DROP');
+{% elif item.is_exceptionalized %}
+-- ⚠️ EXCEPTIONALIZED (but active at level 3): {{ item.entity_name }}
+INSERT INTO @UsersToFix (database_name, user_name, action_type) VALUES (N'{{ db_name }}', N'{{ user_name }}', 'DROP');
+{% else %}
+INSERT INTO @UsersToFix (database_name, user_name, action_type) VALUES (N'{{ db_name }}', N'{{ user_name }}', 'DROP');
+{% endif %}
+{% endfor %}
+
+-- Execute user fixes
+DECLARE @db NVARCHAR(256), @user NVARCHAR(256), @uaction VARCHAR(20);
+DECLARE user_cursor CURSOR LOCAL FAST_FORWARD FOR 
+    SELECT database_name, user_name, action_type FROM @UsersToFix;
+
+OPEN user_cursor;
+FETCH NEXT FROM user_cursor INTO @db, @user, @uaction;
+
+WHILE @@FETCH_STATUS = 0
+BEGIN
+    BEGIN TRY
+        IF @uaction = 'DROP'
+        BEGIN
+            SET @sql = N'USE ' + QUOTENAME(@db) + N'; DROP USER ' + QUOTENAME(@user) + N';';
+            PRINT '  → Dropping user: ' + @db + '.' + @user;
+            EXEC sp_executesql @sql;
+            PRINT '    ✓ Success';
+        END
+    END TRY
+    BEGIN CATCH
+        PRINT '    ✗ ERROR: ' + ERROR_MESSAGE();
+    END CATCH
+    
+    FETCH NEXT FROM user_cursor INTO @db, @user, @uaction;
+END
+
+CLOSE user_cursor;
+DEALLOCATE user_cursor;
+
+PRINT '';
+PRINT '  [DB USERS] Section complete.';
+PRINT '';
+GO
+{% endif %}
+
+-- ╔══════════════════════════════════════════════════════════════════════════════╗
+-- ║ SCRIPT COMPLETE                                                              ║
+-- ╚══════════════════════════════════════════════════════════════════════════════╝
+PRINT '═══════════════════════════════════════════════════════════════════════════';
+PRINT '  ✅ AutoDBAudit Remediation Script Complete';
+PRINT '  Review PRINT output above for any errors.';
+PRINT '═══════════════════════════════════════════════════════════════════════════';
+GO

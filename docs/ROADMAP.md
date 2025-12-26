@@ -18,7 +18,7 @@
 
 ---
 
-## HIGH PRIORITY - Deferred
+## HIGH PRIORITY - In Progress
 
 ### 1. Manual Action Log Enhancement
 **Problem**: Pre-audit manual changes need logging in Action sheet.
@@ -34,34 +34,27 @@
 ## MEDIUM PRIORITY - Future
 
 ### 2. Persian/RTL Font Support
-**Problem**: Persian text needs RTL alignment and different font.
-
-**Findings**:
-- ❌ Excel CF cannot detect character scripts
-- ❌ CF cannot dynamically change fonts
-- ✅ Python can detect Persian: `'\u0600' <= char <= '\u06FF'`
-- ⚠️ Font licensing (B Nazanin, IR Nazanin)
-
 **Status**: Deferred - CF limitations make dynamic approach impractical.
+
+### 3. Extended Merge Cells Logic
+**Status**: Needs careful design before implementation.
 
 ---
 
-### 3. Extended Merge Cells Logic
-**Problem**: Merge cells for all columns with repeated values.
+## DONE BUT UNVERIFIED 🔄
 
-**Requirements**:
-- Detect same-value runs across rows
-- Merge visually without losing data
-- Handle proper value extraction from merged cells (avoid null/empty reads)
-- Support virtual separation when rows added/reordered
-- Must work with sync operations (annotations preserved)
+### PSRemote Integration (2025-12-26)
+- OS Data Puller with fallback chain (Manual > PSRemote > Cached)
+- PowerShell scripts: Get-SqlServerOSData, Restart-SqlServerService, Set-ClientProtocol
+- Docker/Linux exception for default instance naming
 
-**Risks**:
-- openpyxl merge behavior can lose non-top cell values
-- Need careful value propagation before merge
-- Sync must handle merged→unmerged transitions
-
-**Status**: Needs careful design before implementation.
+### Remediation Engine (2025-12-26)
+- Jinja2 template system with SQL 2008 compatibility
+- Individual INSERT lines per item (easy commenting in/out)
+- Aggressiveness levels (1=safe, 3=aggressive)
+- Connecting user NEVER auto-uncommented
+- Exception-aware script generation
+- 8 unit tests (L2)
 
 ---
 
@@ -71,3 +64,4 @@
 - [x] Default Instance Naming Check (Requirement 14)
 - [x] Text Wrap for date/justification columns
 - [x] Unicode/Persian name support (UTF-8 loading)
+- [x] Build manifest includes assets/scripts

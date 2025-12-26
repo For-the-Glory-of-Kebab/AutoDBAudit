@@ -69,13 +69,31 @@ class RemediationService:
                 return []
             audit_run_id = row["id"]
 
-        # Get findings
+        # Get findings with exception status from annotations
         findings = conn.execute(
             """
-            SELECT f.*, i.instance_name, i.id as instance_db_id, s.hostname as server_name
+            SELECT 
+                f.*, 
+                i.instance_name, 
+                i.id as instance_db_id, 
+                s.hostname as server_name,
+                -- Check if exceptionalized (has annotation with status_override='exception')
+                CASE 
+                    WHEN a.status_override = 'exception' THEN 1 
+                    ELSE 0 
+                END as is_exceptionalized,
+                -- Get justification from annotation field_value
+                COALESCE(
+                    (SELECT field_value FROM annotations 
+                     WHERE entity_key = f.entity_key 
+                     AND field_name = 'justification'
+                     LIMIT 1),
+                    ''
+                ) as justification
             FROM findings f
             JOIN instances i ON f.instance_id = i.id
             JOIN servers s ON i.server_id = s.id
+            LEFT JOIN annotations a ON a.entity_key = f.entity_key
             WHERE f.audit_run_id = ?
             AND f.status IN ('FAIL', 'WARN')
             ORDER BY s.hostname, i.instance_name, f.finding_type

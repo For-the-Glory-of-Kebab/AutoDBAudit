@@ -100,11 +100,18 @@ class ServerPropertiesCollector(BaseCollector):
 
             # Instance naming check - default instance is a security risk
             # (Requirement 14: No SQL instance should use the default instance name)
+            # EXCEPTION: Docker/Linux SQL Server cannot use named instances
             instance_name = self.ctx.instance_name or ""
-            if (
+            is_default_instance = (
                 instance_name.upper() in ("MSSQLSERVER", "(DEFAULT)", "")
                 or not instance_name
-            ):
+            )
+
+            # Check if this is Linux/Docker (default instance is expected and OK)
+            is_linux = "linux" in os_info.lower() or "ubuntu" in os_info.lower()
+            is_container = "container" in os_info.lower() or os_platform == "Linux"
+
+            if is_default_instance and not (is_linux or is_container):
                 self.save_finding(
                     finding_type="instance_naming",
                     entity_name="default_instance_name",

@@ -52,6 +52,11 @@
       "Destination": "tools/sublime_text_build_4200_x64.rar",
       "Description": "Sublime Text Editor",
       "Optional": true
+    },
+    {
+      "Source": "assets/scripts",
+      "Destination": "scripts",
+      "Description": "PowerShell Scripts for Remediation and OS Access"
     }
   ]
 }

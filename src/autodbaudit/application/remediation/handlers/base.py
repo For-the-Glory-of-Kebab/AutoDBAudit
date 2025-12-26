@@ -8,7 +8,6 @@ import string
 import secrets
 from abc import ABC
 from dataclasses import dataclass, field
-from typing import ClassVar
 
 
 @dataclass
@@ -99,5 +98,50 @@ that you used the '{username}' account to connect to this Audit.
 altering this login could cause you to lose access immediately!
 Run this only if you have another SysAdmin account ready!
 */
+"""
+        return warning + "\n".join(commented_lines)
+
+    def _wrap_exception_warning(
+        self, script: str, finding: dict, for_powershell: bool = False
+    ) -> str:
+        """
+        Wrap a script based on exception status and aggressiveness level.
+
+        Aggressiveness Levels:
+        - 1 (Safe): Comments out the script entirely
+        - 2 (Normal): Comments out with warning
+        - 3 (Aggressive): Adds indicator but doesn't comment out
+        """
+        is_exceptionalized = finding.get("is_exceptionalized", False)
+        justification = finding.get("justification", "") or ""
+        entity = finding.get("entity_name", "Unknown")
+
+        if not is_exceptionalized:
+            return script
+
+        # Comment character based on script type
+        cmt = "#" if for_powershell else "--"
+
+        if self.ctx.aggressiveness >= 3:
+            # Level 3: Just add indicator, don't comment out
+            indicator = f"""
+{cmt} ⚠️ EXCEPTIONALIZED: {entity}
+{cmt} Justification: "{justification}"
+{cmt} ⚠️ This fix is included but the item has a documented exception.
+"""
+            return indicator + script
+
+        # Levels 1-2: Comment out the script
+        lines = script.split("\n")
+        commented_lines = [f"{cmt} {line}" if line.strip() else line for line in lines]
+
+        warning = f"""
+{cmt} ╔══════════════════════════════════════════════════════════════════════════╗
+{cmt} ║ ⚠️❌ EXCEPTIONALIZED: {entity}
+{cmt} ╠══════════════════════════════════════════════════════════════════════════╣
+{cmt} ║ ❌ COMMENTED OUT - This item has a documented exception!
+{cmt} ║ ❌ Justification: "{justification[:60]}..."
+{cmt} ║ ❌ If you want to apply anyway, uncomment below:
+{cmt} ╚══════════════════════════════════════════════════════════════════════════╝
 """
         return warning + "\n".join(commented_lines)
