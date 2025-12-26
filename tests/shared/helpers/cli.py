@@ -109,8 +109,22 @@ class CLIRunner:
 
     def _parse_audit_id(self, output: str) -> int | None:
         """Extract audit ID from output."""
-        match = re.search(r"Audit ID:\s*(\d+)", output)
-        return int(match.group(1)) if match else None
+        # Try multiple patterns
+        patterns = [
+            r"Audit ID:\s*(\d+)",  # "Audit ID: 5"
+            r"audit #(\d+)",  # "📂 Continuing latest audit #1"
+            r"audit_(\d+)",  # "audit_001"
+            r"Audit_(\d+)",  # "Audit_001"
+            r"Created run #\d+ for audit #(\d+)",  # "Created run #10 for audit #1"
+            r"#(\d+):",  # "#1: Audit 1"
+        ]
+
+        for pattern in patterns:
+            match = re.search(pattern, output, re.IGNORECASE)
+            if match:
+                return int(match.group(1))
+
+        return None
 
     def _parse_stats(self, output: str) -> dict:
         """Parse statistics from sync output."""
