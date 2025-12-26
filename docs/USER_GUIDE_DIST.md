@@ -1,6 +1,6 @@
 # AutoDBAudit - User Guide
 
-**Version**: 2.0  
+**Version**: 2.1  
 **Updated**: December 2024  
 **Role**: Complete handbook for running audits, syncing progress, managing exceptions, and delivering final reports.
 
@@ -205,6 +205,41 @@ After sync, you'll see per-sheet breakdown:
 
 ---
 
+## 🇮🇷 Persian/RTL Reports
+
+AutoDBAudit can generate Persian Excel reports alongside English ones.
+
+### Generate Persian Report
+```powershell
+.\AutoDBAudit.exe finalize --audit-id <ID> --persian
+```
+
+**Output**:
+- `AuditReport.xlsx` (English)
+- `AuditReport_fa.xlsx` (Persian/RTL)
+
+### Font Installation
+For proper display, install the included Persian fonts:
+1. Open `fonts/` folder in the Field Kit
+2. Right-click each `.ttf` file → "Install for all users"
+3. Restart Excel
+
+**Included Fonts**:
+- `IRTitr.ttf` - Headings
+- `IRNazanin.ttf` - Content
+
+### What Gets Translated
+- Sheet names, column headers
+- Dropdown values, status indicators
+- Cover page text, section headers
+
+### What Stays English
+- Your notes and justifications
+- Server names, technical values
+- Database names, config values
+
+---
+
 ## 🏗️ Building from Source
 
 ### Prerequisites
@@ -242,6 +277,7 @@ cd packaging
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 2.1 | Dec 2024 | Persian/RTL dual-language reports, PSRemote pywinrm, i18n |
 | 2.0 | Dec 2024 | New CLI structure, sync engine, exception tracking |
 | 1.2 | Nov 2024 | Added remediation scripts |
 | 1.0 | Oct 2024 | Initial release |

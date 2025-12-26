@@ -57,6 +57,16 @@
       "Source": "assets/scripts",
       "Destination": "scripts",
       "Description": "PowerShell Scripts for Remediation and OS Access"
+    },
+    {
+      "Source": "assets/IRNazanin.ttf",
+      "Destination": "fonts/IRNazanin.ttf",
+      "Description": "Persian content font for RTL reports"
+    },
+    {
+      "Source": "assets/IRTitr.ttf",
+      "Destination": "fonts/IRTitr.ttf",
+      "Description": "Persian heading font for RTL reports"
     }
   ]
 }

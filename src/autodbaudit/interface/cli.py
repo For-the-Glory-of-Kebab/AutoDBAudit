@@ -135,6 +135,11 @@ def main() -> int:
         "--apply-exceptions", action="store_true", help="Apply Excel exceptions"
     )
     parser_fin.add_argument("--excel", type=str, help="Excel file for exceptions")
+    parser_fin.add_argument(
+        "--persian",
+        action="store_true",
+        help="Generate additional Persian Excel report with RTL support",
+    )
 
     # Command: DEFINALIZE (Revert)
     parser_def = subparsers.add_parser(
@@ -491,6 +496,23 @@ def handle_finalize_command(args) -> int:
         print(f"❌ {result['error']}")
         return 1
     print("✅ Audit Finalized!")
+
+    # Generate Persian copy if requested
+    if getattr(args, "persian", False):
+        from autodbaudit.application.persian_generator import generate_persian_report
+        from pathlib import Path
+
+        # Find the generated Excel file
+        excel_path = result.get("excel_path")
+        if excel_path:
+            try:
+                persian_path = generate_persian_report(Path(excel_path))
+                print(f"✅ Persian report generated: {persian_path}")
+            except Exception as e:
+                print(f"⚠️ Persian generation failed: {e}")
+        else:
+            print("⚠️ No Excel path in result, skipping Persian generation")
+
     return 0
 
 
