@@ -56,23 +56,28 @@ The core audit functionality is complete and tested. The system can:
 
 ## Real-DB E2E Test Progress
 
-| Layer | Status | Files | Tests |
-|-------|--------|-------|-------|
-| tests/shared/ | ✅ | 10 | - |
-| L1_foundation | ✅ | 4 | 10 |
-| L2_annotation | ✅ | 6 | 22 |
-| L3_state | ✅ | 4 | 24 |
-| L4_action_log | ✅ | 2 | 9 |
-| L5_stats | ✅ | 3 | 13 |
-| L6_cli + sheet | ✅ | 5 | 55 |
-| L7_error | ✅ | 2 | 5 |
-| L8_stateful | ✅ | 2 | 12 |
-| L9_e2e | ✅ | 2 | 6 |
-| **Total** | ✅ | **~55** | **~160** |
+| Component | Status | Files | Lines |
+|-----------|--------|-------|-------|
+| tests/shared/assertions (deep) | ✅ | 8 | ~1000 |
+| L1_foundation | ✅ | 6 | ~300 |
+| L2_annotation | ✅ | 8 | ~400 |
+| L3_state | ✅ | 6 | ~450 |
+| L4_action_log | ✅ | 4 | ~350 |
+| L5_stats | ✅ | 4 | ~250 |
+| L6_cli + sheet | ✅ | 6 | ~350 |
+| L7_error | ✅ | 4 | ~300 |
+| L8_stateful | ✅ | 2 | ~180 |
+| L9_e2e | ✅ | 3 | ~200 |
+| **Total** | ✅ | **~70** | **~4000+** |
+
+### Deep Assertion Modules (NEW)
+- `deep_excel.py`: RowData, find_row_by_entity, cell style verification
+- `deep_action_log.py`: Entry content, timestamp, cross-reference verification
+- `deep_state.py`: StateSnapshot comparison, transition verification
+- `baseline.py`: Protected entities, delta assertions
 
 ## Next Steps
 
-1. ✅ **Real-DB E2E Infrastructure** - Complete
-2. ✅ **Comprehensive Tests** - 160+ tests created
-3. 🔄 **Run Against SQL Server** - Validate with real instances
-4. 🔜 **Wire Remediation to CLI** - `--remediate` command
+1. ✅ **Deep Assertion Framework** - Complete
+2. 🔄 **Run Against SQL Server** - Find bugs with comprehensive assertions
+3. 🔜 **Fix Discovered Bugs** - Each failure = bug found
