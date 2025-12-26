@@ -121,16 +121,81 @@ class OsDataPuller:
 
     def _invoke_psremote(self, target_id: str) -> dict[str, Any] | None:
         """
-        Invoke PSRemote to collect OS data.
+        Invoke PSRemote to collect OS data using ScriptExecutor.
 
-        TODO: Implement actual PSRemote invocation using pywinrm or subprocess.
-        Returns None on failure.
+        Args:
+            target_id: Format "hostname|instance_name" or "hostname\\instance"
+
+        Returns:
+            OS data dict or None on failure
         """
-        # Placeholder - actual implementation will use:
-        # 1. Get access status from AccessPreparationService
-        # 2. Invoke Get-SqlServerOSData.ps1 via Invoke-Command
-        # 3. Parse JSON result
-        logger.debug("PSRemote invocation for %s - not yet implemented", target_id)
+        try:
+            from autodbaudit.infrastructure.psremote import ScriptExecutor
+        except ImportError:
+            logger.warning("pywinrm not available, PSRemote disabled")
+            return None
+
+        # Parse target_id: "hostname|instance" or "hostname\\instance"
+        if "|" in target_id:
+            hostname, instance_name = target_id.split("|", 1)
+        elif "\\" in target_id:
+            hostname, instance_name = target_id.split("\\", 1)
+        else:
+            hostname = target_id
+            instance_name = "MSSQLSERVER"
+
+        # Get credentials from stored access status (if available)
+        username = self._get_cached_username(hostname)
+        password = self._get_cached_password(hostname)
+
+        logger.info("Invoking PSRemote for %s (instance: %s)", hostname, instance_name)
+
+        try:
+            executor = ScriptExecutor.from_config(
+                hostname=hostname,
+                username=username,
+                password=password,
+            )
+
+            result = executor.get_os_data(instance_name=instance_name)
+            executor.close()
+
+            if result.success and result.data:
+                logger.info("✓ PSRemote data collected from %s", hostname)
+                return result.data
+            else:
+                logger.warning("PSRemote failed for %s: %s", hostname, result.error)
+                return None
+
+        except Exception as e:
+            logger.exception("PSRemote exception for %s: %s", hostname, e)
+            return None
+
+    def _get_cached_username(self, hostname: str) -> str | None:
+        """Get cached username for hostname from access status."""
+        # Try to load from access status DB
+        try:
+            from autodbaudit.infrastructure.sqlite.store import HistoryStore
+
+            store = HistoryStore(Path("output/audit_history.db"))
+
+            # Query access_status table for credentials
+            cursor = store.conn.execute(
+                "SELECT username FROM access_status WHERE server_name = ?", (hostname,)
+            )
+            row = cursor.fetchone()
+            store.close()
+
+            if row and row[0]:
+                return row[0]
+        except Exception:
+            pass
+        return None
+
+    def _get_cached_password(self, hostname: str) -> str | None:
+        """Get cached password - in practice this should use secure storage."""
+        # For now, we rely on Windows credential manager or environment
+        # In production, integrate with credential_loader
         return None
 
     def _cache_data(self, target_id: str, data: dict[str, Any]) -> None:

@@ -18,41 +18,29 @@
 
 ---
 
-## HIGH PRIORITY - In Progress
-
-### 1. Manual Action Log Enhancement
-**Problem**: Pre-audit manual changes need logging in Action sheet.
-
-**Requirements**:
-- Data validation dropdowns (Category, Risk, Change Type)
-- Conditional formatting per value
-- Input validation, proper sorting
-- Fix hex instance name display
-
----
-
 ## MEDIUM PRIORITY - Future
 
-### 2. Persian/RTL Font Support
+### 1. Persian/RTL Font Support
 **Status**: Deferred - CF limitations make dynamic approach impractical.
 
-### 3. Extended Merge Cells Logic
+### 2. Extended Merge Cells Logic
 **Status**: Needs careful design before implementation.
 
 ---
 
 ## DONE BUT UNVERIFIED 🔄
 
-### PSRemote Integration (2025-12-26)
-- OS Data Puller with fallback chain (Manual > PSRemote > Cached)
-- PowerShell scripts: Get-SqlServerOSData, Restart-SqlServerService, Set-ClientProtocol
-- Docker/Linux exception for default instance naming
+### PSRemote pywinrm Implementation (2025-12-26)
+- `infrastructure/psremote/client.py` - Multi-transport (HTTP/HTTPS), multi-auth (negotiate/kerberos/ntlm/basic)
+- `infrastructure/psremote/executor.py` - ScriptExecutor for running bundled PS scripts
+- `os_data/puller.py` - Updated to use actual ScriptExecutor (no more placeholder!)
+- Connection caching for repeated calls
+- Ultra-resilient retry logic
 
 ### Remediation Engine (2025-12-26)
 - Jinja2 template system with SQL 2008 compatibility
-- Individual INSERT lines per item (easy commenting in/out)
-- Aggressiveness levels (1=safe, 3=aggressive)
-- Connecting user NEVER auto-uncommented
+- Individual INSERT lines per item (easy commenting)
+- Aggressiveness levels (1-3)
 - Exception-aware script generation
 - 8 unit tests (L2)
 
@@ -65,3 +53,4 @@
 - [x] Text Wrap for date/justification columns
 - [x] Unicode/Persian name support (UTF-8 loading)
 - [x] Build manifest includes assets/scripts
+- [x] Manual Action Log - Dropdowns + CF (in actions.py)

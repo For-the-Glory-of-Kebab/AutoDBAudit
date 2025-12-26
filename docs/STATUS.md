@@ -34,8 +34,9 @@ The core audit functionality is complete and tested. The system can:
 | Action Log | ✅ | Append-only audit trail |
 | Exception Handling | ✅ | Aggressiveness levels 1-3 |
 | Access Preparation | ✅ | 8-layer PSRemote strategy |
-| OS Data Puller | 🔄 | Done, unverified |
+| OS Data Puller | 🔄 | PSRemote implemented, unverified |
 | Remediation Scripts | 🔄 | Done, unverified |
+| PSRemote Client | 🔄 | pywinrm multi-transport, unverified |
 
 ## Documentation
 
