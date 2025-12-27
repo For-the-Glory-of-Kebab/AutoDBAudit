@@ -37,7 +37,7 @@ LINKED_SERVER_COLUMNS = (
     ACTION_COLUMN,  # Column B (after UUID): Action indicator
     ColumnDef("Server", 16, Alignments.LEFT),  # Column C
     ColumnDef("Instance", 14, Alignments.LEFT),  # Column D
-    ColumnDef("Linked Server", 22, Alignments.LEFT),  # Column E
+    ColumnDef("Linked Server", 22, Alignments.LEFT_WRAP),  # Column E
     ColumnDef("Provider", 16, Alignments.LEFT),  # Column F
     ColumnDef("Data Source", 28, Alignments.LEFT),  # Column G
     ColumnDef("RPC Out", 10, Alignments.CENTER),  # Column H
@@ -95,13 +95,15 @@ class LinkedServerSheetMixin(ServerGroupMixin, BaseSheetMixin):
     ) -> tuple[int, str]:
         """
         Add a linked server row with login mapping and security info.
-        
+
         Returns:
             Tuple of (row_number, row_uuid) for tracking
         """
         if self._linked_server_sheet is None:
             # Use UUID-aware sheet creation
-            self._linked_server_sheet = self._ensure_sheet_with_uuid(LINKED_SERVER_CONFIG)
+            self._linked_server_sheet = self._ensure_sheet_with_uuid(
+                LINKED_SERVER_CONFIG
+            )
             self._init_grouping(self._linked_server_sheet, LINKED_SERVER_CONFIG)
             self._add_linked_server_validations()
 
@@ -142,10 +144,18 @@ class LinkedServerSheetMixin(ServerGroupMixin, BaseSheetMixin):
 
         # Apply row color to data columns (not UUID)
         self._apply_row_color(
-            row, row_color,
-            data_cols=[COL_SERVER, COL_INSTANCE, COL_LINKED_SERVER,
-                       COL_PROVIDER, COL_DATA_SOURCE, COL_LOCAL_LOGIN, COL_REMOTE_LOGIN],
-            ws=ws
+            row,
+            row_color,
+            data_cols=[
+                COL_SERVER,
+                COL_INSTANCE,
+                COL_LINKED_SERVER,
+                COL_PROVIDER,
+                COL_DATA_SOURCE,
+                COL_LOCAL_LOGIN,
+                COL_REMOTE_LOGIN,
+            ],
+            ws=ws,
         )
 
         # RPC Out column with styled value
@@ -192,7 +202,7 @@ class LinkedServerSheetMixin(ServerGroupMixin, BaseSheetMixin):
         )
 
         ws = self._linked_server_sheet
-        
+
         # Column letters shifted +1 for UUID (A=UUID, B=Action, C=Server, etc.)
         # RPC Out dropdown (column H)
         add_dropdown_validation(ws, "H", ["✓ Yes", "✗ No"])
@@ -212,4 +222,3 @@ class LinkedServerSheetMixin(ServerGroupMixin, BaseSheetMixin):
             self._finalize_grouping(LINKED_SERVER_CONFIG.name)
             # Apply UUID column protection
             self._finalize_sheet_with_uuid(self._linked_server_sheet)
-

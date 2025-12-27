@@ -53,8 +53,8 @@ INSTANCE_COLUMNS = (
     ColumnDef("CPU", 4, Alignments.CENTER),
     ColumnDef("RAM", 5, Alignments.CENTER),
     STATUS_COLUMN,
-    ColumnDef("Justification", 30, Alignments.LEFT_WRAP, is_manual=True),
-    ColumnDef("Notes", 24, Alignments.LEFT_WRAP, is_manual=True),
+    ColumnDef("Justification", 30, Alignments.CENTER_WRAP, is_manual=True),
+    ColumnDef("Notes", 24, Alignments.CENTER_WRAP, is_manual=True),
     LAST_REVIEWED_COLUMN,
 )
 
@@ -251,3 +251,12 @@ class InstanceSheetMixin(BaseSheetMixin):
         add_dropdown_validation(ws, "M", ["✓", "✗"])
         # HADR column (N) - column 14 (shifted +1 from M)
         add_dropdown_validation(ws, "N", ["✓", "✗"])
+
+        from autodbaudit.infrastructure.excel.base import (
+            add_review_status_conditional_formatting,
+            STATUS_VALUES,
+        )
+
+        # Review Status column (R) - column 18
+        add_dropdown_validation(ws, "R", STATUS_VALUES.all())
+        add_review_status_conditional_formatting(ws, "R")

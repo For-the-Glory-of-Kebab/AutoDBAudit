@@ -334,6 +334,12 @@ class EnhancedReportWriter(
             self._finalize_backups()
         if hasattr(self, "_finalize_audit_settings"):
             self._finalize_audit_settings()
+        if hasattr(self, "_finalize_client_protocols"):
+            self._finalize_client_protocols()
+        if hasattr(self, "_finalize_encryption"):
+            self._finalize_encryption()
+        if hasattr(self, "_finalize_actions"):
+            self._finalize_actions()
 
     def _reorder_sheets(self) -> None:
         """

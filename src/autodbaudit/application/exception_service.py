@@ -50,23 +50,9 @@ class ExcelAnnotation:
 class ExcelAnnotationReader:
     """
     Reads user annotations from Excel audit report.
-    """
 
-    # Map sheet name to (entity_column, entity_type, annotation_column)
-    SHEET_CONFIG = {
-        "SA Account": ("Current Name", "sa_account", "Remediation Notes"),
-        "Server Logins": ("Login Name", "login", "Notes"),
-        "Configuration": ("Setting", "config", "Exception Reason"),
-        "Databases": ("Database", "database", "Notes"),
-        "Database Users": ("User Name", "db_user", "Notes"),
-        "Database Roles": ("User Name", "db_role", "Justification"),
-        "Orphaned Users": ("User Name", "orphaned_user", "Remediation"),
-        "Linked Servers": ("Linked Server", "linked_server", "Purpose"),
-        "Triggers": ("Trigger", "trigger", "Purpose"),
-        "Backups": ("Database", "backup", "Notes"),
-        "Services": ("Service Name", "service", "Notes"),
-        "Server Roles": ("Role Name", "server_role", "Justification"),
-    }
+    Uses central sheet_registry for configuration - NO duplicate definitions.
+    """
 
     def __init__(self, excel_path: str | Path):
         """Initialize reader with Excel path."""
@@ -76,54 +62,89 @@ class ExcelAnnotationReader:
 
     def read_annotations(self) -> Iterator[ExcelAnnotation]:
         """
-        Yield annotations from all configured sheets.
-        Only yields rows that have non-empty Notes, Reason, or Status Override.
+        Yield annotations from all trackable sheets.
+
+        Uses central sheet_registry for configuration.
+        Builds composite entity keys using ALL key_columns.
         """
         from openpyxl import load_workbook
+        from autodbaudit.domain.sheet_registry import (
+            SHEET_REGISTRY,
+            get_all_trackable_sheets,
+        )
 
         wb = load_workbook(self.excel_path, read_only=True, data_only=True)
 
-        for sheet_name, config in self.SHEET_CONFIG.items():
-            entity_col, _entity_type, annotation_col = config
+        for spec in get_all_trackable_sheets():
+            sheet_name = spec.name
 
             if sheet_name not in wb.sheetnames:
                 continue
 
             ws = wb[sheet_name]
 
-            # Find column indices from header row
-            headers = {
-                cell.value: idx
-                for idx, cell in enumerate(next(ws.iter_rows(min_row=1, max_row=1)))
-            }
+            # Build header -> index map from first row
+            header_row = list(next(ws.iter_rows(min_row=1, max_row=1)))
+            headers = {}
+            for idx, cell in enumerate(header_row):
+                if cell.value:
+                    headers[str(cell.value).strip()] = idx
 
-            server_idx = headers.get("Server")
-            instance_idx = headers.get("Instance")
-            entity_idx = headers.get(entity_col)
-            # Use the sheet-specific annotation column
-            annotation_idx = headers.get(annotation_col)
-            status_idx = headers.get("Status Override")
+            # Find indices for key columns
+            key_indices = []
+            for key_col in spec.key_columns:
+                idx = headers.get(key_col)
+                if idx is None:
+                    # Try case-insensitive match
+                    for h, i in headers.items():
+                        if h.lower() == key_col.lower():
+                            idx = i
+                            break
+                if idx is not None:
+                    key_indices.append((key_col, idx))
 
-            if entity_idx is None:
+            if len(key_indices) != len(spec.key_columns):
                 logger.debug(
-                    "Sheet %s missing entity column %s", sheet_name, entity_col
+                    "Sheet %s: Could not find all key columns %s",
+                    sheet_name,
+                    spec.key_columns,
                 )
                 continue
+
+            # Find annotation column
+            annotation_idx = headers.get(spec.annotation_column)
+            if annotation_idx is None:
+                # Try alternatives
+                for alt in ["Notes", "Justification", "Purpose", "Exception Reason"]:
+                    if alt in headers:
+                        annotation_idx = headers[alt]
+                        break
+
+            # Find status column
+            status_idx = headers.get("Review Status") or headers.get("Status Override")
 
             # Read data rows
             for row_num, row in enumerate(ws.iter_rows(min_row=2), start=2):
                 cells = list(row)
 
-                # Handle short rows - use default arg to capture cells value
-                def get_cell(idx, row_cells=cells):
-                    if idx is not None and idx < len(row_cells):
-                        return row_cells[idx].value
+                def get_cell(idx: int | None) -> str | None:
+                    if idx is not None and idx < len(cells):
+                        val = cells[idx].value
+                        return str(val) if val is not None else None
                     return None
 
-                # Extract values
-                server = get_cell(server_idx) or ""
-                instance = get_cell(instance_idx) or ""
-                entity = get_cell(entity_idx) or ""
+                # Build composite entity key from ALL key columns
+                key_parts = []
+                for key_col, idx in key_indices:
+                    val = get_cell(idx) or ""
+                    # Handle default instance
+                    if key_col == "Instance" and not val:
+                        val = "(Default)"
+                    key_parts.append(val)
+
+                entity_key = "|".join(key_parts)
+
+                # Get annotation and status
                 annotation = get_cell(annotation_idx)
                 status = get_cell(status_idx)
 
@@ -131,19 +152,28 @@ class ExcelAnnotationReader:
                 if not annotation and not status:
                     continue
 
-                # Skip empty rows
-                if not entity:
+                # Skip empty entity keys
+                if all(not p or p == "(Default)" for p in key_parts):
                     continue
+
+                # Extract server/instance for backward compatibility
+                server = key_parts[0] if len(key_parts) > 0 else ""
+                instance = key_parts[1] if len(key_parts) > 1 else ""
+                entity_name = (
+                    "|".join(key_parts[2:])
+                    if len(key_parts) > 2
+                    else key_parts[-1] if key_parts else ""
+                )
 
                 yield ExcelAnnotation(
                     sheet_name=sheet_name,
                     row=row_num,
-                    server=str(server),
-                    instance=str(instance),
-                    entity_name=str(entity),
-                    notes=str(annotation) if annotation else None,
-                    reason=None,  # Merged into notes
-                    status_override=str(status) if status else None,
+                    server=server,
+                    instance=instance,
+                    entity_name=entity_name,
+                    notes=annotation,
+                    reason=None,
+                    status_override=status,
                 )
 
         wb.close()

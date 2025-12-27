@@ -5,19 +5,24 @@
   "PyInstallerSpec": "packaging\\autodbaudit.spec",
   "Assets": [
     {
-      "Source": "config/sql_targets.example.json",
-      "Destination": "config/sql_targets.example.json",
-      "Description": "Default Targets Config"
+      "Source": "config/sql_targets.example.jsonc",
+      "Destination": "config/sql_targets.example.jsonc",
+      "Description": "Targets Config Template (with comments)"
     },
     {
-      "Source": "config/audit_config.example.json",
-      "Destination": "config/audit_config.example.json",
-      "Description": "Default Audit Config"
+      "Source": "config/audit_config.example.jsonc",
+      "Destination": "config/audit_config.example.jsonc",
+      "Description": "Audit Config Template (with comments)"
     },
     {
-      "Source": "credentials/credentials.example.json",
-      "Destination": "credentials/credentials.example.json",
-      "Description": "Credentials Template"
+      "Source": "config/credentials.example.jsonc",
+      "Destination": "config/credentials.example.jsonc",
+      "Description": "Credentials Template (with comments)"
+    },
+    {
+      "Source": "config/setup_config.bat",
+      "Destination": "config/setup_config.bat",
+      "Description": "Generate production JSON from JSONC templates"
     },
     {
       "Source": "docs/USER_GUIDE_DIST.md",

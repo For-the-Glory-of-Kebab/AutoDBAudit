@@ -61,6 +61,7 @@ def main() -> int:
             "remediate": cli_help.print_remediate_help,
             "finalize": cli_help.print_finalize_help,
             "definalize": cli_help.print_finalize_help,  # Same as finalize
+            "prepare": cli_help.print_prepare_help,
             "util": cli_help.print_util_help,
         }
         if cmd in help_map:
@@ -138,7 +139,7 @@ def main() -> int:
     parser_fin.add_argument(
         "--persian",
         action="store_true",
-        help="Generate additional Persian Excel report with RTL support",
+        help="Use Persian calendar for dates",
     )
 
     # Command: DEFINALIZE (Revert)
@@ -402,22 +403,70 @@ def handle_remediation_command(args) -> int:
             return 1
 
         # -- OS Hook Part --
-        # Check config
+        # Check config but default to TRUE if not specified,
+        # or rely on presence of script files (Hybrid approach auto-detection)
         loader = ConfigLoader(str(DEFAULT_CONFIG_DIR))
         audit_conf = loader.load_audit_config()
+
+        # Determine if OS remediation is explicitly disabled
+        # Default is ENABLED for hybrid approach unless user turned it off
         os_settings = getattr(audit_conf, "os_remediation", {})
+        os_disabled = False
 
-        # "use_os_remediation" key check (handling dict vs object attr mismatch possibility)
-        use_ps = False
         if isinstance(os_settings, dict):
-            use_ps = os_settings.get("use_ps_remoting", False)
+            if os_settings.get("use_ps_remoting") is False:
+                os_disabled = True
         elif hasattr(os_settings, "use_ps_remoting"):
-            use_ps = os_settings.use_ps_remoting
+            if os_settings.use_ps_remoting is False:
+                os_disabled = True
 
-        if use_ps:
-            print("🤖 OS Remediation Enabled in Config via PSRemoting")
-            # TODO: Call OSRemediationService here
-            print("   [OS Hook Logic Triggered]")
+        # Find all _OS_AUDIT.ps1 files first
+        ps_scripts = list(Path(scripts_path).glob("*_OS_AUDIT.ps1"))
+
+        if ps_scripts and not os_disabled:
+            print(
+                f"🤖 Hybrid Remediation: Found {len(ps_scripts)} PowerShell script(s). Executing..."
+            )
+            import subprocess
+
+            for ps_file in ps_scripts:
+                print(f"   Executing OS Remediation: {ps_file.name}...")
+
+                # Construct command: pwsh -ExecutionPolicy Bypass -File <path> -ApplyFix
+                # We assume the user wants to apply fixes since they ran --apply
+                cmd = [
+                    "pwsh",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-File",
+                    str(ps_file),
+                    "-ApplyFix",
+                ]
+
+                try:
+                    # Run synchronously and capture output
+                    result = subprocess.run(
+                        cmd, check=False, text=True, capture_output=True
+                    )
+
+                    # Print output indented
+                    for line in result.stdout.splitlines():
+                        print(f"     {line}")
+
+                    if result.returncode != 0:
+                        print(f"     ❌ Script failed (Code {result.returncode})")
+                        if result.stderr:
+                            print(f"     ERROR: {result.stderr}")
+                    else:
+                        print(f"     ✅ OS Remediation completed for {ps_file.name}")
+
+                except Exception as e:
+                    print(f"     ❌ Execution Error: {e}")
+
+        elif not ps_scripts:
+            # Only log if enabled but no scripts found, or just silent?
+            # User expects hybrid if available. If not available, maybe silent is ok.
+            pass
         else:
             logger.info("OS Remediation skipped (disabled in config)")
 
@@ -728,14 +777,18 @@ def validate_config(args: argparse.Namespace) -> int:
     loader = ConfigLoader(str(DEFAULT_CONFIG_DIR))
 
     try:
+        # Use getattr with defaults since util subparser doesn't have these args
+        targets_file = getattr(args, "targets", "sql_targets.json")
+        config_file = getattr(args, "config", "audit_config.json")
+
         # Validate SQL targets
-        targets = loader.load_sql_targets(args.targets)
+        targets = loader.load_sql_targets(targets_file)
         print(f"✅ SQL targets valid: {len(targets)} targets configured")
         for target in targets:
             print(f"   - {target.display_name} ({target.auth} auth)")
 
         # Validate audit config
-        config = loader.load_audit_config(args.config)
+        config = loader.load_audit_config(config_file)
         print(f"✅ Audit config valid: {config.organization} ({config.audit_year})")
 
         return 0

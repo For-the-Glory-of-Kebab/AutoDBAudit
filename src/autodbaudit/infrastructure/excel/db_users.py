@@ -107,7 +107,9 @@ class DBUserSheetMixin(ServerGroupMixin, BaseSheetMixin):
         ws = self._db_user_sheet
 
         # Track grouping and get row color
-        row_color = self._track_group(server_name, instance_name, DB_USER_CONFIG.name)
+        row_color = self._track_group(
+            server_name, instance_name, DB_USER_CONFIG.name, database_name
+        )
 
         # Determine login status and compliance
         is_system_user = user_name in SYSTEM_USERS
@@ -164,6 +166,9 @@ class DBUserSheetMixin(ServerGroupMixin, BaseSheetMixin):
         # Apply row color to data columns (shifted +1 for action column)
         self._apply_row_color(row, row_color, data_cols=[3, 4, 5, 6, 7, 8], ws=ws)
 
+        # Style User Type (Column 6)
+        self._apply_user_type_styling(ws.cell(row=row, column=6), user_type)
+
         # Style Login Status column (A=UUID, B=Action, C=Server, D=Instance, E=Database, F=User, G=Type, H=Login, I=LoginStatus)
         status_cell = ws.cell(row=row, column=9)
         status_cell.value = login_status
@@ -203,10 +208,28 @@ class DBUserSheetMixin(ServerGroupMixin, BaseSheetMixin):
         )
 
         ws = self._db_user_sheet
-        # Login Status column (H) - column 8 (Action=A, Server=B, Instance=C, DB=D, User=E, Type=F, Login=G)
+        if ws is None:
+            return
+
+        # Login Status column (I) - column 9
         add_dropdown_validation(ws, "I", ["✓ Mapped", "🔧 System", "⚠️ Orphaned"])
-        # Compliant column (I) - column 9
+        # Compliant column (J) - column 10
         add_dropdown_validation(ws, "J", ["✓", "⚠️ Review", "❌ GUEST"])
-        # Review Status column (J) - column 10
+        # Review Status column (K) - column 11
         add_dropdown_validation(ws, "K", STATUS_VALUES.all())
         add_review_status_conditional_formatting(ws, "K")
+
+        # Type column (F) - column 6
+        add_dropdown_validation(
+            ws,
+            "F",
+            ["SQL_USER", "WINDOWS_USER", "WINDOWS_GROUP", "CERTIFICATE_MAPPED_USER"],
+        )
+
+    def _apply_user_type_styling(self, cell, user_type: str) -> None:
+        """Apply styling to user type cell."""
+        val = (user_type or "").upper()
+        if "SQL" in val:
+            cell.font = Fonts.WARN  # Orange-ish for SQL auth
+        elif "WINDOWS" in val:
+            cell.font = Fonts.PASS  # Green-ish for Windows auth

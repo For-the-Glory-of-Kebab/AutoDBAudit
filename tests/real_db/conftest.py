@@ -75,6 +75,33 @@ def baseline_manager(project_root: Path) -> BaselineManager:
     return manager
 
 
+@pytest.fixture(scope="session")
+def session_audit(cli_runner: CLIRunner, project_root: Path) -> dict:
+    """
+    Run audit ONCE per session and cache the result.
+
+    This is the KEY OPTIMIZATION - instead of running audit for each test,
+    we run it once and all tests share the result.
+
+    Returns:
+        dict with audit_id, excel_path, output
+    """
+    result = cli_runner.audit()
+
+    # Find the Excel file
+    output_dir = project_root / "output"
+    excels = list(output_dir.glob("**/*.xlsx"))
+    excels = [e for e in excels if "_fa" not in e.stem]
+    excel_path = max(excels, key=lambda p: p.stat().st_mtime) if excels else None
+
+    return {
+        "audit_id": result.audit_id,
+        "excel_path": excel_path,
+        "output": result.output,
+        "success": result.success,
+    }
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # FUNCTION FIXTURES
 # ═══════════════════════════════════════════════════════════════════════════

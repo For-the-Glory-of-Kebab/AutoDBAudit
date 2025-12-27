@@ -1,15 +1,16 @@
 """
 Annotation Sync Service.
 
-Provides bidirectional synchronization of user annotations (Notes, Reasons, Dates)
-between Excel reports and SQLite database.
+Bidirectional synchronization of user annotations between Excel and SQLite.
 
-Core Principles:
-1. SQLite = Source of Truth for system data
-2. Excel = UI for human annotations
-3. Stable entity keys for reliable round-trip
-4. Whitelist-only editable columns
-5. All keys normalized to lowercase for case-insensitive matching
+This module provides:
+- Read annotations from Excel worksheets
+- Write annotations back to Excel
+- Persist to/from SQLite database
+- Detect exception and documentation changes
+
+NOTE: A modular refactor exists at autodbaudit.application.sync/
+but it is INCOMPLETE. This module remains the working implementation.
 """
 
 from __future__ import annotations
@@ -42,6 +43,15 @@ logger = logging.getLogger(__name__)
 # Key columns are column header names (matched case-insensitively)
 # Editable columns map Excel header name to DB field name
 # Justification columns mark FAIL items as documented exceptions when filled
+#
+# ⚠️ DEPRECATION NOTICE:
+# This configuration is DUPLICATED and should be migrated to:
+#   autodbaudit.domain.sheet_registry.SHEET_REGISTRY
+#
+# The sheet_registry is the SINGLE SOURCE OF TRUTH.
+# This local config exists for backward compatibility and will be removed.
+# See: domain/sheet_registry.py
+#
 SHEET_ANNOTATION_CONFIG = {
     "SA Account": {
         "entity_type": "sa_account",
@@ -236,8 +246,15 @@ SHEET_ANNOTATION_CONFIG = {
         "entity_type": "action",
         "key_cols": ["ID"],  # Use DB ID for unique, reliable row matching
         "editable_cols": {
-            "Detected Date": "action_date",  # User can override detected date
-            "Notes": "notes",  # User commentary
+            "Detected Date": "action_date",
+            "Notes": "notes",
+            "Server": "server",
+            "Instance": "instance",
+            "Category": "category",
+            "Finding": "finding",
+            "Risk Level": "risk_level",
+            "Change Description": "change_description",
+            "Change Type": "change_type",
         },
     },
 }
@@ -1060,17 +1077,27 @@ class AnnotationSyncService:
         """
         exceptions = []
 
-        # Build findings map for status lookup with LOWERCASE keys
-        # Key format in findings: entity_key like "SERVER|INSTANCE|entity_name"
-        # Key format in annotations: "entity_type|SERVER|INSTANCE|entity_name"
+        # Build findings map for status AND server/instance lookup with LOWERCASE keys
+        # Key format in findings: entity_key like "type|SERVER|INSTANCE|entity_name"
+        # Key format in annotations: "entity_type|UUID" with _legacy_entity_key storing "server|instance|entity"
         # We normalize ALL keys to lowercase for case-insensitive matching
         findings_status_map: dict[str, str] = {}
+        findings_full_map: dict[str, dict] = {}  # Full finding data for server/instance
         if current_findings:
             for f in current_findings:
                 raw_key = f.get("entity_key", "")
                 # Normalize to lowercase for matching
                 normalized_key = normalize_key_string(raw_key)
                 findings_status_map[normalized_key] = f.get("status", "PASS")
+                findings_full_map[normalized_key] = f
+
+                # Also index by non-type key portion for legacy matching
+                parts = normalized_key.split("|", 1)
+                if len(parts) > 1:
+                    non_type_key = parts[1]
+                    # Don't overwrite if exists (first match wins)
+                    if non_type_key not in findings_full_map:
+                        findings_full_map[non_type_key] = f
 
         # Helper to check if DB annotation was already an exception
         # DB annotations don't have status field - just check justification/review_status
@@ -1266,15 +1293,75 @@ class AnnotationSyncService:
                     if justification_changed:
                         change_note += "Justification updated."
 
+                    # CRITICAL FIX: Get semantic entity_key, server, instance from finding
+                    # NOT from the UUID-based annotation key
+                    semantic_entity_key = entity_key  # Fallback
+                    server_name = ""
+                    instance_name = ""
+
+                    # Use _legacy_entity_key for semantic key (it's server|instance|entity)
+                    legacy_key = fields.get("_legacy_entity_key", "")
+                    if legacy_key:
+                        semantic_entity_key = legacy_key
+                        # Parse server/instance from legacy key format: server|instance|entity
+                        legacy_parts = legacy_key.split("|")
+                        if len(legacy_parts) >= 2:
+                            server_name = legacy_parts[0]
+                            instance_name = legacy_parts[1]
+
+                    # Try to get server/instance from the actual finding
+                    normalized_legacy = (
+                        normalize_key_string(legacy_key) if legacy_key else ""
+                    )
+                    finding_data = None
+
+                    # First try full key lookup
+                    full_finding_key = (
+                        f"{entity_type}|{normalized_legacy}"
+                        if normalized_legacy
+                        else ""
+                    )
+                    if full_finding_key and full_finding_key in findings_full_map:
+                        finding_data = findings_full_map[full_finding_key]
+                    # Then try non-type key lookup
+                    elif normalized_legacy and normalized_legacy in findings_full_map:
+                        finding_data = findings_full_map[normalized_legacy]
+
+                    if finding_data:
+                        # Extract proper semantic entity_key and server/instance
+                        semantic_entity_key = finding_data.get(
+                            "entity_key", semantic_entity_key
+                        )
+                        server_name = (
+                            finding_data.get("server_name")
+                            or finding_data.get("server")
+                            or server_name
+                        )
+                        instance_name = (
+                            finding_data.get("instance_name")
+                            or finding_data.get("instance")
+                            or instance_name
+                        )
+
+                        # Parse from finding entity_key if still missing
+                        if not server_name or not instance_name:
+                            fk_parts = semantic_entity_key.split("|")
+                            if len(fk_parts) >= 3:
+                                # Format: type|server|instance|entity
+                                server_name = server_name or fk_parts[1]
+                                instance_name = instance_name or fk_parts[2]
+
                     exceptions.append(
                         {
                             "full_key": full_key,
                             "entity_type": entity_type,
-                            "entity_key": entity_key,
+                            "entity_key": semantic_entity_key,  # Use semantic key, not UUID
                             "justification": justification,
                             "is_new": not was_exception,
                             "change_type": change_type,
                             "note": change_note.strip(),
+                            "server": server_name,
+                            "instance": instance_name,
                         }
                     )
                     logger.info(

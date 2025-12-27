@@ -35,6 +35,48 @@ class FinalizeService:
         self.db_path = self.output_dir / "audit_history.db"
         self.store = HistoryStore(self.db_path)
 
+    def _find_latest_excel(self, excel_path: Path | str | None = None) -> Path | None:
+        """
+        Find the latest Excel report file.
+
+        Search order:
+        1. Use explicit path if provided and exists
+        2. Look for Audit_Latest.xlsx in output_dir
+        3. Search subdirectories for *_Latest.xlsx
+        4. Search subdirectories for *.xlsx (get most recent by mtime)
+        """
+        if excel_path:
+            path = Path(excel_path)
+            if path.exists():
+                return path
+
+        # Direct path
+        direct = self.output_dir / "Audit_Latest.xlsx"
+        if direct.exists():
+            return direct
+
+        # Search in subdirectories for Audit_*_Latest.xlsx
+        latest_pattern = list(self.output_dir.glob("**/Audit_*_Latest.xlsx"))
+        if latest_pattern:
+            latest_pattern.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+            return latest_pattern[0]
+
+        # Fallback: any *_Latest.xlsx
+        any_latest = list(self.output_dir.glob("**/*_Latest.xlsx"))
+        if any_latest:
+            any_latest.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+            return any_latest[0]
+
+        # Last resort: most recent xlsx (excluding final/)
+        any_xlsx = [
+            p for p in self.output_dir.glob("**/*.xlsx") if "final" not in str(p)
+        ]
+        if any_xlsx:
+            any_xlsx.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+            return any_xlsx[0]
+
+        return None
+
     def finalize(
         self,
         run_id: int | None = None,
@@ -76,9 +118,9 @@ class FinalizeService:
                 }
 
         # 2b. Check if Excel file is locked (open in Excel)
-        src_path = (
-            Path(excel_path) if excel_path else (self.output_dir / "Audit_Latest.xlsx")
-        )
+        src_path = self._find_latest_excel(excel_path)
+        if not src_path:
+            src_path = self.output_dir / "Audit_Latest.xlsx"  # Fallback
         if src_path.exists():
             try:
                 with open(src_path, "r+b"):
@@ -110,17 +152,11 @@ class FinalizeService:
         # We assume the current config on disk is what we want to lock as the "Final" state
         # (skipped for complexity/time constraints per previous decision)
 
-        # 5. Archive Report
-        src_path = (
-            Path(excel_path) if excel_path else (self.output_dir / "Audit_Latest.xlsx")
-        )
-        if not src_path.exists():
-            # Fallback to default
-            src_path = self.output_dir / "Audit_Latest.xlsx"
-
-        if not src_path.exists():
+        # 5. Archive Report - use discovered path
+        src_path = self._find_latest_excel(excel_path)
+        if not src_path or not src_path.exists():
             return {
-                "error": f"Output report not found at {src_path}. Cannot finalize missing report."
+                "error": f"Output report not found. Cannot finalize missing report."
             }
 
         final_dir = self.output_dir / "final"

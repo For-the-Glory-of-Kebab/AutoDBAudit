@@ -36,27 +36,25 @@ class AccessControlHandler(RemediationHandler):
         actions = []
 
         if ft == "sa_account":
-            # SA handling - respect aggressiveness and connection check
-            is_connected_as_sa = (
-                self.ctx.conn_user and self.ctx.conn_user.lower() == "sa"
+            # SA handling - Default is ACTIVE unless it's the current connection user
+            # User requirement: "lowest aggressiveness level should be uncommented"
+            # "only time it should be commented... is when it's our connection user"
+
+            is_connection_user = (
+                self.ctx.conn_user and self.ctx.conn_user.lower() == entity.lower()
             )
+
             temp_password = self.generate_temp_password()
-            script = self._script_handle_sa(entity, temp_password, is_connected_as_sa)
+
+            # _script_handle_sa will wrap with lockout warning if is_connection_user is True
+            script = self._script_handle_sa(entity, temp_password, is_connection_user)
             rollback = self._rollback_sa(temp_password)
 
-            # At level 1 (Safe), comment out SA script for manual review
-            # At level 2+, script is active (but still warns if connected as SA)
-            if self.ctx.aggressiveness < 2:
-                script = self._wrap_safe_mode_comment(
-                    script,
-                    "SA Account",
-                    "At aggressiveness=1, SA changes require manual review. Use --aggressiveness 2 or 3 to enable.",
-                )
-                cat = "REVIEW"
-            elif is_connected_as_sa:
-                cat = "REVIEW"  # Already wrapped with lockout warning in _script_handle_sa
+            if is_connection_user:
+                cat = "REVIEW"  # Wrapped with warning
             else:
-                cat = "CAUTION"
+                cat = "CAUTION"  # Active script
+
             actions.append(RemediationAction(script, rollback, cat))
 
         elif ft == "login":
@@ -148,16 +146,34 @@ class AccessControlHandler(RemediationHandler):
         # High Priv -> Usually DROP or DISABLE depending on level
         for name, desc in self.high_priv_logins:
             action = "DROP" if is_aggressive else "DISABLE"
-            # Comment out by default unless aggressiveness >= 2 forcing it?
-            # User "level 3 ... remove all things". So if L3, uncommented.
-            commented = not is_aggressive
+
+            # Connection User Check
+            is_conn = self.ctx.conn_user and name.lower() == self.ctx.conn_user.lower()
+
+            if is_conn:
+                commented = True
+                desc = f"⚠️ CONNECTED USER ⚠️ {desc}"
+            else:
+                # Comment out by default unless aggressiveness >= 3
+                commented = not is_aggressive
+
             lines.append(gen_insert(name, action, f"HIGH PRIV: {desc}", commented))
 
         # Unused -> Usually DISABLE or DROP
         for name in self.unused_logins:
             action = "DROP" if is_aggressive else "DISABLE"
-            commented = not (is_aggressive or is_standard)  # L2/L3 uncommented
-            lines.append(gen_insert(name, action, "UNUSED ACCOUNT", commented))
+
+            # Connection User Check
+            is_conn = self.ctx.conn_user and name.lower() == self.ctx.conn_user.lower()
+
+            if is_conn:
+                commented = True
+                reason = "⚠️ CONNECTED USER ⚠️ UNUSED"
+            else:
+                commented = not (is_aggressive or is_standard)
+                reason = "UNUSED ACCOUNT"
+
+            lines.append(gen_insert(name, action, reason, commented))
 
         lines.append("-- ========================================================")
         lines.append("")
@@ -229,7 +245,7 @@ IF SUSER_SNAME() <> '{name}'
     # But I can remove the old iterative _script_review_login and others since they are replaced by batching.
 
     def _script_handle_sa(
-        self, current_name: str, temp_password: str, is_connected_as_sa: bool
+        self, current_name: str, temp_password: str, is_connection_user: bool
     ) -> str:
         """Handle SA account (Rename + Disable + Scramble)."""
         header = self._item_header(
@@ -254,7 +270,7 @@ ALTER LOGIN [$@] DISABLE;
 PRINT '  [OK] SA account secured';
 GO
 """
-        if is_connected_as_sa:
+        if is_connection_user:
             return self._wrap_lockout_warning(script, current_name)
         return script
 

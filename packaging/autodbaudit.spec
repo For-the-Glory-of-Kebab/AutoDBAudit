@@ -29,7 +29,9 @@ a = Analysis(
     [os.path.join(src_path, 'main.py')],
     pathex=[src_path],
     binaries=[],
-    datas=[],
+    datas=[
+        (assets_path, 'assets'),
+    ],
     hiddenimports=[
         'rich.console',
         'rich.panel', 

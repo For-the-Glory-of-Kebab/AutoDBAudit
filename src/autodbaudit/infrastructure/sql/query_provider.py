@@ -631,13 +631,16 @@ class Sql2008Provider(QueryProvider):
     def get_database_role_members(self, database: str) -> str:
         return f"""
         SELECT 
-            r.name AS RoleName,
+            COALESCE(r.name, 'public') AS RoleName,
             m.name AS MemberName,
             m.type_desc AS MemberType
-        FROM [{database}].sys.database_role_members rm
-        JOIN [{database}].sys.database_principals r ON rm.role_principal_id = r.principal_id
-        JOIN [{database}].sys.database_principals m ON rm.member_principal_id = m.principal_id
-        ORDER BY r.name, m.name
+        FROM [{database}].sys.database_principals m
+        -- Join to roles, but execute LEFT JOIN to catch users with NO roles (they are implicitly public)
+        LEFT JOIN [{database}].sys.database_role_members rm ON m.principal_id = rm.member_principal_id
+        LEFT JOIN [{database}].sys.database_principals r ON rm.role_principal_id = r.principal_id
+        WHERE m.type IN ('S', 'U', 'G', 'C', 'K')
+          AND m.name NOT IN ('dbo', 'guest', 'INFORMATION_SCHEMA', 'sys')
+        ORDER BY RoleName, MemberName
         """
 
     def get_orphaned_users(self, database: str) -> str:

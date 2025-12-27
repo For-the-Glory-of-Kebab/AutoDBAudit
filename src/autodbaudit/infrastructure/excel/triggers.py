@@ -85,13 +85,20 @@ class TriggerSheetMixin(ServerGroupMixin, BaseSheetMixin):
         """
         if self._trigger_sheet is None:
             self._trigger_sheet = self._ensure_sheet_with_uuid(TRIGGER_CONFIG)
-            self._init_grouping(self._trigger_sheet, TRIGGER_CONFIG)
+            # Trigger sheet has Scope column at E (5), Database at F (6)
+            # Default logic puts DB at 5. We override to 6.
+            self._init_grouping(self._trigger_sheet, TRIGGER_CONFIG, database_col_idx=6)
             self._add_trigger_dropdowns()
 
         ws = self._trigger_sheet
 
         # Track grouping and get row color
-        row_color = self._track_group(server_name, instance_name, TRIGGER_CONFIG.name)
+        row_color = self._track_group(
+            server_name,
+            instance_name,
+            TRIGGER_CONFIG.name,
+            database_name=database_name,
+        )
 
         # Normalize scope to uppercase
         scope = level.upper() if level else "DATABASE"
@@ -118,7 +125,7 @@ class TriggerSheetMixin(ServerGroupMixin, BaseSheetMixin):
             "",  # Last Revised (column L = 12)
         ]
 
-        row, row_uuid = self._write_row_with_uuid(ws, TRIGGER_CONFIG, data)
+        row, _ = self._write_row_with_uuid(ws, TRIGGER_CONFIG, data)
 
         # Apply action indicator
         apply_action_needed_styling(ws.cell(row=row, column=2), needs_action)
@@ -132,7 +139,12 @@ class TriggerSheetMixin(ServerGroupMixin, BaseSheetMixin):
 
         # Highlight server-level triggers with info color
         if is_server_trigger:
-            for col in [5, 6, 7, 8]:  # Scope=E(5), Database=F(6), Trigger Name=G(7), Event=H(8)
+            for col in [
+                5,
+                6,
+                7,
+                8,
+            ]:  # Scope=E(5), Database=F(6), Trigger Name=G(7), Event=H(8)
                 ws.cell(row=row, column=col).fill = Fills.INFO
 
     def _finalize_triggers(self) -> None:

@@ -170,6 +170,10 @@ class HistoryStore:
                 entity_key TEXT NOT NULL,
                 finding_type TEXT NOT NULL DEFAULT '',
                 
+                -- Direct server/instance storage (avoid JOIN failures)
+                server_name TEXT,
+                instance_name TEXT,
+                
                 action_type TEXT NOT NULL,
                 status TEXT NOT NULL DEFAULT 'open',
                 action_date TEXT NOT NULL,
@@ -246,6 +250,17 @@ class HistoryStore:
             )
         """
         )
+
+        # Schema migrations for existing databases
+        # Add server_name/instance_name to action_log (may already exist)
+        try:
+            conn.execute("ALTER TABLE action_log ADD COLUMN server_name TEXT")
+        except Exception:
+            pass  # Column already exists
+        try:
+            conn.execute("ALTER TABLE action_log ADD COLUMN instance_name TEXT")
+        except Exception:
+            pass  # Column already exists
 
         # Store schema version
         conn.execute(
@@ -735,11 +750,12 @@ class HistoryStore:
         conn = self._get_connection()
         rows = conn.execute(
             """
-            SELECT id, entity_key, finding_type, action_type, status, 
-                   action_date, description, notes, sync_run_id, captured_at
-            FROM action_log 
-            WHERE initial_run_id = ?
-            ORDER BY action_date DESC
+            SELECT a.id, a.entity_key, a.finding_type, a.action_type, a.status,
+                   a.action_date, a.description, a.notes, a.sync_run_id, a.captured_at,
+                   a.server_name, a.instance_name
+            FROM action_log a
+            WHERE a.initial_run_id = ?
+            ORDER BY a.action_date DESC
             """,
             (initial_run_id,),
         ).fetchall()
@@ -757,13 +773,15 @@ class HistoryStore:
         finding_type: str = "",
         notes: str | None = None,
         user_date_override: str | None = None,
+        server_name: str | None = None,
+        instance_name: str | None = None,
     ) -> int | None:
         """
         Insert or update an action in the log.
 
         Args:
             initial_run_id: ID of the initial audit run
-            entity_key: Unique key for the entity (e.g., "server|instance|login")
+            entity_key: Unique key for the entity (e.g., "type|server|instance|entity")
             action_type: Type of action (Fixed, Exception, Regression, etc.)
             status: Status (open, closed, exception)
             action_date: When the change was FIRST detected (ISO format)
@@ -772,6 +790,8 @@ class HistoryStore:
             finding_type: Category (sa_account, login, config, etc.)
             notes: User notes (editable in Excel)
             user_date_override: If user edited date in Excel, use this instead
+            server_name: Server name for direct display
+            instance_name: Instance name for direct display
 
         Returns:
             The action ID (for tracking in Excel)
@@ -807,7 +827,9 @@ class HistoryStore:
                     notes = ?,
                     sync_run_id = ?,
                     finding_type = ?,
-                    captured_at = ?
+                    captured_at = ?,
+                    server_name = COALESCE(?, server_name),
+                    instance_name = COALESCE(?, instance_name)
                 WHERE id = ?
                 """,
                 (
@@ -818,6 +840,8 @@ class HistoryStore:
                     sync_run_id,
                     finding_type,
                     now_iso,
+                    server_name,
+                    instance_name,
                     existing["id"],
                 ),
             )
@@ -830,8 +854,9 @@ class HistoryStore:
                 """
                 INSERT INTO action_log (
                     initial_run_id, entity_key, finding_type, action_type, status,
-                    action_date, description, notes, sync_run_id, captured_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    action_date, description, notes, sync_run_id, captured_at,
+                    server_name, instance_name
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     initial_run_id,
@@ -844,6 +869,8 @@ class HistoryStore:
                     notes,
                     sync_run_id,
                     now_iso,
+                    server_name,
+                    instance_name,
                 ),
             )
             conn.commit()

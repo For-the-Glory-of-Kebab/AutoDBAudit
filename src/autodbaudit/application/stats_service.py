@@ -355,6 +355,11 @@ class StatsService:
             finding_type = finding.get("finding_type", "")
             sheet_name = self._get_sheet_name_from_finding_type(finding_type)
 
+            # Fallback: Derive from key if type is missing
+            if not sheet_name:
+                entity_key = finding.get("entity_key", "")
+                sheet_name = self._get_sheet_name_from_key(entity_key)
+
             if not sheet_name:
                 continue
 
@@ -381,20 +386,25 @@ class StatsService:
     ) -> bool:
         """Check if entity has a valid exception.
 
-        Note: Annotations are keyed as 'entity_type|entity_key' but findings
-        only have 'entity_key'. We must try all known type prefixes.
-        All comparisons are case-insensitive (normalized to lowercase).
+        Handles two key formats:
+        1. Finding entity_key: type|server|instance|identifier (e.g., config|bigbad2008|default|xp_cmdshell)
+        2. Annotation keys: type|uuid (e.g., config|a7f3b2c1) OR type|server|instance|identifier
+
+        Strategy:
+        1. Direct lookup (exact match)
+        2. Strip type prefix from finding, try matching with known type prefixes
+        3. Match by _legacy_entity_key stored in annotation
+        4. Match by checking if finding key (minus type) matches any annotation's non-type portion
         """
         # Normalize the entity_key to lowercase for matching
         normalized_entity_key = normalize_key_string(entity_key)
 
-        # Build a lowercase lookup map for annotations
-        # This is done each time for simplicity; could be cached if performance matters
+        # Build normalized lookup maps
         normalized_annotations = {
             normalize_key_string(k): v for k, v in annotations.items()
         }
 
-        # Try direct lookup first (in case key already includes type prefix)
+        # === Strategy 1: Direct lookup ===
         if normalized_entity_key in normalized_annotations:
             ann = normalized_annotations[normalized_entity_key]
             return is_exception_eligible(
@@ -403,7 +413,13 @@ class StatsService:
                 review_status=ann.get("review_status"),
             )
 
-        # Try all known entity type prefixes
+        # === Strategy 2: Parse finding key and try type-based matching ===
+        # Finding format: type|server|instance|identifier
+        parts = normalized_entity_key.split("|")
+        finding_type = parts[0] if parts else ""
+        finding_remainder = "|".join(parts[1:]) if len(parts) > 1 else ""
+
+        # All known entity types for matching
         KNOWN_TYPES = [
             "sa_account",
             "login",
@@ -413,7 +429,9 @@ class StatsService:
             "database",
             "db_user",
             "db_role",
+            "db_role_member",
             "permission",
+            "db_permission",
             "orphaned_user",
             "trigger",
             "protocol",
@@ -422,8 +440,36 @@ class StatsService:
             "encryption",
             "linked_server",
             "instance",
+            "sensitive_role",
+            "role_member",
+            "version",
         ]
 
+        # If we know the type, look for type|<any_uuid_or_key> annotations
+        if finding_type in KNOWN_TYPES:
+            for ann_key, ann in normalized_annotations.items():
+                ann_parts = ann_key.split("|", 1)
+                if ann_parts[0] == finding_type:
+                    # Check if this annotation has a matching _legacy_entity_key
+                    legacy_key = ann.get("_legacy_entity_key", "")
+                    if legacy_key:
+                        normalized_legacy = normalize_key_string(legacy_key)
+                        # Legacy key should match the NON-type portion
+                        if finding_remainder == normalized_legacy:
+                            return is_exception_eligible(
+                                status=FindingStatus.FAIL,
+                                has_justification=bool(ann.get("justification")),
+                                review_status=ann.get("review_status"),
+                            )
+                        # Or legacy key might be full key including type
+                        if normalized_entity_key == normalized_legacy:
+                            return is_exception_eligible(
+                                status=FindingStatus.FAIL,
+                                has_justification=bool(ann.get("justification")),
+                                review_status=ann.get("review_status"),
+                            )
+
+        # === Strategy 3: Try adding type prefixes to entity_key ===
         for etype in KNOWN_TYPES:
             prefixed_key = f"{etype}|{normalized_entity_key}"
             if prefixed_key in normalized_annotations:
@@ -434,20 +480,61 @@ class StatsService:
                     review_status=ann.get("review_status"),
                 )
 
-        # Fallback: Try matching by _legacy_entity_key (for UUID-keyed annotations)
+        # === Strategy 4: Brute force - check all annotations ===
         for ann_key, ann in annotations.items():
+            normalized_ann_key = normalize_key_string(ann_key)
+
+            # Check if annotation has justification or exception status
+            if not is_exception_eligible(
+                status=FindingStatus.FAIL,
+                has_justification=bool(ann.get("justification")),
+                review_status=ann.get("review_status"),
+            ):
+                continue
+
+            # Check _legacy_entity_key field
             legacy_key = ann.get("_legacy_entity_key", "")
             if legacy_key:
                 normalized_legacy = normalize_key_string(legacy_key)
-                if (
-                    normalized_entity_key == normalized_legacy
-                    or normalized_entity_key in normalized_legacy
-                ):
-                    return is_exception_eligible(
-                        status=FindingStatus.FAIL,
-                        has_justification=bool(ann.get("justification")),
-                        review_status=ann.get("review_status"),
-                    )
+                if normalized_entity_key == normalized_legacy:
+                    return True
+                if finding_remainder and finding_remainder == normalized_legacy:
+                    return True
+                # Substring check: finding key is contained in legacy
+                if normalized_entity_key in normalized_legacy:
+                    return True
+                if finding_remainder and finding_remainder in normalized_legacy:
+                    return True
+
+        # === Strategy 5: Strip type from annotation key and compare ===
+        # Annotation key format: type|uuid OR type|server|instance|entity
+        # If type|uuid, check if uuid portion matches any part of finding
+        # If type|server|instance|entity, check if non-type portion matches finding_remainder
+        for ann_key, ann in annotations.items():
+            # Check if annotation has justification or exception status
+            if not is_exception_eligible(
+                status=FindingStatus.FAIL,
+                has_justification=bool(ann.get("justification")),
+                review_status=ann.get("review_status"),
+            ):
+                continue
+
+            normalized_ann_key = normalize_key_string(ann_key)
+            ann_parts = normalized_ann_key.split("|", 1)
+
+            if len(ann_parts) >= 2:
+                ann_type = ann_parts[0]
+                ann_remainder = ann_parts[1]
+
+                # If annotation type matches finding type
+                if finding_type and ann_type == finding_type:
+                    # Check if the non-type portion matches
+                    # ann_remainder could be UUID or server|instance|entity
+                    if finding_remainder == ann_remainder:
+                        return True
+                    # Check if finding_remainder contains ann_remainder (for UUID match)
+                    if ann_remainder in finding_remainder:
+                        return True
 
         return False
 
@@ -516,6 +603,11 @@ class StatsService:
             # Resolve sheet name from finding_type (not entity_key which lacks type prefix)
             finding_type = old_f.get("finding_type", "")
             sheet_name = self._get_sheet_name_from_finding_type(finding_type)
+
+            # Fallback
+            if not sheet_name:
+                sheet_name = self._get_sheet_name_from_key(key)
+
             if sheet_name:
                 if sheet_name not in result.sheet_stats:
                     result.sheet_stats[sheet_name] = defaultdict(int)
@@ -614,6 +706,11 @@ class StatsService:
                         sheet_name = self._get_sheet_name_from_finding_type(
                             finding_type
                         )
+
+                        # Fallback
+                        if not sheet_name:
+                            sheet_name = self._get_sheet_name_from_key(key)
+
                         if sheet_name:
                             if sheet_name not in result.sheet_stats:
                                 result.sheet_stats[sheet_name] = defaultdict(int)
@@ -657,23 +754,34 @@ class StatsService:
             return ""
 
         etype = finding_type.lower().strip()
+        # Comprehensive mapping - MUST cover all entity types in the system
         mapping = {
+            # Instance-level
             "instance": "Instances",
-            "sa_account": "SA Account",
+            "version": "Instances",
+            # Security findings
+            "sa_account": "Server Logins",
             "login": "Server Logins",
             "server_role_member": "Sensitive Roles",
+            "role_member": "Sensitive Roles",
+            "sensitive_role": "Sensitive Roles",
+            # Configuration
             "config": "Configuration",
             "service": "Services",
+            "protocol": "Client Protocols",
+            "audit_settings": "Audit Settings",
+            # Database-level
             "database": "Databases",
             "db_user": "Database Users",
             "db_role": "Database Roles",
+            "db_role_member": "Database Roles",
             "permission": "Permission Grants",
+            "db_permission": "Permission Grants",
             "orphaned_user": "Orphaned Users",
+            # Infrastructure
             "linked_server": "Linked Servers",
             "trigger": "Triggers",
-            "protocol": "Client Protocols",
             "backup": "Backups",
-            "audit_settings": "Audit Settings",
             "encryption": "Encryption",
         }
         return mapping.get(etype, etype.replace("_", " ").title())
@@ -791,6 +899,58 @@ def format_cli_stats(stats: SyncStats, use_color: bool = True) -> str:
         "",
         f"{'━' * 45}",
     ]
+
+    # Add Per-Sheet Breakdown
+    if stats.sheet_stats:
+        lines.append(f"{CHART} {CYAN}Details by Sheet:{RESET}")
+        lines.append(f"{'─' * 65}")
+        # Build header
+        lines.append(
+            f"   {'Sheet Name':<20} | {CROSS} Active | {CHECK} Excpt | {CHECK} OK | {GREEN}Fixed"
+        )
+        lines.append(f"   {'─' * 20} | {'─' * 8} | {'─' * 7} | {'─' * 6} | {'─' * 5}")
+
+        # Sort by active issues desc
+        sorted_sheets = sorted(
+            stats.sheet_stats.items(),
+            key=lambda x: x[1].get("active", 0) + x[1].get("regressions", 0),
+            reverse=True,
+        )
+
+        for sheet, s in sorted_sheets:
+            active = s.get("active", 0)
+            exceptions = s.get("exceptions", 0)
+            compliant = s.get("compliant", 0)
+            fixed = s.get("fixed", 0)
+            regressed = s.get("regressions", 0)
+            new_issues = s.get("new_issues", 0)
+
+            # Highlight non-zero active/regressed
+            active_str = f"{RED}{active:<8}{RESET}" if active > 0 else f"{active:<8}"
+            excpt_str = (
+                f"{YELLOW}{exceptions:<7}{RESET}"
+                if exceptions > 0
+                else f"{exceptions:<7}"
+            )
+            ok_str = f"{GREEN}{compliant:<6}{RESET}"
+            fixed_str = f"{GREEN}+{fixed}{RESET}" if fixed > 0 else "-"
+
+            # Show basic row
+            lines.append(
+                f"   {sheet:<20} | {active_str} | {excpt_str} | {ok_str} | {fixed_str}"
+            )
+
+            # Show regression/new below if present
+            if regressed > 0 or new_issues > 0:
+                extras = []
+                if regressed > 0:
+                    extras.append(f"{RED}{regressed} Regressed{RESET}")
+                if new_issues > 0:
+                    extras.append(f"{YELLOW}{new_issues} New{RESET}")
+                lines.append(f"   {' ' * 20}   ↳ {', '.join(extras)}")
+
+        lines.append(f"{'─' * 65}")
+        lines.append("")
 
     return "\n".join(lines)
 

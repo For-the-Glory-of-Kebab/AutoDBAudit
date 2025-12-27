@@ -23,7 +23,13 @@ from autodbaudit.infrastructure.sqlite import HistoryStore
 from autodbaudit.infrastructure.excel import EnhancedReportWriter
 
 # Domain types
-from autodbaudit.domain.change_types import SyncStats
+from autodbaudit.domain.change_types import (
+    SyncStats,
+    DetectedChange,
+    EntityType,
+    RiskLevel,
+    ChangeType,
+)
 
 # Application services
 from autodbaudit.application.stats_service import StatsService, format_cli_stats
@@ -257,21 +263,22 @@ class SyncService:
             # ─────────────────────────────────────────────────────────────
             exception_changes = []
             if current_annotations:
-                raw_exceptions = annot_sync.detect_exception_changes(
+                # Use new DiffResult with proper ExceptionChange objects
+                diff_result = annot_sync.detect_exception_changes(
                     old_annotations, current_annotations, current_findings
                 )
 
                 logger.info(
                     "Exception changes detected: %d (types: %s)",
-                    len(raw_exceptions),
+                    len(diff_result),
                     (
-                        {ex.get("entity_type", "?") for ex in raw_exceptions}
-                        if raw_exceptions
+                        {ex.get("entity_type") for ex in diff_result}
+                        if diff_result
                         else set()
                     ),
                 )
 
-                # Convert to DetectedChange objects
+                # Convert ExceptionChange objects to DetectedChange for action recording
                 from autodbaudit.application.actions.action_detector import (
                     create_exception_action,
                 )
@@ -282,36 +289,50 @@ class SyncService:
                 conn = sqlite3.connect(str(self.db_path))
                 conn.row_factory = sqlite3.Row
 
-                for ex in raw_exceptions:
-                    change_type = ex.get("change_type", "added")
-                    ct = ChangeType.EXCEPTION_ADDED
-                    if change_type == "removed":
-                        ct = ChangeType.EXCEPTION_REMOVED
-                        # CRITICAL: Explicitly clear old annotation's review_status
-                        # This handles key mismatch (legacy vs UUID)
-                        full_key = ex["full_key"]
-                        parts = full_key.split("|", 1)
-                        if len(parts) == 2:
-                            etype, ekey = parts
-                            set_annotation(
-                                connection=conn,
-                                entity_type=etype,
-                                entity_key=ekey,
-                                field_name="review_status",
-                                field_value="",  # Clear it
-                            )
-                            logger.info("Cleared review_status for %s", full_key[:60])
-                    elif change_type == "updated":
-                        ct = ChangeType.EXCEPTION_UPDATED
+                for ex in diff_result:
+                    # Legacy dict support: keys are snake_case strings
+                    ctype = ex.get("change_type")
+                    etype = ex.get("entity_type")
+                    ekey = ex.get("entity_key")
+                    full_key = ex.get("full_key", "")
 
-                    exception_changes.append(
-                        create_exception_action(
-                            entity_key=ex["full_key"],
-                            justification=ex.get("justification", ""),
-                            change_type=ct,
-                            entity_type=ex.get("entity_type"),  # Pass explicitly
+                    # Map change strings to ChangeType
+                    if ctype == "removed":
+                        ct = ChangeType.EXCEPTION_REMOVED
+                        # Clear review_status in DB
+                        set_annotation(
+                            connection=conn,
+                            entity_type=etype,
+                            entity_key=ekey,
+                            field_name="review_status",
+                            field_value="",
                         )
-                    )
+                        logger.info("Cleared review_status for %s", full_key[:60])
+                    elif ctype == "updated":
+                        # UPDATED Exception
+                        action = create_exception_action(
+                            change_type=ct,
+                            entity_type=etype,
+                            entity_key=ekey,
+                            justification=ex.get("new_justification")
+                            or ex.get("note", ""),
+                            server=ex.get("server"),
+                            instance=ex.get("instance"),
+                        )
+                        exception_changes.append(action)
+                    else:
+                        # NEW Exception (added fallback to handle ADDED correctly)
+                        ct = ChangeType.EXCEPTION_ADDED
+                        action = create_exception_action(
+                            change_type=ct,
+                            entity_type=etype,
+                            entity_key=ekey,
+                            justification=ex.get("new_justification")
+                            or ex.get("note", ""),
+                            server=ex.get("server"),
+                            instance=ex.get("instance"),
+                        )
+                        exception_changes.append(action)
 
                 conn.close()
 
@@ -353,13 +374,15 @@ class SyncService:
                     if len(parts) == 2:
                         etype, ekey = parts
                         # Check if this item had an exception
+                        # FIXED: Use 'annotations' table (not 'row_annotations')
                         cursor = fixed_conn.execute(
-                            """SELECT review_status FROM row_annotations
-                               WHERE entity_type = ? AND entity_key LIKE ?""",
-                            (etype, f"%{ekey}%"),
+                            """SELECT field_value FROM annotations
+                               WHERE entity_type = ? AND entity_key LIKE ? 
+                               AND field_name = 'review_status'""",
+                            (etype.lower(), f"%{ekey.lower()}%"),
                         )
                         row = cursor.fetchone()
-                        if row and row["review_status"]:
+                        if row and row["field_value"]:
                             # Clear review_status (keep justification as docs)
                             set_annotation(
                                 connection=fixed_conn,
@@ -417,10 +440,28 @@ class SyncService:
                     ),
                 )
 
-            # Add actions to writer
+            # Add actions to writer (Merging System Actions + Manual User Entries)
             formatted_actions = recorder.get_formatted_actions(initial_run_id)
+            processed_action_ids = set()
+
+            # 1. Write System Actions (with user notes applied)
             for action in formatted_actions:
-                writer.add_action(
+                aid = str(action.get("id", ""))
+                processed_action_ids.add(aid)
+
+                # Check for user overrides in annotations
+                annot_key = f"action|{aid}"
+                if annot_key in current_annotations:
+                    user_data = current_annotations[annot_key]
+                    # Override/Append notes
+                    user_notes = user_data.get("notes", "")
+                    if user_notes:
+                        action["notes"] = user_notes
+                    # Override date if provided
+                    if user_data.get("action_date"):
+                        action["detected_date"] = user_data["action_date"]
+
+                processed_writer.add_action(
                     server_name=action["server"],
                     instance_name=action["instance"],
                     category=action["category"],
@@ -431,6 +472,36 @@ class SyncService:
                     found_date=action["detected_date"],
                     notes=action.get("notes", ""),
                     action_id=action.get("id"),
+                )
+
+            # 2. Write Manual User Actions (Created in Excel, not in DB yet)
+            # These flow from: Read Excel -> current_annotations -> Write Excel
+            for key, data in current_annotations.items():
+                if not key.startswith("action|"):
+                    continue
+
+                parts = key.split("|", 1)
+                if len(parts) != 2:
+                    continue
+
+                aid = parts[1]
+                if aid in processed_action_ids:
+                    continue  # Already written as system action
+
+                # This is a purely manual row added by user
+                # We write it back using the captured fields (enabled by config update)
+                logger.info("Preserving manual action row: %s", key)
+                processed_writer.add_action(
+                    server_name=data.get("server", ""),
+                    instance_name=data.get("instance", ""),
+                    category=data.get("category", ""),
+                    finding=data.get("finding", ""),
+                    risk_level=data.get("risk_level", "Low"),
+                    recommendation=data.get("change_description", ""),
+                    status=data.get("change_type", "Open"),
+                    found_date=data.get("action_date"),
+                    notes=data.get("notes", ""),
+                    action_id=aid if aid.isdigit() else None,
                 )
 
             # Save report
@@ -484,3 +555,40 @@ class SyncService:
             if possible_run and possible_run > initial_run_id:
                 self.store.fail_audit_run(possible_run, f"Critical Failure: {str(e)}")
             return {"error": f"Sync failed: {e}"}
+
+
+def create_exception_action(
+    change_type: ChangeType,
+    entity_type: str,
+    entity_key: str,
+    justification: str,
+    server: str | None = None,
+    instance: str | None = None,
+) -> DetectedChange:
+    """Helper to create an action object from exception details."""
+    # Map simple string type to EntityType
+    norm = str(entity_type).upper().replace(" ", "_").replace("-", "_")
+
+    # Try direct mapping
+    try:
+        etype = EntityType[norm]
+    except KeyError:
+        # Try value matching or fallback
+        etype = None
+        for e in EntityType:
+            if e.value.upper().replace(" ", "_") == norm:
+                etype = e
+                break
+        if not etype:
+            # Fallback for unknown types (safe default)
+            etype = EntityType.CONFIGURATION
+
+    return DetectedChange(
+        entity_type=etype,
+        entity_key=entity_key,
+        change_type=change_type,
+        description=justification or "Exception updated",
+        risk_level=RiskLevel.LOW,
+        server=server or "",
+        instance=instance or "",
+    )

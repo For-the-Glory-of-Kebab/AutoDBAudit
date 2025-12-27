@@ -88,14 +88,21 @@ class PermissionSheetMixin(ServerGroupMixin, BaseSheetMixin):
         """Add a permission grant/deny row."""
         if self._permission_sheet is None:
             self._permission_sheet = self._ensure_sheet_with_uuid(PERMISSION_CONFIG)
-            self._init_grouping(self._permission_sheet, PERMISSION_CONFIG)
+            # Permission sheet has Scope column at E (5), Database at F (6)
+            # Default logic puts DB at 5. We override to 6.
+            self._init_grouping(
+                self._permission_sheet, PERMISSION_CONFIG, database_col_idx=6
+            )
             self._add_permission_dropdowns()
 
         ws = self._permission_sheet
 
         # Track grouping and get row color
         row_color = self._track_group(
-            server_name, instance_name, PERMISSION_CONFIG.name
+            server_name,
+            instance_name,
+            PERMISSION_CONFIG.name,
+            database_name=database_name,
         )
 
         # Analyze Risk
@@ -191,7 +198,7 @@ class PermissionSheetMixin(ServerGroupMixin, BaseSheetMixin):
             "",  # Notes
         ]
 
-        row, row_uuid = self._write_row_with_uuid(ws, PERMISSION_CONFIG, data)
+        row, _ = self._write_row_with_uuid(ws, PERMISSION_CONFIG, data)
 
         # Apply action indicator (column 1)
         apply_action_needed_styling(ws.cell(row=row, column=2), needs_action)

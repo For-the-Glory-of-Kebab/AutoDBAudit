@@ -52,30 +52,36 @@ DB_ROLE_COLUMNS = (
 DB_ROLE_CONFIG = SheetConfig(name="Database Roles", columns=DB_ROLE_COLUMNS)
 
 # High-risk roles that grant significant database access
-HIGH_RISK_ROLES = frozenset({
-    "db_owner",
-})
+HIGH_RISK_ROLES = frozenset(
+    {
+        "db_owner",
+    }
+)
 
 # Medium-risk roles that grant administrative capabilities
-MEDIUM_RISK_ROLES = frozenset({
-    "db_securityadmin",
-    "db_accessadmin",
-    "db_backupoperator",
-    "db_ddladmin",
-})
+MEDIUM_RISK_ROLES = frozenset(
+    {
+        "db_securityadmin",
+        "db_accessadmin",
+        "db_backupoperator",
+        "db_ddladmin",
+    }
+)
 
 # Low-risk but notable roles
-LOW_RISK_ROLES = frozenset({
-    "db_datareader",
-    "db_datawriter",
-})
+LOW_RISK_ROLES = frozenset(
+    {
+        "db_datareader",
+        "db_datawriter",
+    }
+)
 
 
 class DBRoleSheetMixin(ServerGroupMixin, BaseSheetMixin):
     """Mixin for Database Roles sheet with server/instance grouping."""
-    
+
     _db_role_sheet = None
-    
+
     def add_db_role_member(
         self,
         server_name: str,
@@ -90,16 +96,18 @@ class DBRoleSheetMixin(ServerGroupMixin, BaseSheetMixin):
             self._db_role_sheet = self._ensure_sheet_with_uuid(DB_ROLE_CONFIG)
             self._init_grouping(self._db_role_sheet, DB_ROLE_CONFIG)
             self._add_db_role_dropdowns()
-        
+
         ws = self._db_role_sheet
-        
+
         # Track grouping and get row color
-        row_color = self._track_group(server_name, instance_name, DB_ROLE_CONFIG.name)
-        
+        row_color = self._track_group(
+            server_name, instance_name, DB_ROLE_CONFIG.name, database_name=database_name
+        )
+
         # dbo is always db_owner by design - not a discrepancy
         member_lower = member_name.lower()
         is_dbo = member_lower == "dbo"
-        
+
         # Determine risk level
         role_lower = role_name.lower()
         if role_lower in HIGH_RISK_ROLES and not is_dbo:
@@ -111,14 +119,14 @@ class DBRoleSheetMixin(ServerGroupMixin, BaseSheetMixin):
             risk_level = "low"
         else:
             risk_level = "normal"  # Custom roles, public, or dbo as db_owner
-        
+
         # Format role name with icon
         role_display = role_name
         if role_lower == "db_owner":
             role_display = "👑 db_owner"
         elif role_lower in MEDIUM_RISK_ROLES:
             role_display = f"⚙️ {role_name}"
-        
+
         # Format member type with icon
         type_lower = (member_type or "").lower()
         type_display = member_type
@@ -128,10 +136,10 @@ class DBRoleSheetMixin(ServerGroupMixin, BaseSheetMixin):
             type_display = "🔑 SQL"
         elif "role" in type_lower:
             type_display = "📦 Role"
-        
+
         # Needs action if high risk (db_owner for non-dbo)
         needs_action = risk_level == "high"
-        
+
         data = [
             None,  # Action indicator (column B)
             server_name,  # Column C
@@ -141,17 +149,17 @@ class DBRoleSheetMixin(ServerGroupMixin, BaseSheetMixin):
             member_name,
             type_display,
             None,  # Risk - styled separately
-            "",    # Justification
+            "",  # Justification
         ]
-        
-        row, row_uuid = self._write_row_with_uuid(ws, DB_ROLE_CONFIG, data)
-        
+
+        row, _ = self._write_row_with_uuid(ws, DB_ROLE_CONFIG, data)
+
         # Apply action indicator (column 1)
         apply_action_needed_styling(ws.cell(row=row, column=2), needs_action)
-        
+
         # Apply row color to data columns (A=UUID, B=Action, C=Server, D=Instance, E=Database)
         self._apply_row_color(row, row_color, data_cols=[3, 4, 5, 7, 8], ws=ws)
-        
+
         # Style Role column (column F = 6)
         role_cell = ws.cell(row=row, column=6)
         if risk_level == "high":
@@ -161,7 +169,7 @@ class DBRoleSheetMixin(ServerGroupMixin, BaseSheetMixin):
         elif risk_level == "medium":
             role_cell.fill = Fills.WARN
             role_cell.font = Fonts.WARN
-        
+
         # Style Risk column (column I = 9)
         risk_cell = ws.cell(row=row, column=9)
         if risk_level == "high":
@@ -177,28 +185,43 @@ class DBRoleSheetMixin(ServerGroupMixin, BaseSheetMixin):
             risk_cell.fill = Fills.PASS
         else:
             risk_cell.value = "—"
-            risk_cell.fill = PatternFill(start_color="F5F5F5", end_color="F5F5F5", fill_type="solid")
-    
+            risk_cell.fill = PatternFill(
+                start_color="F5F5F5", end_color="F5F5F5", fill_type="solid"
+            )
+
     def _finalize_db_roles(self) -> None:
         """Finalize db roles sheet - merge remaining groups."""
         if self._db_role_sheet:
             self._finalize_grouping(DB_ROLE_CONFIG.name)
             self._finalize_sheet_with_uuid(self._db_role_sheet)
-    
+
     def _add_db_role_dropdowns(self) -> None:
         """Add dropdown validations for role/status columns."""
         from autodbaudit.infrastructure.excel.base import (
-            add_dropdown_validation, add_review_status_conditional_formatting, STATUS_VALUES
+            add_dropdown_validation,
+            add_review_status_conditional_formatting,
+            STATUS_VALUES,
         )
-        
+
         ws = self._db_role_sheet
         # Role column (E) - column 5 (Action=A, Server=B, Instance=C, DB=D)
-        add_dropdown_validation(ws, "F", [
-            "👑 db_owner", "⚙️ db_securityadmin", "⚙️ db_accessadmin",
-            "⚙️ db_backupoperator", "⚙️ db_ddladmin",
-            "📖 db_datareader", "✏️ db_datawriter",
-            "db_denydatareader", "db_denydatawriter", "public", "(Custom)"
-        ])
+        add_dropdown_validation(
+            ws,
+            "F",
+            [
+                "👑 db_owner",
+                "⚙️ db_securityadmin",
+                "⚙️ db_accessadmin",
+                "⚙️ db_backupoperator",
+                "⚙️ db_ddladmin",
+                "📖 db_datareader",
+                "✏️ db_datawriter",
+                "db_denydatareader",
+                "db_denydatawriter",
+                "public",
+                "(Custom)",
+            ],
+        )
         # Member Type column (G) - column 7 (after Role=E, Member=F)
         add_dropdown_validation(ws, "H", ["🪟 Windows", "🔑 SQL", "📦 Role"])
         # Risk column (H) - column 8
@@ -206,4 +229,3 @@ class DBRoleSheetMixin(ServerGroupMixin, BaseSheetMixin):
         # Review Status column (I) - column 9
         add_dropdown_validation(ws, "J", STATUS_VALUES.all())
         add_review_status_conditional_formatting(ws, "J")
-

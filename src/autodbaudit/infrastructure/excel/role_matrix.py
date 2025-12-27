@@ -23,7 +23,6 @@ from autodbaudit.infrastructure.excel_styles import (
 from autodbaudit.infrastructure.excel.base import (
     BaseSheetMixin,
     SheetConfig,
-    ACTION_COLUMN,
 )
 from autodbaudit.infrastructure.excel.server_group import ServerGroupMixin
 
@@ -47,10 +46,10 @@ FIXED_ROLES = [
 # Column Definitions
 # Server, Instance, Database, Principal, Type, [Fixed Roles...], Other Roles, Risk
 # NOTE: Role Matrix is info-only (Q3 decision). Justifications go in Database Roles sheet.
+# NO ACTION_COLUMN - this is an info-only sheet (no ⏳ indicator)
 ROLE_MATRIX_COLUMNS = [
-    ACTION_COLUMN,
-    ColumnDef("Host Name", 18, Alignments.LEFT),
-    ColumnDef("SQL Instance", 15, Alignments.LEFT),
+    ColumnDef("Server", 18, Alignments.LEFT),
+    ColumnDef("Instance", 15, Alignments.LEFT),
     ColumnDef("Database", 20, Alignments.LEFT),
     ColumnDef("Principal Name", 25, Alignments.LEFT),
     ColumnDef("Principal Type", 18, Alignments.CENTER),
@@ -96,14 +95,17 @@ class RoleMatrixSheetMixin(ServerGroupMixin, BaseSheetMixin):
         """
         if self._role_matrix_sheet is None:
             self._role_matrix_sheet = self._ensure_sheet_with_uuid(ROLE_MATRIX_CONFIG)
-            self._init_grouping(self._role_matrix_sheet, ROLE_MATRIX_CONFIG)
+            # Role Matrix has NO ACTION COLUMN, so pass has_action_col=False
+            self._init_grouping(
+                self._role_matrix_sheet, ROLE_MATRIX_CONFIG, has_action_col=False
+            )
             self._add_role_matrix_dropdowns()
 
         ws = self._role_matrix_sheet
 
         # Track grouping and get row color
         row_color = self._track_group(
-            server_name, instance_name, ROLE_MATRIX_CONFIG.name
+            server_name, instance_name, ROLE_MATRIX_CONFIG.name, database_name
         )
 
         # Prepare Role Flags
@@ -125,7 +127,6 @@ class RoleMatrixSheetMixin(ServerGroupMixin, BaseSheetMixin):
             type_display = principal_type
 
         row_data = [
-            None,  # Action
             server_name,
             instance_name or "(Default)",
             database_name,
@@ -155,27 +156,20 @@ class RoleMatrixSheetMixin(ServerGroupMixin, BaseSheetMixin):
         else:
             row_data.append("—")
 
-        row, row_uuid = self._write_row_with_uuid(ws, ROLE_MATRIX_CONFIG, row_data)
+        row, _ = self._write_row_with_uuid(ws, ROLE_MATRIX_CONFIG, row_data)
 
-        # Column Layout (1-based, with UUID):
-        # 1=UUID (hidden), 2=Action, 3=Host, 4=Instance, 5=DB, 6=Principal, 7=Type, 8+=Roles, Last=Risk
-        # Apply row color to meta columns (excluding UUID=1, Action=2)
-        meta_cols = [3, 4, 5, 6, 7]  # Host, Instance, DB, Principal, Type
+        # Column Layout (1-based, with UUID, NO ACTION column):
+        # 1=UUID (hidden), 2=Server, 3=Instance, 4=DB, 5=Principal, 6=Type, 7+=Roles, Last=Risk
+        # Apply row color to meta columns (excluding UUID=1)
+        meta_cols = [2, 3, 4, 5, 6]  # Server, Instance, DB, Principal, Type
         self._apply_row_color(row, row_color, data_cols=meta_cols, ws=ws)
 
-        # Role columns start at 8 (after Type=7)
-        start_col = 8
+        # Role columns start at 7 (after Type=6)
+        start_col = 7
 
-        # Add validation for roles (allow manual edits)
-        from autodbaudit.infrastructure.excel.base import add_dropdown_validation
-
+        # Style role cells based on membership
         for i, fixed_role in enumerate(FIXED_ROLES):
             col_idx = start_col + i
-            col_letter = ws.cell(row=row, column=col_idx).column_letter
-
-            # Add dropdown (only once per column, but doing here per row is inefficient)
-            # Better to do in _add_role_dropdowns like other sheets.
-            # But we'll set values here.
 
             if fixed_role in roles_lower:
                 cell = ws.cell(row=row, column=col_idx)
@@ -186,10 +180,10 @@ class RoleMatrixSheetMixin(ServerGroupMixin, BaseSheetMixin):
                 else:
                     cell.font = Fonts.PASS  # Checkmark in green
 
-        # Style Principal Name (Col 6)
+        # Style Principal Name (Col 5, was 6 before ACTION_COLUMN removal)
         # Highlighting risky principals like 'sa' or 'Guest'
         if principal_name.lower() in ("sa", "guest", "public"):
-            ws.cell(row=row, column=6).font = Fonts.WARN
+            ws.cell(row=row, column=5).font = Fonts.WARN
 
         # Style Risk column (last column, accounting for UUID offset)
         # len(ROLE_MATRIX_COLUMNS) gives config count, +1 for UUID = actual Excel column
@@ -215,8 +209,9 @@ class RoleMatrixSheetMixin(ServerGroupMixin, BaseSheetMixin):
         from openpyxl.utils import get_column_letter
 
         ws = self._role_matrix_sheet
-        # Roles start at column 8 (1=UUID, 2=Action, 3=Host, 4=Inst, 5=DB, 6=Princ, 7=Type)
-        start_col = 8
+        # Column layout: 1=UUID, 2=Server, 3=Inst, 4=DB, 5=Principal, 6=Type, 7+=Roles
+        # NO ACTION column (info-only sheet)
+        start_col = 7
         for i in range(len(FIXED_ROLES)):
             col_letter = get_column_letter(start_col + i)
             add_dropdown_validation(ws, col_letter, ["✓", "👑 YES"])
