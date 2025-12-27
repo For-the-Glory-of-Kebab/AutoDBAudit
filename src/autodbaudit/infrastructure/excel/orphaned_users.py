@@ -40,11 +40,11 @@ ORPHANED_USER_COLUMNS = (
     ColumnDef("Server", 18, Alignments.LEFT),  # Column C
     ColumnDef("Instance", 15, Alignments.LEFT),  # Column D
     ColumnDef("Database", 20, Alignments.LEFT),  # Column E
-    ColumnDef("User Name", 25, Alignments.LEFT),  # Column F
+    ColumnDef("User Name", 25, Alignments.CENTER),  # Column F
     ColumnDef("Type", 16, Alignments.CENTER),  # Column G
     ColumnDef("Status", 14, Alignments.CENTER),  # Column H
     STATUS_COLUMN,  # Review Status dropdown
-    ColumnDef("Justification", 45, Alignments.LEFT, is_manual=True),
+    ColumnDef("Justification", 45, Alignments.CENTER_WRAP, is_manual=True),
     LAST_REVIEWED_COLUMN,
 )
 

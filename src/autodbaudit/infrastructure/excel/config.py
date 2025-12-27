@@ -42,7 +42,7 @@ CONFIG_COLUMNS = (
     ColumnDef("Status", 12, Alignments.CENTER, is_status=True),  # Column H
     ColumnDef("Risk", 10, Alignments.CENTER),  # Column I
     STATUS_COLUMN,  # Review Status dropdown
-    ColumnDef("Justification", 45, Alignments.LEFT, is_manual=True),
+    ColumnDef("Justification", 45, Alignments.CENTER_WRAP, is_manual=True),
     LAST_REVIEWED_COLUMN,
 )
 

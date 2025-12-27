@@ -37,12 +37,12 @@ ENCRYPTION_COLUMNS = (
     ColumnDef("Instance", 15, Alignments.LEFT),
     ColumnDef("Database", 20, Alignments.LEFT),
     ColumnDef("Key Type", 16, Alignments.CENTER),
-    ColumnDef("Key Name", 25, Alignments.LEFT),
+    ColumnDef("Key Name", 25, Alignments.CENTER),
     ColumnDef("Algorithm", 14, Alignments.CENTER),
     ColumnDef("Created", 12, Alignments.CENTER),
     ColumnDef("Backup Status", 16, Alignments.CENTER),
     ColumnDef("Status", 10, Alignments.CENTER),
-    ColumnDef("Notes", 40, Alignments.LEFT_WRAP, is_manual=True),
+    ColumnDef("Notes", 40, Alignments.CENTER_WRAP, is_manual=True),
 )
 
 ENCRYPTION_CONFIG = SheetConfig(name="Encryption", columns=ENCRYPTION_COLUMNS)

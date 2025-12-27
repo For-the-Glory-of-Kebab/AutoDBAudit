@@ -40,12 +40,12 @@ DB_ROLE_COLUMNS = (
     ColumnDef("Server", 18, Alignments.LEFT),  # Column C
     ColumnDef("Instance", 15, Alignments.LEFT),  # Column D
     ColumnDef("Database", 20, Alignments.LEFT),  # Column E
-    ColumnDef("Role", 22, Alignments.LEFT),
-    ColumnDef("Member", 25, Alignments.LEFT),
+    ColumnDef("Role", 22, Alignments.CENTER),
+    ColumnDef("Member", 25, Alignments.CENTER),
     ColumnDef("Member Type", 18, Alignments.CENTER),
     ColumnDef("Risk", 12, Alignments.CENTER),
     STATUS_COLUMN,  # Review Status dropdown
-    ColumnDef("Justification", 45, Alignments.LEFT, is_manual=True),
+    ColumnDef("Justification", 45, Alignments.CENTER_WRAP, is_manual=True),
     LAST_REVIEWED_COLUMN,
 )
 

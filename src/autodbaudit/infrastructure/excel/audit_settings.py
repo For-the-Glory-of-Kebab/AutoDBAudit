@@ -35,14 +35,14 @@ AUDIT_SETTING_COLUMNS = (
     ACTION_COLUMN,  # Column B: Action indicator (A=UUID hidden)
     ColumnDef("Server", 18, Alignments.LEFT),  # Column C
     ColumnDef("Instance", 15, Alignments.LEFT),  # Column D
-    ColumnDef("Setting", 35, Alignments.LEFT),  # Column E
+    ColumnDef("Setting", 35, Alignments.CENTER),  # Column E
     ColumnDef("Current Value", 15, Alignments.CENTER),  # Column F
     ColumnDef("Recommended", 15, Alignments.CENTER),  # Column G
     ColumnDef("Status", 12, Alignments.CENTER, is_status=True),  # Column H
     STATUS_COLUMN,  # Review Status dropdown
-    ColumnDef("Justification", 35, Alignments.LEFT, is_manual=True),
+    ColumnDef("Justification", 35, Alignments.CENTER_WRAP, is_manual=True),
     LAST_REVIEWED_COLUMN,
-    ColumnDef("Notes", 30, Alignments.LEFT_WRAP, is_manual=True),
+    ColumnDef("Notes", 30, Alignments.CENTER_WRAP, is_manual=True),
 )
 
 AUDIT_SETTING_CONFIG = SheetConfig(name="Audit Settings", columns=AUDIT_SETTING_COLUMNS)

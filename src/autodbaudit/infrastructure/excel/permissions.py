@@ -41,16 +41,16 @@ PERMISSION_COLUMNS = (
     ColumnDef("Instance", 15, Alignments.LEFT),  # Column D
     ColumnDef("Scope", 10, Alignments.CENTER),  # Column E
     ColumnDef("Database", 20, Alignments.LEFT),  # Column F
-    ColumnDef("Grantee", 25, Alignments.LEFT),  # Column G
-    ColumnDef("Permission", 25, Alignments.LEFT),  # Column H
+    ColumnDef("Grantee", 25, Alignments.CENTER),  # Column G
+    ColumnDef("Permission", 25, Alignments.CENTER),  # Column H
     ColumnDef("State", 15, Alignments.CENTER),  # Column I
     ColumnDef("Entity Type", 15, Alignments.CENTER),  # Column J
-    ColumnDef("Entity Name", 35, Alignments.LEFT),  # Column K
+    ColumnDef("Entity Name", 35, Alignments.CENTER),  # Column K
     ColumnDef("Risk", 12, Alignments.CENTER),  # Column L
     STATUS_COLUMN,  # Review Status dropdown
-    ColumnDef("Justification", 35, Alignments.LEFT, is_manual=True),
+    ColumnDef("Justification", 35, Alignments.CENTER_WRAP, is_manual=True),
     LAST_REVIEWED_COLUMN,
-    ColumnDef("Notes", 30, Alignments.LEFT_WRAP, is_manual=True),
+    ColumnDef("Notes", 30, Alignments.CENTER_WRAP, is_manual=True),
 )
 
 PERMISSION_CONFIG = SheetConfig(name="Permission Grants", columns=PERMISSION_COLUMNS)

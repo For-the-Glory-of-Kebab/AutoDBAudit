@@ -59,13 +59,14 @@ DB_USER_COLUMNS = (
     ColumnDef("Database", 18, Alignments.LEFT),
     ColumnDef("User Name", 22, Alignments.LEFT),
     ColumnDef("Type", 16, Alignments.LEFT),
-    ColumnDef("Mapped Login", 22, Alignments.LEFT),
+    ColumnDef("Type", 16, Alignments.LEFT),
     ColumnDef("Login Status", 14, Alignments.CENTER),
+    ColumnDef("Mapped Login", 22, Alignments.LEFT),
     ColumnDef("Compliant", 10, Alignments.CENTER),
     STATUS_COLUMN,  # Review Status dropdown
-    ColumnDef("Justification", 35, Alignments.LEFT, is_manual=True),
+    ColumnDef("Justification", 35, Alignments.CENTER_WRAP, is_manual=True),
     LAST_REVIEWED_COLUMN,
-    ColumnDef("Notes", 25, Alignments.LEFT_WRAP, is_manual=True),
+    ColumnDef("Notes", 25, Alignments.CENTER_WRAP, is_manual=True),
 )
 
 DB_USER_CONFIG = SheetConfig(name="Database Users", columns=DB_USER_COLUMNS)
@@ -151,8 +152,8 @@ class DBUserSheetMixin(ServerGroupMixin, BaseSheetMixin):
             database_name,
             user_name,
             user_type,
-            mapped_login or ("(system)" if is_system_user else "(none)"),
             None,  # Login Status - styled separately
+            mapped_login or ("(system)" if is_system_user else "(none)"),
             None,  # Compliant - styled separately
             "",  # Justification
             "",  # Notes
@@ -164,13 +165,14 @@ class DBUserSheetMixin(ServerGroupMixin, BaseSheetMixin):
         apply_action_needed_styling(ws.cell(row=row, column=2), needs_action)
 
         # Apply row color to data columns (shifted +1 for action column)
-        self._apply_row_color(row, row_color, data_cols=[3, 4, 5, 6, 7, 8], ws=ws)
+        self._apply_row_color(row, row_color, data_cols=[3, 4, 5, 6, 7, 9], ws=ws)
 
         # Style User Type (Column 6)
         self._apply_user_type_styling(ws.cell(row=row, column=6), user_type)
 
-        # Style Login Status column (A=UUID, B=Action, C=Server, D=Instance, E=Database, F=User, G=Type, H=Login, I=LoginStatus)
-        status_cell = ws.cell(row=row, column=9)
+        # Style Login Status column (A=UUID, B=Action, C=Server, D=Instance, E=Database, F=User, G=Type, H=LoginStatus, I=MappedLogin)
+        # Login Status is now Column H = 8
+        status_cell = ws.cell(row=row, column=8)
         status_cell.value = login_status
         status_cell.fill = login_color
         if "Orphaned" in login_status:
@@ -211,8 +213,8 @@ class DBUserSheetMixin(ServerGroupMixin, BaseSheetMixin):
         if ws is None:
             return
 
-        # Login Status column (I) - column 9
-        add_dropdown_validation(ws, "I", ["✓ Mapped", "🔧 System", "⚠️ Orphaned"])
+        # Login Status column (H) - column 8
+        add_dropdown_validation(ws, "H", ["✓ Mapped", "🔧 System", "⚠️ Orphaned"])
         # Compliant column (J) - column 10
         add_dropdown_validation(ws, "J", ["✓", "⚠️ Review", "❌ GUEST"])
         # Review Status column (K) - column 11

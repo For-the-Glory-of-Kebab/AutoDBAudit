@@ -53,19 +53,19 @@ __all__ = ["ActionSheetMixin", "ACTION_CONFIG"]
 # Changelog columns - simplified for audit trail purpose
 ACTION_COLUMNS = (
     ColumnDef("ID", 6, Alignments.CENTER),
-    ColumnDef("Server", 16, Alignments.LEFT),
-    ColumnDef("Instance", 14, Alignments.LEFT),
-    ColumnDef("Category", 20, Alignments.LEFT),  # Wider category
-    ColumnDef("Finding", 50, Alignments.LEFT_WRAP),  # Wider finding description
+    ColumnDef("Server", 16, Alignments.CENTER),
+    ColumnDef("Instance", 14, Alignments.CENTER),
+    ColumnDef("Category", 20, Alignments.CENTER),  # Wider category
+    ColumnDef("Finding", 50, Alignments.CENTER_WRAP),  # Wider finding description
     ColumnDef("Risk Level", 12, Alignments.CENTER),
-    ColumnDef("Change Description", 55, Alignments.LEFT_WRAP),  # Wider change desc
+    ColumnDef("Change Description", 55, Alignments.CENTER_WRAP),  # Wider change desc
     ColumnDef(
         "Change Type", 15, Alignments.CENTER, is_status=True
     ),  # Fixed/Regressed/New
     ColumnDef(
         "Detected Date", 15, Alignments.CENTER_WRAP
     ),  # When change detected (editable)
-    ColumnDef("Notes", 60, Alignments.LEFT_WRAP, is_manual=True),  # Much wider notes
+    ColumnDef("Notes", 60, Alignments.CENTER_WRAP, is_manual=True),  # Much wider notes
 )
 
 ACTION_CONFIG = SheetConfig(name="Actions", columns=ACTION_COLUMNS)
@@ -144,24 +144,32 @@ class ActionSheetMixin(BaseSheetMixin):
             status.lower().replace("✓", "").replace("⚠", "").replace("⏳", "").strip()
         )
 
+        # Map to Spec Values
         if status_lower == "fixed":
-            status_cell.value = f"{Icons.PASS} Fixed"
+            status_cell.value = "✅ Fixed"
             status_cell.fill = Fills.PASS
             status_cell.font = Fonts.PASS
         elif status_lower == "exception":
-            status_cell.value = f"{Icons.PASS} Exception"
-            status_cell.fill = Fills.PASS
-            status_cell.font = Fonts.PASS
+            status_cell.value = "🛡️ Exception Documented"
+            status_cell.fill = PatternFill(
+                start_color="BBDEFB", end_color="BBDEFB", fill_type="solid"
+            )  # Blue
         elif status_lower == "regression":
-            status_cell.value = f"{Icons.FAIL} Regression"
+            status_cell.value = "❌ Regression"
             status_cell.fill = Fills.FAIL
             status_cell.font = Fonts.FAIL
-        elif status_lower == "closed":
-            status_cell.value = f"{Icons.PASS} Closed"
-            status_cell.fill = Fills.PASS
-            status_cell.font = Fonts.PASS
-        else:
-            status_cell.value = f"{Icons.PENDING} Open"
+        elif status_lower == "closed":  # Exception Removed
+            status_cell.value = "🗑️ Exception Removed"
+            status_cell.fill = PatternFill(
+                start_color="E0E0E0", end_color="E0E0E0", fill_type="solid"
+            )  # Gray
+        elif status_lower == "configuration change":
+            status_cell.value = "📝 Configuration Change"
+            status_cell.fill = PatternFill(
+                start_color="FFFFFF", end_color="FFFFFF", fill_type="solid"
+            )  # White
+        else:  # Open / New
+            status_cell.value = "🆕 New Issue"
             status_cell.fill = Fills.WARN
             status_cell.font = Fonts.WARN
 
@@ -177,6 +185,16 @@ class ActionSheetMixin(BaseSheetMixin):
         elif risk_lower == "medium":
             risk_cell.fill = Fills.WARN
             risk_cell.font = Fonts.WARN
+        elif risk_lower == "critical":
+            risk_cell.fill = PatternFill(
+                start_color="B71C1C", end_color="B71C1C", fill_type="solid"
+            )  # Dark Red
+            risk_cell.font = Font(color="FFFFFF", bold=True)
+        elif risk_lower == "info":
+            risk_cell.fill = PatternFill(
+                start_color="E3F2FD", end_color="E3F2FD", fill_type="solid"
+            )  # Light Blue
+            risk_cell.font = Font(color="0D47A1", bold=True)
 
     def _finalize_actions(self) -> None:
         """
@@ -242,24 +260,37 @@ class ActionSheetMixin(BaseSheetMixin):
             "D",
             [
                 "SA Account",
+                "Server Logins",
+                "Sensitive Roles",
                 "Configuration",
-                "Backup",
-                "Login",
+                "Services",
+                "Databases",
+                "DB Users",
+                "DB Roles",
                 "Permissions",
-                "Service",
-                "Database",
-                "Linked Server",
-                "Triggers",
+                "Audit Settings",
+                "Backups",
                 "Encryption",
+                "Linked Servers",
+                "Network",
                 "Other",
             ],
         )
         # Risk Level column (F)
-        add_dropdown_validation(ws, "F", ["Low", "Medium", "High", "Critical"])
+        add_dropdown_validation(ws, "F", ["Critical", "High", "Medium", "Low", "Info"])
 
         # Change Type column (H) - Rigorous values
         add_dropdown_validation(
-            ws, "H", ["⏳ Open", "✓ Fixed", "✓ Exception", "❌ Regression", "✓ Closed"]
+            ws,
+            "H",
+            [
+                "✅ Fixed",
+                "❌ Regression",
+                "🆕 New Issue",
+                "🛡️ Exception Documented",
+                "🗑️ Exception Removed",
+                "📝 Configuration Change",
+            ],
         )
 
         # --- Add Conditional Formatting for dynamic styling ---
@@ -287,6 +318,25 @@ class ActionSheetMixin(BaseSheetMixin):
             start_color="FFCDD2", end_color="FFCDD2", fill_type="solid"
         )  # Red
         fail_font = Font(color="B71C1C", bold=True)
+
+        # New Colors
+        info_fill = PatternFill(
+            start_color="E3F2FD", end_color="E3F2FD", fill_type="solid"
+        )  # Light Blue for Info
+        info_font = Font(color="0D47A1", bold=True)
+
+        crit_fill = PatternFill(
+            start_color="B71C1C", end_color="B71C1C", fill_type="solid"
+        )  # Dark Red for Critical
+        crit_font = Font(color="FFFFFF", bold=True)
+
+        blue_fill = PatternFill(
+            start_color="BBDEFB", end_color="BBDEFB", fill_type="solid"
+        )  # Blue for Exceptions
+
+        gray_fill = PatternFill(
+            start_color="E0E0E0", end_color="E0E0E0", fill_type="solid"
+        )  # Gray for Removed
 
         # Risk Level (Column F) - Dynamic based on value
         f_range = f"F2:F{ws.max_row + 500}"
@@ -321,33 +371,60 @@ class ActionSheetMixin(BaseSheetMixin):
                 font=fail_font,
             ),
         )
-        # Critical = Dark Red (if ever used)
+        # Critical = Dark Red
         ws.conditional_formatting.add(
             f_range,
             FormulaRule(
                 formula=['ISNUMBER(SEARCH("Critical",F2))'],
                 stopIfTrue=True,
-                fill=fail_fill,
-                font=fail_font,
+                fill=crit_fill,
+                font=crit_font,
+            ),
+        )
+        # Info = Blue
+        ws.conditional_formatting.add(
+            f_range,
+            FormulaRule(
+                formula=['ISNUMBER(SEARCH("Info",F2))'],
+                stopIfTrue=True,
+                fill=info_fill,
+                font=info_font,
             ),
         )
 
         # Change Type (Column H) - Dynamic based on value
         h_range = f"H2:H{ws.max_row + 500}"
 
-        # Fixed/Closed/Exception = Green (Good news)
+        # Fixed = Green
         ws.conditional_formatting.add(
             h_range,
             FormulaRule(
-                formula=[
-                    'OR(ISNUMBER(SEARCH("Fixed",H2)), ISNUMBER(SEARCH("Closed",H2)), ISNUMBER(SEARCH("Exception",H2)))'
-                ],
+                formula=['ISNUMBER(SEARCH("Fixed",H2))'],
                 stopIfTrue=True,
                 fill=pass_fill,
                 font=pass_font,
             ),
         )
-        # Regression = Red (Bad news)
+        # Exception Documented = Blue
+        ws.conditional_formatting.add(
+            h_range,
+            FormulaRule(
+                formula=['ISNUMBER(SEARCH("Exception Documented",H2))'],
+                stopIfTrue=True,
+                fill=blue_fill,
+                # font not specified in old Spec but seems logical to keep black or standard
+            ),
+        )
+        # Exception Removed = Gray
+        ws.conditional_formatting.add(
+            h_range,
+            FormulaRule(
+                formula=['ISNUMBER(SEARCH("Exception Removed",H2))'],
+                stopIfTrue=True,
+                fill=gray_fill,
+            ),
+        )
+        # Regression = Red
         ws.conditional_formatting.add(
             h_range,
             FormulaRule(
@@ -357,13 +434,11 @@ class ActionSheetMixin(BaseSheetMixin):
                 font=fail_font,
             ),
         )
-        # Open/Pending = Orange (Needs attention)
+        # New Issue = Yellow (Warn)
         ws.conditional_formatting.add(
             h_range,
             FormulaRule(
-                formula=[
-                    'OR(ISNUMBER(SEARCH("Open",H2)), ISNUMBER(SEARCH("Pending",H2)))'
-                ],
+                formula=['ISNUMBER(SEARCH("New Issue",H2))'],
                 stopIfTrue=True,
                 fill=warn_fill,
                 font=warn_font,

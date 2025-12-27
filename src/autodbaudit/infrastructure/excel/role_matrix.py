@@ -51,7 +51,7 @@ ROLE_MATRIX_COLUMNS = [
     ColumnDef("Server", 18, Alignments.LEFT),
     ColumnDef("Instance", 15, Alignments.LEFT),
     ColumnDef("Database", 20, Alignments.LEFT),
-    ColumnDef("Principal Name", 25, Alignments.LEFT),
+    ColumnDef("Principal Name", 25, Alignments.CENTER),
     ColumnDef("Principal Type", 18, Alignments.CENTER),
 ]
 

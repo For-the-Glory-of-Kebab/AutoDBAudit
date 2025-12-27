@@ -37,17 +37,17 @@ LINKED_SERVER_COLUMNS = (
     ACTION_COLUMN,  # Column B (after UUID): Action indicator
     ColumnDef("Server", 16, Alignments.LEFT),  # Column C
     ColumnDef("Instance", 14, Alignments.LEFT),  # Column D
-    ColumnDef("Linked Server", 22, Alignments.LEFT_WRAP),  # Column E
-    ColumnDef("Provider", 16, Alignments.LEFT),  # Column F
-    ColumnDef("Data Source", 28, Alignments.LEFT),  # Column G
+    ColumnDef("Linked Server", 22, Alignments.CENTER_WRAP),  # Column E
+    ColumnDef("Provider", 16, Alignments.CENTER),  # Column F
+    ColumnDef("Data Source", 28, Alignments.CENTER),  # Column G
     ColumnDef("RPC Out", 10, Alignments.CENTER),  # Column H
-    ColumnDef("Local Login", 16, Alignments.LEFT),  # Column I
-    ColumnDef("Remote Login", 16, Alignments.LEFT),  # Column J
+    ColumnDef("Local Login", 16, Alignments.CENTER),  # Column I
+    ColumnDef("Remote Login", 16, Alignments.CENTER),  # Column J
     ColumnDef("Impersonate", 12, Alignments.CENTER),  # Column K
     ColumnDef("Risk", 12, Alignments.CENTER),  # Column L
     STATUS_COLUMN,  # Column M: Review Status dropdown
-    ColumnDef("Purpose", 30, Alignments.LEFT, is_manual=True),  # Column N
-    ColumnDef("Justification", 40, Alignments.LEFT, is_manual=True),  # Column O
+    ColumnDef("Purpose", 30, Alignments.CENTER_WRAP, is_manual=True),  # Column N
+    ColumnDef("Justification", 40, Alignments.CENTER_WRAP, is_manual=True),  # Column O
     LAST_REVIEWED_COLUMN,  # Column P
 )
 
@@ -162,11 +162,12 @@ class LinkedServerSheetMixin(ServerGroupMixin, BaseSheetMixin):
         rpc_cell = ws.cell(row=row, column=COL_RPC_OUT)
         if rpc_out:
             rpc_cell.value = "✓ Yes"
-            rpc_cell.fill = Fills.PASS
-            rpc_cell.font = Fonts.PASS
+            rpc_cell.fill = Fills.WARN
+            rpc_cell.font = Fonts.WARN
         else:
             rpc_cell.value = "✗ No"
-            rpc_cell.fill = Fills.WARN
+            rpc_cell.fill = Fills.PASS
+            rpc_cell.font = Fonts.PASS
 
         # Impersonate column with styled value
         impersonate_cell = ws.cell(row=row, column=COL_IMPERSONATE)

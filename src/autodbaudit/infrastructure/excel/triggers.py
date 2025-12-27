@@ -43,14 +43,14 @@ TRIGGER_COLUMNS = (
     ColumnDef(
         "Database", 20, Alignments.LEFT
     ),  # Database name (empty for SERVER scope)
-    ColumnDef("Trigger Name", 28, Alignments.LEFT),
-    ColumnDef("Event", 18, Alignments.LEFT),
+    ColumnDef("Trigger Name", 28, Alignments.CENTER),
+    ColumnDef("Event", 18, Alignments.CENTER),
     ColumnDef("Enabled", 10, Alignments.CENTER),
     STATUS_COLUMN,  # Review Status dropdown
     ColumnDef(
-        "Notes", 40, Alignments.LEFT, is_manual=True
+        "Notes", 40, Alignments.CENTER_WRAP, is_manual=True
     ),  # Purpose/notes for trigger
-    ColumnDef("Justification", 40, Alignments.LEFT, is_manual=True),
+    ColumnDef("Justification", 40, Alignments.CENTER_WRAP, is_manual=True),
     LAST_REVIEWED_COLUMN,
 )
 
