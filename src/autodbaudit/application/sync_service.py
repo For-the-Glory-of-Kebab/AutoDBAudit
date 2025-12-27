@@ -309,7 +309,8 @@ class SyncService:
                         )
                         logger.info("Cleared review_status for %s", full_key[:60])
                     elif ctype == "updated":
-                        # UPDATED Exception
+                        # UPDATED Exception - Fix the unassigned 'ct' variable
+                        ct = ChangeType.EXCEPTION_UPDATED
                         action = create_exception_action(
                             change_type=ct,
                             entity_type=etype,

@@ -98,11 +98,22 @@ class PermissionSheetMixin(ServerGroupMixin, BaseSheetMixin):
         ws = self._permission_sheet
 
         # Track grouping and get row color
+        # Pass unique discriminator as "database_name" arg for 3rd level merging
+        # For permissions, we don't want to merge all permissions for a database into one block,
+        # but rather group by database if possible.
+        # Use combined scope/db as the 3rd level grouping key.
+        # Actually, user wants distinct rows. If we set database_name to the actual DB,
+        # rows for the same DB will merge the DB cell. This IS desired for Permissions sheet (DB column merge).
+        # But we must ensure the *rows* don't get mixed up.
+        # `_track_group` returns color based on Instance alternation, but handles merging for Server/Instance/Database cols.
+        # If we pass `database_name`, it will merge the 'Database' column for consecutive rows with same DB.
+        # This seems correct for Permissions sheet provided the rows are sorted by Server->Instance->Database.
         row_color = self._track_group(
             server_name,
             instance_name,
             PERMISSION_CONFIG.name,
-            database_name=database_name,
+            database_name=database_name
+            or "(Server)",  # Use "(Server)" for empty DB to allow grouping
         )
 
         # Analyze Risk

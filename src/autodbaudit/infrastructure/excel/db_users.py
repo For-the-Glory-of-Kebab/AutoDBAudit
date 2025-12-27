@@ -59,7 +59,6 @@ DB_USER_COLUMNS = (
     ColumnDef("Database", 18, Alignments.LEFT),
     ColumnDef("User Name", 22, Alignments.LEFT),
     ColumnDef("Type", 16, Alignments.LEFT),
-    ColumnDef("Type", 16, Alignments.LEFT),
     ColumnDef("Login Status", 14, Alignments.CENTER),
     ColumnDef("Mapped Login", 22, Alignments.LEFT),
     ColumnDef("Compliant", 10, Alignments.CENTER),
@@ -224,7 +223,7 @@ class DBUserSheetMixin(ServerGroupMixin, BaseSheetMixin):
         # Type column (F) - column 6
         add_dropdown_validation(
             ws,
-            "F",
+            "G",
             ["SQL_USER", "WINDOWS_USER", "WINDOWS_GROUP", "CERTIFICATE_MAPPED_USER"],
         )
 

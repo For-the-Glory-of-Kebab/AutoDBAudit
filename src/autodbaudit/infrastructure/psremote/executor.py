@@ -71,6 +71,37 @@ class ScriptExecutor:
         client = PSRemoteClient(config)
         return cls(client)
 
+    def _minify_script(self, script_content: str) -> str:
+        """
+        Minify PowerShell script to reduce size for WinRM transport.
+        Removes comments and unnecessary whitespace.
+        """
+        lines = script_content.splitlines()
+        minified = []
+        in_block_comment = False
+
+        for line in lines:
+            line = line.strip()
+
+            # Handle block comments <# ... #>
+            if line.startswith("<#"):
+                in_block_comment = True
+
+            if in_block_comment:
+                if line.endswith("#>"):
+                    in_block_comment = False
+                continue
+
+            if not line:
+                continue
+
+            if line.startswith("#"):
+                continue
+
+            minified.append(line)
+
+        return "\n".join(minified)
+
     def get_os_data(self, instance_name: str = "MSSQLSERVER") -> ExecutionResult:
         """
         Execute Get-SqlServerOSData.ps1 remotely.
@@ -93,11 +124,12 @@ class ScriptExecutor:
         # Read and parameterize script
         script_content = script_path.read_text(encoding="utf-8")
 
+        # Minify to avoid "Command line is too long" errors
+        script_content = self._minify_script(script_content)
+
         # Create wrapper that sets parameter and runs
-        wrapper = f"""
-$InstanceName = '{instance_name}'
-{script_content}
-"""
+        # Use single line if possible or minimal newlines
+        wrapper = f"$InstanceName='{instance_name}';{script_content}"
 
         return self._execute_json_script(wrapper, "Get-SqlServerOSData.ps1")
 

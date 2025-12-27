@@ -111,7 +111,7 @@ class LinkedServerSheetMixin(ServerGroupMixin, BaseSheetMixin):
 
         # Track grouping and get row color
         row_color = self._track_group(
-            server_name, instance_name, LINKED_SERVER_CONFIG.name
+            server_name, instance_name, LINKED_SERVER_CONFIG.name, linked_server_name
         )
 
         # Determine if this is a high-risk linked server needing attention

@@ -38,8 +38,11 @@ from autodbaudit.infrastructure.excel_styles import (
     Fills,
     Icons,
     Fonts,
+    Icons,
+    Fonts,
     Borders,
 )
+from openpyxl.styles import PatternFill, Font
 from autodbaudit.infrastructure.excel.base import (
     BaseSheetMixin,
     SheetConfig,

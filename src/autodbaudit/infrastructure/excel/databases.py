@@ -85,7 +85,9 @@ class DatabaseSheetMixin(ServerGroupMixin, BaseSheetMixin):
         ws = self._database_sheet
 
         # Track grouping and get row color
-        row_color = self._track_group(server_name, instance_name, DATABASE_CONFIG.name)
+        row_color = self._track_group(
+            server_name, instance_name, DATABASE_CONFIG.name, database_name
+        )
 
         # Determine if action needed (TRUSTWORTHY ON for user DBs)
         system_dbs = {"master", "msdb", "model", "tempdb"}

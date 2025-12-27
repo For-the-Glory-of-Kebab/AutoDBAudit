@@ -27,6 +27,7 @@ from autodbaudit.infrastructure.excel_styles import (
     merge_server_cells,
     SERVER_GROUP_COLORS,
 )
+from autodbaudit.infrastructure.excel.server_group import ServerGroupMixin
 from autodbaudit.infrastructure.excel.base import (
     BaseSheetMixin,
     SheetConfig,
@@ -105,7 +106,7 @@ NON_COMPLIANT_ACCOUNTS = frozenset(
 )
 
 
-class ServiceSheetMixin(BaseSheetMixin):
+class ServiceSheetMixin(ServerGroupMixin, BaseSheetMixin):
     """Mixin for Services sheet with server grouping."""
 
     _service_sheet = None
@@ -127,41 +128,24 @@ class ServiceSheetMixin(BaseSheetMixin):
         service_account: str,
     ) -> None:
         """Add a SQL service row."""
+        # Track grouping and get row color
+        # USE MIXIN for grouping logic instead of custom duplication
+        # Pass service_name as discriminator for 3rd level merging (so we don't merge all services into one block)
         if self._service_sheet is None:
             self._service_sheet = self._ensure_sheet_with_uuid(SERVICE_CONFIG)
-            self._svc_last_server = ""
-            self._svc_last_instance = ""
-            self._svc_server_start_row = 2
-            self._svc_instance_start_row = 2
-            self._svc_server_idx = 0
-            self._svc_instance_alt = False
+            # Initialize mixin state
+            self._init_grouping(
+                self._service_sheet, SERVICE_CONFIG, database_col_idx=5
+            )  # Service Name is col 5
             self._add_service_dropdowns()
 
         ws = self._service_sheet
-        current_row = self._row_counters[SERVICE_CONFIG.name]
-        inst_display = instance_name or "(Default)"
 
-        # Check if server changed
-        if server_name != self._svc_last_server:
-            if self._svc_last_server:
-                self._merge_svc_groups(ws)
-                self._svc_server_idx += 1
-
-            self._svc_server_start_row = current_row
-            self._svc_instance_start_row = current_row
-            self._svc_last_server = server_name
-            self._svc_last_instance = inst_display
-            self._svc_instance_alt = False
-        elif inst_display != self._svc_last_instance:
-            self._merge_svc_instance(ws)
-            self._svc_instance_start_row = current_row
-            self._svc_last_instance = inst_display
-            self._svc_instance_alt = not self._svc_instance_alt
-
-        color_main, color_light = SERVER_GROUP_COLORS[
-            self._svc_server_idx % len(SERVER_GROUP_COLORS)
-        ]
-        row_color = color_main if self._svc_instance_alt else color_light
+        # Track group - Service Name is the "database" equivalent here for 3rd level differentiation
+        # This prevents merging all services under one instance
+        row_color = self._track_group(
+            server_name, instance_name, SERVICE_CONFIG.name, service_name
+        )
 
         # Check account compliance - service account should not be virtual
         account_compliant = True
@@ -211,6 +195,8 @@ class ServiceSheetMixin(BaseSheetMixin):
         else:
             self._increment_pass()
 
+        inst_display = instance_name or "(Default)"
+
         data = [
             None,  # Action indicator (column A)
             server_name,
@@ -224,24 +210,18 @@ class ServiceSheetMixin(BaseSheetMixin):
             "",  # Justification
         ]
 
-        row, row_uuid = self._write_row_with_uuid(ws, SERVICE_CONFIG, data)
+        row, _ = self._write_row_with_uuid(ws, SERVICE_CONFIG, data)
 
         # Apply action indicator (column 1)
         apply_action_needed_styling(ws.cell(row=row, column=2), needs_action)
 
         # Apply color to data columns (NOT Action column which stays white)
         # A=UUID, B=Action(2), C=Server(3), D=Instance(4), E=ServiceName(5), F=Type(6), G=Status(7), H=Startup(8), I=Account(9), J=Compliant(10)
-        fill = PatternFill(
-            start_color=row_color, end_color=row_color, fill_type="solid"
-        )
-        for col in [
-            3,
-            4,
-            5,
-            6,
-            9,
-        ]:  # Server=3, Instance=4, ServiceName=5, Type=6, Account=9
-            ws.cell(row=row, column=col).fill = fill
+        # Apply color to data columns
+        # Use mixin helper
+        # Columns: Server(3), Instance(4), Service(5), Type(6), Status(7), Startup(8), Account(9), Compliant(10)
+        # Note: Status/Startup/Compliant have their own coloring logic which overrides this background
+        self._apply_row_color(row, row_color, data_cols=[3, 4, 5, 6, 9], ws=ws)
 
         # Style status column (column G = 7)
         status_cell = ws.cell(row=row, column=7)
@@ -313,8 +293,8 @@ class ServiceSheetMixin(BaseSheetMixin):
 
     def _finalize_services(self) -> None:
         """Finalize services sheet."""
-        if self._service_sheet and self._svc_last_server:
-            self._merge_svc_groups(self._service_sheet)
+        if self._service_sheet:
+            self._finalize_grouping(SERVICE_CONFIG.name)
             self._finalize_sheet_with_uuid(self._service_sheet)
 
     def _add_service_dropdowns(self) -> None:

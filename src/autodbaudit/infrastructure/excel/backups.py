@@ -85,7 +85,10 @@ class BackupSheetMixin(ServerGroupMixin, BaseSheetMixin):
         ws = self._backup_sheet
 
         # Track grouping and get row color
-        row_color = self._track_group(server_name, instance_name, BACKUP_CONFIG.name)
+        # Track grouping and get row color
+        row_color = self._track_group(
+            server_name, instance_name, BACKUP_CONFIG.name, database_name
+        )
 
         # Determine compliance status
         if days_since is None or days_since > BACKUP_FAIL_DAYS:

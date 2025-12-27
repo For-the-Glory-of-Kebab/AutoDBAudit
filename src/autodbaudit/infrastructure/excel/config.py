@@ -72,7 +72,11 @@ class ConfigSheetMixin(ServerGroupMixin, BaseSheetMixin):
         ws = self._config_sheet
 
         # Track grouping and get row color
-        row_color = self._track_group(server_name, instance_name, CONFIG_CONFIG.name)
+        # Track grouping and get row color
+        # Pass setting_name as the "database_name" discriminator to prevent detailed rows from merging into one block
+        row_color = self._track_group(
+            server_name, instance_name, CONFIG_CONFIG.name, setting_name
+        )
 
         # Determine compliance status
         status = "pass" if current_value == required_value else "fail"

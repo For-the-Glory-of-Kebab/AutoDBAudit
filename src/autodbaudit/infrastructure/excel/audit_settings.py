@@ -73,7 +73,7 @@ class AuditSettingSheetMixin(ServerGroupMixin, BaseSheetMixin):
 
         # Track grouping and get row color
         row_color = self._track_group(
-            server_name, instance_name, AUDIT_SETTING_CONFIG.name
+            server_name, instance_name, AUDIT_SETTING_CONFIG.name, setting_name
         )
 
         status = (

@@ -42,7 +42,6 @@ class Transport(Enum):
 class AuthMethod(Enum):
     """WinRM authentication methods."""
 
-    NEGOTIATE = "negotiate"
     KERBEROS = "kerberos"
     NTLM = "ntlm"
     BASIC = "basic"
@@ -57,7 +56,7 @@ class ConnectionConfig:
     password: str | None = None
     port_http: int = 5985
     port_https: int = 5986
-    timeout_seconds: int = 30
+    timeout_seconds: int = 60
     operation_timeout_sec: int = 120
 
     # Retry settings
@@ -100,57 +99,12 @@ class PSRemoteClient:
         self._working_transport: Transport | None = None
         self._working_auth: AuthMethod | None = None
         self._working_verify_ssl: bool = True
-        self._is_localhost: bool = self._detect_localhost()
-
-    def _detect_localhost(self) -> bool:
-        """
-        Detect if hostname is localhost.
-
-        Matches: localhost, 127.0.0.1, ::1, ., local machine name.
-        """
-        hostname = self.config.hostname.lower().strip()
-
-        # Explicit localhost patterns
-        localhost_patterns = {
-            "localhost",
-            "127.0.0.1",
-            "::1",
-            ".",
-            "(local)",
-        }
-
-        if hostname in localhost_patterns:
-            logger.info("Localhost detected: %s - will use local PowerShell", hostname)
-            return True
-
-        # Check if hostname matches local machine name
-        try:
-            local_name = socket.gethostname().lower()
-            if hostname == local_name or hostname == local_name.split(".")[0]:
-                logger.info(
-                    "Local machine name detected: %s - will use local PowerShell",
-                    hostname,
-                )
-                return True
-        except Exception:
-            pass
-
-        return False
 
     def connect(self) -> bool:
         """
         Establish connection trying all combinations.
-
-        For localhost, returns True immediately (no PSRemoting needed).
         Returns True if connection established, False otherwise.
         """
-        # Localhost bypass - no PSRemoting needed
-        if self._is_localhost:
-            logger.info(
-                "Localhost mode: skipping PSRemoting, will use local PowerShell"
-            )
-            return True
-
         cache_key = f"{self.config.hostname}:{self.config.username}"
 
         # Check cache first
@@ -166,7 +120,7 @@ class PSRemoteClient:
         attempts = []
 
         # HTTPS with SSL verification
-        for auth in [AuthMethod.NEGOTIATE, AuthMethod.KERBEROS, AuthMethod.NTLM]:
+        for auth in [AuthMethod.KERBEROS, AuthMethod.NTLM]:
             if self._try_connect(Transport.HTTPS, auth, verify_ssl=True):
                 self._connection_cache[cache_key] = (Transport.HTTPS, auth, True)
                 return True
@@ -174,7 +128,6 @@ class PSRemoteClient:
 
         # HTTPS without SSL verification
         for auth in [
-            AuthMethod.NEGOTIATE,
             AuthMethod.KERBEROS,
             AuthMethod.NTLM,
             AuthMethod.BASIC,
@@ -187,8 +140,8 @@ class PSRemoteClient:
                 return True
             attempts.append({"transport": "https", "auth": auth.value, "ssl": False})
 
-        # HTTP (only negotiate/kerberos/ntlm, never basic)
-        for auth in [AuthMethod.NEGOTIATE, AuthMethod.KERBEROS, AuthMethod.NTLM]:
+        # HTTP (only kerberos/ntlm, never basic)
+        for auth in [AuthMethod.KERBEROS, AuthMethod.NTLM]:
             if self._try_connect(Transport.HTTP, auth, verify_ssl=False):
                 self._connection_cache[cache_key] = (Transport.HTTP, auth, False)
                 logger.warning(
@@ -215,15 +168,19 @@ class PSRemoteClient:
             "Trying: %s with %s (SSL verify: %s)", endpoint, auth.value, verify_ssl
         )
 
+        last_error = ""
+
         for attempt in range(self.config.max_retries_per_combo):
             try:
+                # Add message_encryption='auto' to support NTLM/Kerberos properly
                 session = winrm.Session(
                     target=endpoint,
                     auth=(self.config.username, self.config.password),
                     transport=auth.value,
                     server_cert_validation="validate" if verify_ssl else "ignore",
+                    message_encryption="auto",  # Crucial for some NTLM setups
                     operation_timeout_sec=self.config.operation_timeout_sec,
-                    read_timeout_sec=self.config.timeout_seconds + 10,
+                    read_timeout_sec=self.config.operation_timeout_sec + 30,
                 )
 
                 # Test connection with simple command
@@ -237,21 +194,34 @@ class PSRemoteClient:
                     self._working_verify_ssl = verify_ssl
                     return True
 
+                # If command ran but failed (non-zero or no OK)
+                logger.warning(
+                    "Connection test failed (Code %d). Stdout: %s Stderr: %s",
+                    result.status_code,
+                    result.std_out,
+                    result.std_err,
+                )
+
             except Exception as e:
+                last_error = str(e)
                 logger.debug(
                     "Attempt %d failed: %s - %s",
                     attempt + 1,
                     type(e).__name__,
-                    str(e)[:100],
+                    last_error[:200],  # Log more detail
                 )
+
+        # Log why this combination failed completely
+        if last_error:
+            logger.warning(
+                "Method failed [%s + %s]: %s", transport.value, auth.value, last_error
+            )
 
         return False
 
     def run_ps(self, script: str) -> PSRemoteResult:
         """
-        Execute PowerShell script on remote host.
-
-        For localhost, runs locally with admin elevation.
+        Execute PowerShell script on remote host (or localhost via winrm).
 
         Args:
             script: PowerShell script content
@@ -259,10 +229,6 @@ class PSRemoteClient:
         Returns:
             PSRemoteResult with output and status
         """
-        # Localhost bypass - run locally with elevation
-        if self._is_localhost:
-            return self._run_local_ps(script)
-
         if not self._session:
             if not self.connect():
                 return PSRemoteResult(
@@ -293,83 +259,6 @@ class PSRemoteClient:
                     self._working_transport.value if self._working_transport else ""
                 ),
                 auth_used=self._working_auth.value if self._working_auth else "",
-            )
-
-    def _run_local_ps(self, script: str) -> PSRemoteResult:
-        """
-        Execute PowerShell script locally with admin elevation.
-
-        Writes script to temp file and runs with ExecutionPolicy Bypass.
-        Requests elevation if not already running as admin.
-
-        Args:
-            script: PowerShell script content
-
-        Returns:
-            PSRemoteResult with output and status
-        """
-        logger.info("Running PowerShell locally (localhost bypass)")
-
-        try:
-            # Write script to temp file
-            with tempfile.NamedTemporaryFile(
-                mode="w", suffix=".ps1", delete=False, encoding="utf-8"
-            ) as f:
-                f.write(script)
-                script_path = f.name
-
-            try:
-                # Build PowerShell command with execution policy bypass
-                # Note: To run with elevation would require Start-Process -Verb RunAs
-                # which opens a new window. For now we run in current context.
-                cmd = [
-                    "powershell.exe",
-                    "-NoProfile",
-                    "-ExecutionPolicy",
-                    "Bypass",
-                    "-File",
-                    script_path,
-                ]
-
-                logger.debug("Executing: %s", " ".join(cmd))
-
-                result = subprocess.run(
-                    cmd,
-                    capture_output=True,
-                    text=True,
-                    timeout=self.config.operation_timeout_sec,
-                )
-
-                return PSRemoteResult(
-                    success=result.returncode == 0,
-                    stdout=result.stdout,
-                    stderr=result.stderr,
-                    return_code=result.returncode,
-                    transport_used="local",
-                    auth_used="local",
-                )
-
-            finally:
-                # Clean up temp file
-                try:
-                    os.unlink(script_path)
-                except Exception:
-                    pass
-
-        except subprocess.TimeoutExpired:
-            return PSRemoteResult(
-                success=False,
-                error=f"Script timed out after {self.config.operation_timeout_sec}s",
-                transport_used="local",
-                auth_used="local",
-            )
-        except Exception as e:
-            logger.exception("Local PowerShell execution failed")
-            return PSRemoteResult(
-                success=False,
-                error=str(e),
-                transport_used="local",
-                auth_used="local",
             )
 
     def run_cmd(self, command: str, args: list[str] | None = None) -> PSRemoteResult:
