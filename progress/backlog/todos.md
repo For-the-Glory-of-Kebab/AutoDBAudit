@@ -1,0 +1,25 @@
+# Backlog & TODOs
+
+## High Priority
+
+- [ ] Push progress folder to git (user action).
+- [ ] Start rewrite: Plan first module (e.g., Excel interface).
+- [ ] Test docs CI workflow.
+
+## Medium Priority
+
+- [ ] Add more cross-links in docs.
+- [ ] Explore codebase for rewrite insights.
+
+## Low Priority
+
+- [ ] Archive backup branch if no longer needed.
+- [ ] Update project status in docs.
+
+## Completed
+
+- [x] Set up progress tracking folder.
+- [x] Clean up legacy docs.
+
+Last Updated: 2025-12-29
+
