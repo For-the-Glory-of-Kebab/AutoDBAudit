@@ -19,10 +19,20 @@ from typing import Any, Literal
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
+from autodbaudit.utils.resources import get_base_path
+
 logger = logging.getLogger(__name__)
 
-# Template directory relative to this file
-TEMPLATE_DIR = Path(__file__).parent / "templates"
+
+def _get_template_dir() -> Path:
+    """Get template directory with PyInstaller support."""
+    # In development, templates are alongside this file
+    # In PyInstaller, they're in the assets folder
+    dev_path = Path(__file__).parent / "templates"
+    if dev_path.exists():
+        return dev_path
+    # Fallback to assets/templates for frozen app
+    return get_base_path() / "assets" / "remediation_templates"
 
 
 @dataclass
@@ -80,7 +90,7 @@ class JinjaScriptGenerator:
 
     def __init__(self, template_dir: Path | None = None) -> None:
         """Initialize with template directory."""
-        self.template_dir = template_dir or TEMPLATE_DIR
+        self.template_dir = template_dir or _get_template_dir()
 
         # Ensure template directories exist
         (self.template_dir / "tsql").mkdir(parents=True, exist_ok=True)

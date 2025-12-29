@@ -45,7 +45,7 @@ ROLE_COLUMNS = (
     ColumnDef("Member Type", 18, Alignments.LEFT),
     ColumnDef("Enabled", 10, Alignments.CENTER),
     STATUS_COLUMN,  # Review Status dropdown
-    ColumnDef("Justification", 40, Alignments.LEFT, is_manual=True),
+    ColumnDef("Justification", 40, Alignments.CENTER_WRAP, is_manual=True),
     LAST_REVIEWED_COLUMN,
 )
 
@@ -218,8 +218,27 @@ class RoleSheetMixin(BaseSheetMixin):
         )
 
         ws = self._role_sheet
-        # Enabled column (G) - column 7 (shifted +1 from F)
+        # Column letters with UUID: A=UUID, B=Action, C=Server, D=Instance, E=Role, F=Member, G=Member Type, H=Enabled, I=Review Status
+
+        # E: Role Dropdown
+        server_roles = [
+            "👑 sysadmin",
+            "securityadmin",
+            "serveradmin",
+            "setupadmin",
+            "processadmin",
+            "diskadmin",
+            "dbcreator",
+            "bulkadmin",
+        ]
+        add_dropdown_validation(ws, "E", server_roles)
+
+        # G: Member Type Dropdown
+        add_dropdown_validation(ws, "G", ["🪟 Windows", "🔑 SQL"])
+
+        # H: Enabled
         add_dropdown_validation(ws, "H", ["✓ Yes", "✗ No"])
-        # Review Status column (H) - column 8
+
+        # I: Review Status
         add_dropdown_validation(ws, "I", STATUS_VALUES.all())
         add_review_status_conditional_formatting(ws, "I")

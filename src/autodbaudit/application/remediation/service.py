@@ -71,12 +71,18 @@ class RemediationService:
 
         # Get findings with exception status from annotations
         findings = conn.execute(
-            """
-            SELECT 
-                f.*, 
+            """SELECT 
+                f.finding_type,
+                f.entity_key,
+                f.entity_name,
+                f.status,
+                f.risk_level,
+                f.finding_description,
+                f.recommendation,
                 i.instance_name, 
                 i.id as instance_db_id, 
                 s.hostname as server_name,
+                si.os_platform as host_platform,
                 -- Check if exceptionalized (has annotation with status_override='exception')
                 CASE 
                     WHEN a.status_override = 'exception' THEN 1 
@@ -93,6 +99,7 @@ class RemediationService:
             FROM findings f
             JOIN instances i ON f.instance_id = i.id
             JOIN servers s ON i.server_id = s.id
+            LEFT JOIN server_info si ON si.instance_id = i.id AND si.audit_run_id = f.audit_run_id
             LEFT JOIN annotations a ON a.entity_key = f.entity_key
             WHERE f.audit_run_id = ?
             AND f.status IN ('FAIL', 'WARN')
@@ -169,7 +176,8 @@ class RemediationService:
                 # For remediation generation, best effort is okay.
 
                 # Using just server+port from config for user map
-                conn_user_map[(srv, port)] = conn_user
+                # Store (username, original_target_address)
+                conn_user_map[(srv, port)] = (conn_user, t.get("server", ""))
 
                 # Also store for port lookup if we can match server
                 # But we don't know the DB instance name easily for the key without more logic
@@ -205,7 +213,16 @@ class RemediationService:
 
         generated = []
         for (server, instance, port, inst_id), instance_findings in by_instance.items():
-            conn_user = conn_user_map.get((server.lower(), port))
+            # Lookup connection info
+            # conn_user_map stores (username, target_server_address)
+            conn_info = conn_user_map.get((server.lower(), port))
+            conn_user = conn_info[0] if conn_info else None
+            target_address = conn_info[1] if conn_info else None
+
+            # Get Platform from first finding (server-level property)
+            host_platform = "Windows"
+            if instance_findings:
+                host_platform = instance_findings[0].get("host_platform") or "Windows"
 
             paths = self._generate_instance_scripts(
                 server,
@@ -215,6 +232,8 @@ class RemediationService:
                 instance_findings,
                 conn_user,
                 aggressiveness,
+                target_address=target_address,
+                host_platform=host_platform,
             )
             generated.extend(paths)
 
@@ -230,6 +249,8 @@ class RemediationService:
         findings: list[dict],
         conn_user: str | None,
         aggressiveness: int,
+        target_address: str | None = None,
+        host_platform: str | None = "Windows",
     ) -> list[Path]:
         """Generate scripts for a single instance using Handlers."""
 
@@ -241,6 +262,7 @@ class RemediationService:
             port=port,
             conn_user=conn_user,
             aggressiveness=aggressiveness,
+            host_platform=host_platform,
         )
 
         handlers = [
@@ -317,6 +339,7 @@ class RemediationService:
             review_section,
             info_section,
             port,
+            target_address=target_address,
         )
         main_path = self.output_dir / f"{safe_name}.sql"
         main_path.write_text("\n".join(main_script), encoding="utf-8")
@@ -353,6 +376,7 @@ class RemediationService:
         review_section: list,
         info_section: list,
         port: int = 1433,
+        target_address: str | None = None,
     ) -> list[str]:
         """Build the main remediation script."""
         lines = [
@@ -360,6 +384,7 @@ class RemediationService:
             "=" * 60,
             "REMEDIATION SCRIPT - AutoDBAudit",
             f"Server: {server}",
+            f"TargetServer: {target_address or server}",  # Hint for execution mapping
             f"Port: {port}",
             f"Instance: {instance}",
             f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
@@ -483,8 +508,4 @@ class RemediationService:
         path.write_text("\n".join(content), encoding="utf-8")
 
     def _category_header(self, tag: str, description: str) -> str:
-        return f"""
--- ╔══════════════════════════════════════════════════════════════════════════╗
--- ║ [{tag}] {description}
--- ╚══════════════════════════════════════════════════════════════════════════╝
-"""
+        return f"\n-- +--------------------------------------------------------------------------+\n-- | [{tag}] {description}\n-- +--------------------------------------------------------------------------+\n"

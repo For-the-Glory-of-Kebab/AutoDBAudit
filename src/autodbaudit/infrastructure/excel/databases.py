@@ -47,13 +47,13 @@ DATABASE_COLUMNS = (
     ColumnDef("Owner", 20, Alignments.LEFT),  # Column F
     ColumnDef("Recovery", 14, Alignments.CENTER),  # Column G
     ColumnDef("State", 14, Alignments.CENTER),  # Column H
-    ColumnDef("Data (MB)", 12, Alignments.RIGHT),
-    ColumnDef("Log (MB)", 12, Alignments.RIGHT),
+    ColumnDef("Data (MB)", 12, Alignments.CENTER),
+    ColumnDef("Log (MB)", 12, Alignments.CENTER),
     ColumnDef("Trustworthy", 12, Alignments.CENTER),
     STATUS_COLUMN,  # Review Status dropdown
-    ColumnDef("Justification", 35, Alignments.LEFT, is_manual=True),
+    ColumnDef("Justification", 35, Alignments.CENTER_WRAP, is_manual=True),
     LAST_REVIEWED_COLUMN,
-    ColumnDef("Notes", 30, Alignments.LEFT_WRAP, is_manual=True),
+    ColumnDef("Notes", 30, Alignments.CENTER_WRAP, is_manual=True),
 )
 
 DATABASE_CONFIG = SheetConfig(name="Databases", columns=DATABASE_COLUMNS)
@@ -85,7 +85,9 @@ class DatabaseSheetMixin(ServerGroupMixin, BaseSheetMixin):
         ws = self._database_sheet
 
         # Track grouping and get row color
-        row_color = self._track_group(server_name, instance_name, DATABASE_CONFIG.name)
+        row_color = self._track_group(
+            server_name, instance_name, DATABASE_CONFIG.name, database_name
+        )
 
         # Determine if action needed (TRUSTWORTHY ON for user DBs)
         system_dbs = {"master", "msdb", "model", "tempdb"}

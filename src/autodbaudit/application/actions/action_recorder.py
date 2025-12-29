@@ -215,6 +215,8 @@ class ActionRecorder:
                     description=action.description,
                     sync_run_id=sync_run_id,
                     finding_type=action.entity_type.value if action.entity_type else "",
+                    server_name=action.server,
+                    instance_name=action.instance,
                 )
 
                 recorded += 1
@@ -277,51 +279,80 @@ class ActionRecorder:
 
         formatted = []
         for action in actions:
-            # Parse entity key for display fields
+            # Parse entity key for display fields - ROBUST parsing
             entity_key = action.get("entity_key", "")
             parts = entity_key.split("|")
 
-            server = "Unknown"
-            instance = ""
-            category = action.get("action_type", "")
+            # Default to DB-resolved values
+            server = action.get("server_name") or ""
+            instance = action.get("instance_name") or ""
+
+            category = action.get("finding_type", "") or action.get("action_type", "")
             finding = entity_key
 
+            # Entity key formats:
+            # 1. type|server|instance|entity (e.g., sa_account|PROD|DEFAULT|sa)
+            # 2. server|instance|type|entity (legacy?)
+            # 3. Just plain values
+
+            # Known entity types that appear at position 0
+            known_types = {
+                "sa_account",
+                "login",
+                "config",
+                "service",
+                "database",
+                "backup",
+                "trigger",
+                "protocol",
+                "linked_server",
+                "db_role_member",
+                "db_user",
+                "orphaned_user",
+                "db_permission",
+                "permission",
+                "server_role_member",
+                "db_role",
+                "audit_settings",
+                "encryption",
+                "instance",
+                "role_member",
+                "sensitive_role",
+            }
+
             if len(parts) >= 3:
-                known_types = {
-                    "sa_account",
-                    "login",
-                    "config",
-                    "service",
-                    "database",
-                    "backup",
-                    "trigger",
-                    "protocol",
-                    "linked_server",
-                    "db_role_member",
-                    "db_user",
-                    "orphaned_user",
-                    "db_permission",
-                    "permission",
-                    "server_role_member",
-                    "db_role",
-                    "audit_settings",
-                    "encryption",
-                    "instance",
-                }
+                # Check if first part is a known type
                 if parts[0].lower() in known_types:
-                    server = parts[1]
-                    instance = parts[2]
-                    category = parts[0].title()
-                    finding = "|".join(parts[3:]) if len(parts) > 3 else entity_key
+                    # Format: type|server|instance|entity...
+                    category = parts[0].replace("_", " ").title()
+                    if not server:  # Only override if DB returned NULL
+                        server = parts[1]
+                    if not instance:
+                        instance = parts[2]
+                    finding = "|".join(parts[3:]) if len(parts) > 3 else parts[-1]
                 else:
-                    server = parts[0]
-                    instance = parts[1]
-                    finding = "|".join(parts[2:]) if len(parts) > 2 else entity_key
+                    # Format: server|instance|type|entity... OR just parts
+                    if not server:
+                        server = parts[0]
+                    if not instance:
+                        instance = parts[1]
+                    # Try to extract category from remaining parts
+                    if len(parts) >= 3 and parts[2].lower() in known_types:
+                        category = parts[2].replace("_", " ").title()
+                        finding = "|".join(parts[3:]) if len(parts) > 3 else parts[-1]
+                    else:
+                        finding = "|".join(parts[2:]) if len(parts) > 2 else entity_key
+
+            # Fallback: If still empty, mark as Unknown
+            if not server:
+                server = "Unknown"
+            if not instance:
+                instance = "(Default)"
 
             # Determine display status - show descriptive type, not just Closed/Open
             status_db = action.get("status", "open").lower()
             action_type = action.get("action_type", "")
-            
+
             # Map to user-friendly display
             if status_db == "fixed":
                 display_status = "✓ Fixed"

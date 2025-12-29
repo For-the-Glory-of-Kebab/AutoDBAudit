@@ -18,10 +18,14 @@ from autodbaudit.infrastructure.psremote.client import (
     ConnectionConfig,
 )
 
+from autodbaudit.utils.resources import get_base_path
+
 logger = logging.getLogger(__name__)
 
-# Path to bundled scripts
-SCRIPTS_DIR = Path(__file__).parent.parent.parent.parent.parent / "assets" / "scripts"
+
+def _get_scripts_dir() -> Path:
+    """Get scripts directory with PyInstaller support."""
+    return get_base_path() / "assets" / "scripts"
 
 
 @dataclass
@@ -67,6 +71,37 @@ class ScriptExecutor:
         client = PSRemoteClient(config)
         return cls(client)
 
+    def _minify_script(self, script_content: str) -> str:
+        """
+        Minify PowerShell script to reduce size for WinRM transport.
+        Removes comments and unnecessary whitespace.
+        """
+        lines = script_content.splitlines()
+        minified = []
+        in_block_comment = False
+
+        for line in lines:
+            line = line.strip()
+
+            # Handle block comments <# ... #>
+            if line.startswith("<#"):
+                in_block_comment = True
+
+            if in_block_comment:
+                if line.endswith("#>"):
+                    in_block_comment = False
+                continue
+
+            if not line:
+                continue
+
+            if line.startswith("#"):
+                continue
+
+            minified.append(line)
+
+        return "\n".join(minified)
+
     def get_os_data(self, instance_name: str = "MSSQLSERVER") -> ExecutionResult:
         """
         Execute Get-SqlServerOSData.ps1 remotely.
@@ -77,7 +112,7 @@ class ScriptExecutor:
         Returns:
             ExecutionResult with parsed OS data
         """
-        script_path = SCRIPTS_DIR / "Get-SqlServerOSData.ps1"
+        script_path = _get_scripts_dir() / "Get-SqlServerOSData.ps1"
 
         if not script_path.exists():
             return ExecutionResult(
@@ -89,11 +124,12 @@ class ScriptExecutor:
         # Read and parameterize script
         script_content = script_path.read_text(encoding="utf-8")
 
+        # Minify to avoid "Command line is too long" errors
+        script_content = self._minify_script(script_content)
+
         # Create wrapper that sets parameter and runs
-        wrapper = f"""
-$InstanceName = '{instance_name}'
-{script_content}
-"""
+        # Use single line if possible or minimal newlines
+        wrapper = f"$InstanceName='{instance_name}';{script_content}"
 
         return self._execute_json_script(wrapper, "Get-SqlServerOSData.ps1")
 
@@ -114,7 +150,7 @@ $InstanceName = '{instance_name}'
         Returns:
             ExecutionResult with restart status
         """
-        script_path = SCRIPTS_DIR / "Restart-SqlServerService.ps1"
+        script_path = _get_scripts_dir() / "Restart-SqlServerService.ps1"
 
         if not script_path.exists():
             return ExecutionResult(
@@ -151,7 +187,7 @@ $StartTimeoutSeconds = {start_timeout}
         Returns:
             ExecutionResult with protocol change status
         """
-        script_path = SCRIPTS_DIR / "Set-ClientProtocol.ps1"
+        script_path = _get_scripts_dir() / "Set-ClientProtocol.ps1"
 
         if not script_path.exists():
             return ExecutionResult(

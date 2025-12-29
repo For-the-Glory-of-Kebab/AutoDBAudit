@@ -97,18 +97,31 @@ def build_findings_map(findings: list[dict[str, Any]]) -> dict[str, dict[str, An
     return {f.get("entity_key", ""): f for f in findings if f.get("entity_key")}
 
 
-def extract_server_instance(entity_key: str) -> tuple[str, str]:
+def extract_server_instance(
+    entity_key: str,
+    finding: dict[str, Any] | None = None,
+) -> tuple[str, str]:
     """
-    Extract server and instance from an entity key.
+    Extract server and instance from an entity key or finding dict.
 
     Keys have format: Type|Server|Instance|... or Server|Instance|...
+    But for UUID-based keys like Type|UUID, we need the finding dict.
 
     Args:
         entity_key: The entity key to parse
+        finding: Optional finding dict with server_name/instance_name fields
 
     Returns:
         Tuple of (server, instance)
     """
+    # First try to get from finding dict (most reliable)
+    if finding:
+        server = finding.get("server_name") or finding.get("server") or ""
+        instance = finding.get("instance_name") or finding.get("instance") or ""
+        if server:
+            return server, instance or ""
+
+    # Parse from entity key
     parts = entity_key.split("|")
 
     if len(parts) >= 3:
@@ -123,11 +136,55 @@ def extract_server_instance(entity_key: str) -> tuple[str, str]:
             "trigger",
             "protocol",
             "encryption",
+            "db_user",
+            "db_role",
+            "db_role_member",
+            "permission",
+            "db_permission",
+            "linked_server",
+            "orphaned_user",
+            "audit_settings",
+            "sensitive_role",
+            "role_member",
+            "server_role_member",
+            "instance",
+            "version",
         }
         if parts[0].lower() in known_types:
             return parts[1], parts[2]
 
+    # Fallback for legacy format: Server|Instance|...
     if len(parts) >= 2:
+        # DON'T return parts[0], parts[1] blindly - might be type|uuid
+        # Check if parts[0] looks like a type
+        known_types = {
+            "sa_account",
+            "login",
+            "config",
+            "service",
+            "database",
+            "backup",
+            "trigger",
+            "protocol",
+            "encryption",
+            "db_user",
+            "db_role",
+            "db_role_member",
+            "permission",
+            "db_permission",
+            "linked_server",
+            "orphaned_user",
+            "audit_settings",
+            "sensitive_role",
+            "role_member",
+            "server_role_member",
+            "instance",
+            "version",
+        }
+        if parts[0].lower() in known_types:
+            # This is type|something format - can't extract server/instance
+            return "", ""
+        # Assume Server|Instance format
         return parts[0], parts[1]
 
     return parts[0] if parts else "", ""
@@ -191,6 +248,84 @@ def derive_entity_type(entity_key: str) -> EntityType:
     }
 
     return type_map.get(prefix, EntityType.CONFIGURATION)
+
+
+def _extract_entity_name(entity_key: str) -> str:
+    """
+    Extract a human-readable entity name from an entity key.
+
+    Args:
+        entity_key: Full entity key like "login|SERVER|INSTANCE|admin"
+
+    Returns:
+        Human-readable name like "admin" or "xp_cmdshell"
+    """
+    parts = entity_key.split("|")
+    if len(parts) >= 4:
+        # Skip type|server|instance, use remaining
+        return "|".join(parts[3:]) if len(parts) > 4 else parts[3]
+    elif len(parts) >= 3:
+        # server|instance|name OR type|server|instance
+        known_types = {"sa_account", "login", "config", "service", "database", "backup"}
+        if parts[0].lower() in known_types:
+            return parts[2] if len(parts) == 3 else "|".join(parts[2:])
+        return "|".join(parts[2:])
+    elif len(parts) >= 2:
+        return parts[1]
+    return entity_key
+
+
+def _build_detailed_description(
+    change_type: ChangeType,
+    entity_key: str,
+    old_finding: dict,
+    new_finding: dict,
+) -> str:
+    """
+    Build a detailed, human-readable description for the Action sheet.
+
+    Args:
+        change_type: The type of change
+        entity_key: Full entity key
+        old_finding: Previous finding dict
+        new_finding: Current finding dict
+
+    Returns:
+        Detailed description string
+    """
+    entity_name = _extract_entity_name(entity_key)
+    old_status = old_finding.get("status", "Unknown")
+    new_status = new_finding.get("status", "Unknown")
+    reason = new_finding.get("reason", "") or old_finding.get("reason", "")
+
+    if change_type == ChangeType.FIXED:
+        return f"FIXED: '{entity_name}' changed from {old_status} to PASS. {reason}".strip()
+
+    elif change_type == ChangeType.REGRESSION:
+        return f"REGRESSION: '{entity_name}' reverted from PASS to {new_status}. Was previously fixed but now failing again."
+
+    elif change_type == ChangeType.NEW_ISSUE:
+        return f"NEW ISSUE: '{entity_name}' detected with status {new_status}. {reason}".strip()
+
+    elif change_type == ChangeType.EXCEPTION_ADDED:
+        justification = new_finding.get("justification", "")
+        if justification:
+            trunc = (
+                justification[:100] + "..."
+                if len(justification) > 100
+                else justification
+            )
+            return f"EXCEPTION: '{entity_name}' documented with justification: {trunc}"
+        return f"EXCEPTION: '{entity_name}' marked as exception without justification text."
+
+    elif change_type == ChangeType.EXCEPTION_REMOVED:
+        return f"EXCEPTION REMOVED: '{entity_name}' exception cleared - now requires attention."
+
+    elif change_type == ChangeType.EXCEPTION_UPDATED:
+        return f"EXCEPTION UPDATED: '{entity_name}' justification was modified."
+
+    else:
+        return f"{change_type.value}: {entity_name}"
 
 
 # =============================================================================
@@ -264,16 +399,19 @@ def diff_findings(
             instance_was_scanned=instance_scanned,
         )
 
-        # Create change record if loggable
         if transition.should_log:
-            server, instance = extract_server_instance(key)
+            # Use new finding if available, fallback to old finding for server/instance
+            finding_data = new_map.get(key, old_f)
+            server, instance = extract_server_instance(key, finding_data)
             entity_type = derive_entity_type(key)
 
             change = DetectedChange(
                 entity_type=entity_type,
                 entity_key=key,
                 change_type=transition.change_type,
-                description=f"{transition.change_type.value}: {new_reason or key}",
+                description=_build_detailed_description(
+                    transition.change_type, key, old_f, new_map.get(key, {})
+                ),
                 risk_level=(
                     RiskLevel.HIGH
                     if transition.change_type == ChangeType.REGRESSION
@@ -322,14 +460,16 @@ def diff_findings(
         )
 
         if transition.should_log and transition.change_type == ChangeType.NEW_ISSUE:
-            server, instance = extract_server_instance(key)
+            server, instance = extract_server_instance(key, new_f)
             entity_type = derive_entity_type(key)
 
             change = DetectedChange(
                 entity_type=entity_type,
                 entity_key=key,
                 change_type=ChangeType.NEW_ISSUE,
-                description=f"New Issue: {new_f.get('reason', key)}",
+                description=_build_detailed_description(
+                    ChangeType.NEW_ISSUE, key, {}, new_f
+                ),
                 risk_level=RiskLevel.HIGH,
                 new_value=new_f.get("status"),
                 server=server,

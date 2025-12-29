@@ -4,6 +4,9 @@ Rich-formatted CLI help display.
 Provides colorful, dynamic help output for the AutoDBAudit CLI.
 """
 
+import sys
+from pathlib import Path
+
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
@@ -11,6 +14,20 @@ from rich.text import Text
 from rich import box
 
 console = Console()
+
+
+def _get_exe_name() -> str:
+    """Get executable name - handles PyInstaller frozen mode."""
+    if getattr(sys, "frozen", False):
+        # Running as PyInstaller exe
+        return Path(sys.executable).name
+    else:
+        # Running as Python script
+        return "{EXE_NAME}"
+
+
+# Cached for all help text
+EXE_NAME = _get_exe_name()
 
 
 def print_main_help() -> None:
@@ -35,7 +52,7 @@ def print_main_help() -> None:
     # Usage
     console.print("[bold yellow]USAGE:[/bold yellow]")
     console.print(
-        "  python main.py [bright_cyan]<command>[/bright_cyan] [dim][options][/dim]\n"
+        f"  {EXE_NAME} [bright_cyan]<command>[/bright_cyan] [dim][options][/dim]\n"
     )
 
     # Commands table
@@ -63,6 +80,7 @@ def print_main_help() -> None:
     commands.add_row(
         "util", "Utilities & diagnostics", "--check-drivers, --validate-config"
     )
+    commands.add_row("prepare", "Prepare remote access", "--status, --enable, --revert")
 
     console.print(
         Panel(
@@ -73,17 +91,17 @@ def print_main_help() -> None:
     # Quick examples
     console.print("\n[bold yellow]QUICK START:[/bold yellow]")
     examples = [
-        ("Start new audit:", 'python main.py audit --new --name "Q4 2024 Audit"'),
-        ("List audits:", "python main.py audit --list"),
-        ("Sync progress:", "python main.py sync --audit-id 1"),
-        ("Generate scripts:", "python main.py remediate --generate --audit-id 1"),
+        ("Start new audit:", f'{EXE_NAME} audit --new --name "Q4 2024 Audit"'),
+        ("List audits:", f"{EXE_NAME} audit --list"),
+        ("Sync progress:", f"{EXE_NAME} sync --audit-id 1"),
+        ("Generate scripts:", f"{EXE_NAME} remediate --generate --audit-id 1"),
     ]
     for label, cmd in examples:
         console.print(f"  [dim]{label}[/dim]")
         console.print(f"    [bright_green]{cmd}[/bright_green]")
 
     console.print(
-        "\n[dim]Use[/dim] [bright_cyan]python main.py <command> --help[/bright_cyan] [dim]for command-specific options.[/dim]\n"
+        f"\n[dim]Use[/dim] [bright_cyan]{EXE_NAME} <command> --help[/bright_cyan] [dim]for command-specific options.[/dim]\n"
     )
 
 
@@ -110,10 +128,10 @@ def print_audit_help() -> None:
 
     console.print("\n[bold yellow]EXAMPLES:[/bold yellow]")
     console.print(
-        '  [green]python main.py audit --new --name "Monthly Security Audit"[/green]'
+        f'  [green]{EXE_NAME} audit --new --name "Monthly Security Audit"[/green]'
     )
     console.print(
-        "  [green]python main.py audit --id 3[/green]  [dim]# Resume audit #3[/dim]"
+        f"  [green]{EXE_NAME} audit --id 3[/green]  [dim]# Resume audit #3[/dim]"
     )
     console.print()
 
@@ -138,7 +156,7 @@ def print_sync_help() -> None:
     console.print("\n[bold yellow]WORKFLOW:[/bold yellow]")
     console.print("  [dim]1.[/dim] Edit Excel → Add notes, exceptions, justifications")
     console.print(
-        "  [dim]2.[/dim] Run sync → [green]python main.py sync --audit-id 1[/green]"
+        f"  [dim]2.[/dim] Run sync → [green]{EXE_NAME} sync --audit-id 1[/green]"
     )
     console.print("  [dim]3.[/dim] Review → Regressions ↩, Fixed ✓, New Issues tracked")
     console.print()
@@ -196,6 +214,40 @@ def print_finalize_help() -> None:
         "  [dim]•[/dim] Finalization is [bold]irreversible[/bold] (use [bright_cyan]definalize[/bright_cyan] to revert)"
     )
     console.print("  [dim]•[/dim] All unresolved issues will be marked as baseline")
+    console.print()
+
+
+def print_prepare_help() -> None:
+    """Print help for the prepare command."""
+    console.print("\n[bold cyan]🔓 PREPARE COMMAND[/bold cyan]")
+    console.print("[dim]Setup remote access (WinRM, etc.) on target servers.[/dim]\n")
+
+    table = Table(show_header=True, header_style="bold", box=box.ROUNDED)
+    table.add_column("Option", style="bright_cyan", width=25)
+    table.add_column("Description", style="white")
+
+    table.add_row("--targets <file>", "Target config file")
+    table.add_row("--status", "Show preparation status")
+    table.add_row("--enable", "Run automated setup (default)")
+    table.add_row("--revert", "Revert changes to original state")
+    table.add_row("--mark-accessible <ID>", "Manually mark ready")
+
+    console.print(table)
+
+    console.print("\n[bold yellow]STRATEGY:[/bold yellow]")
+    console.print("  AutoDBAudit uses an 8-layer access strategy:")
+    layers = [
+        "1. WinRM (Existing)",
+        "2. WMI",
+        "3. PsExec",
+        "4. schtasks",
+        "5. SC.exe",
+        "6. reg.exe",
+        "7. PowerShell Direct",
+        "8. Manual Script",
+    ]
+    for layer in layers:
+        console.print(f"    [dim]{layer}[/dim]")
     console.print()
 
 

@@ -403,9 +403,101 @@ The following documents are superseded by this one:
 
 ## Next Steps
 
-1. ✅ **Real-DB E2E Architecture**: Planned (this document)
-2. 🔄 **Implement Real-DB Tests**: `tests/real_db/` with L1-L8 layers
-3. 🔄 **Add Missing Dependencies**: pytest-ordering, pytest-timeout, transitions
-4. 🔜 **Coverage Report**: Generate pytest-cov coverage report
-5. 🔜 **CI Integration**: Add GitHub Actions (mock tests only)
+1. ✅ **Real-DB Test Infrastructure**: run.ps1, CLIRunner, RealDBTestContext
+2. ✅ **All CLI Commands Tested**: audit, sync, finalize, prepare, remediate
+3. ✅ **PyInstaller Paths Fixed**: get_base_path() used everywhere
+4. 🔄 **Run Full Suite Against SQL**: Collect all failures
+5. 🔜 **Fix Discovered Bugs**: Each failure = bug found
 
+---
+
+## State Transition Matrix (Complete)
+
+The following matrix defines all valid state transitions:
+
+| Old Result | Old Annotation | New Result | Expected Transition |
+|------------|----------------|------------|-------------------|
+| None | None | FAIL | NEW_ISSUE |
+| None | None | WARN | NEW_ISSUE |
+| None | None | PASS | NEW_PASS |
+| PASS | None | FAIL | REGRESSION |
+| PASS | Notes | FAIL | REGRESSION |
+| FAIL | None | PASS | FIXED |
+| FAIL | Notes | PASS | FIXED (notes kept) |
+| FAIL | Justification | PASS | FIXED (just kept, status cleared) |
+| FAIL | Exception | PASS | FIXED (just kept, status cleared) |
+| FAIL | None | FAIL | NO_CHANGE |
+| FAIL | Notes | FAIL | NO_CHANGE |
+| FAIL | Exception | FAIL | NO_CHANGE (still exception) |
+| WARN | None | PASS | FIXED |
+| WARN | Exception | PASS | FIXED |
+
+### Exception State Rules
+
+```
+Exception = (Result ∈ {FAIL, WARN}) AND (Justification OR ReviewStatus = Exception)
+
+When PASS + Exception:
+  - Keep justification (documentation)
+  - Clear review_status
+  - Clear indicator (✓ → blank)
+  - Log as FIXED, not EXCEPTION_REMOVED
+```
+
+---
+
+## Known Coverage Gaps (What's NOT Tested)
+
+### Partially Covered
+- [ ] **PSRemote multi-transport fallback**: WinRM → PsExec → direct
+- [ ] **Remediation script execution**: Scripts generated, not applied
+- [ ] **Service restart via PSRemote**: Script exists, unexecuted
+- [ ] **2-way credential delegation**: Kerberos chain untested
+
+### Not Covered (Requires Manual)
+- [ ] **PyInstaller frozen app**: Must build and test manually
+- [ ] **Windows service installation**: NSSM/sc.exe integration
+- [ ] **AD authentication**: Requires domain environment
+- [ ] **Network failures mid-sync**: Hard to simulate reliably
+
+### Intentionally Excluded
+- [ ] **Destructive SQL changes**: Won't DROP LOGIN/ALTER without consent
+- [ ] **Production data**: All tests use test instances only
+
+---
+
+## How to Run Tests
+
+### Quick Collection (See What Exists)
+```powershell
+.\scripts\run_pytest.ps1 tests/real_db/ --collect-only -q
+```
+
+### Full Real-DB Suite (Long Running, ~10-15 min)
+```powershell
+.\scripts\run_pytest.ps1 tests/real_db/ -v --timeout=600
+```
+
+### Specific Layers
+```powershell
+# Foundation (fast, ~1 min)
+.\scripts\run_pytest.ps1 tests/real_db/L1_foundation/ -v
+
+# CLI Commands (~7 min)
+.\scripts\run_pytest.ps1 tests/real_db/L6_cli/ -v --timeout=600
+
+# State Transitions
+.\scripts\run_pytest.ps1 tests/real_db/L3_state/ -v
+
+# Error Handling
+.\scripts\run_pytest.ps1 tests/real_db/L7_error/ -v
+```
+
+### Save Output to File
+```powershell
+.\scripts\run_pytest.ps1 tests/real_db/ -v --timeout=600 2>&1 | Tee-Object -FilePath output\test_results.txt
+```
+
+---
+
+## Last Updated: 2025-12-26 18:10

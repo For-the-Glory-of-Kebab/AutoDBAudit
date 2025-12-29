@@ -40,11 +40,11 @@ ORPHANED_USER_COLUMNS = (
     ColumnDef("Server", 18, Alignments.LEFT),  # Column C
     ColumnDef("Instance", 15, Alignments.LEFT),  # Column D
     ColumnDef("Database", 20, Alignments.LEFT),  # Column E
-    ColumnDef("User Name", 25, Alignments.LEFT),  # Column F
+    ColumnDef("User Name", 25, Alignments.CENTER),  # Column F
     ColumnDef("Type", 16, Alignments.CENTER),  # Column G
     ColumnDef("Status", 14, Alignments.CENTER),  # Column H
     STATUS_COLUMN,  # Review Status dropdown
-    ColumnDef("Justification", 45, Alignments.LEFT, is_manual=True),
+    ColumnDef("Justification", 45, Alignments.CENTER_WRAP, is_manual=True),
     LAST_REVIEWED_COLUMN,
 )
 
@@ -71,7 +71,9 @@ class OrphanedUserSheetMixin(ServerGroupMixin, BaseSheetMixin):
         at the collection layer.
         """
         if self._orphaned_user_sheet is None:
-            self._orphaned_user_sheet = self._ensure_sheet_with_uuid(ORPHANED_USER_CONFIG)
+            self._orphaned_user_sheet = self._ensure_sheet_with_uuid(
+                ORPHANED_USER_CONFIG
+            )
             self._init_grouping(self._orphaned_user_sheet, ORPHANED_USER_CONFIG)
             self._add_orphan_dropdowns()
 
@@ -79,7 +81,10 @@ class OrphanedUserSheetMixin(ServerGroupMixin, BaseSheetMixin):
 
         # Track grouping and get row color
         row_color = self._track_group(
-            server_name, instance_name, ORPHANED_USER_CONFIG.name
+            server_name,
+            instance_name,
+            ORPHANED_USER_CONFIG.name,
+            database_name=database_name,
         )
 
         # Format user type with icon
@@ -102,7 +107,7 @@ class OrphanedUserSheetMixin(ServerGroupMixin, BaseSheetMixin):
             "",  # Last Revised
         ]
 
-        row, row_uuid = self._write_row_with_uuid(ws, ORPHANED_USER_CONFIG, data)
+        row, _ = self._write_row_with_uuid(ws, ORPHANED_USER_CONFIG, data)
 
         # All orphaned users need action - show ⏳
         apply_action_needed_styling(ws.cell(row=row, column=2), True)
@@ -128,7 +133,9 @@ class OrphanedUserSheetMixin(ServerGroupMixin, BaseSheetMixin):
         This provides assurance that the instance was scanned.
         """
         if self._orphaned_user_sheet is None:
-            self._orphaned_user_sheet = self._ensure_sheet_with_uuid(ORPHANED_USER_CONFIG)
+            self._orphaned_user_sheet = self._ensure_sheet_with_uuid(
+                ORPHANED_USER_CONFIG
+            )
             self._init_grouping(self._orphaned_user_sheet, ORPHANED_USER_CONFIG)
             self._add_orphan_dropdowns()
 
@@ -151,7 +158,7 @@ class OrphanedUserSheetMixin(ServerGroupMixin, BaseSheetMixin):
             "",  # Last Revised
         ]
 
-        row, row_uuid = self._write_row_with_uuid(ws, ORPHANED_USER_CONFIG, data)
+        row, _ = self._write_row_with_uuid(ws, ORPHANED_USER_CONFIG, data)
 
         # Apply row color to data columns
         self._apply_row_color(row, row_color, data_cols=[3, 4, 5, 6, 7], ws=ws)

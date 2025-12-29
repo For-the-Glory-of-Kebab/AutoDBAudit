@@ -34,6 +34,9 @@ class SqlTarget:
     enabled: bool = True  # Whether to include in audit
     ip_address: str | None = None  # Optional IP address override
     name: str | None = None  # Human-readable display name for reports
+    os_credential_file: str | None = None  # Separate credential file for OS/PSRemoting
+    os_username: str | None = None  # OS username for PSRemoting
+    os_password: str | None = None  # OS password for PSRemoting
 
     @property
     def display_name(self) -> str:
@@ -213,6 +216,16 @@ class ConfigLoader:
                 username = creds.get("username", username)
                 password = creds.get("password")
 
+            # Load OS credentials from file if specified
+            os_credential_file = item.get("os_credential_file")
+            os_username = item.get("os_username")
+            os_password = item.get("os_password")
+
+            if os_credential_file and not os_password:
+                os_creds = self._load_credential_file(os_credential_file)
+                os_username = os_creds.get("username", os_username)
+                os_password = os_creds.get("password")
+
             target = SqlTarget(
                 id=item["id"],
                 server=item["server"],
@@ -227,6 +240,9 @@ class ConfigLoader:
                 enabled=item.get("enabled", True),
                 ip_address=item.get("ip_address"),
                 name=item.get("name"),
+                os_credential_file=os_credential_file,
+                os_username=os_username,
+                os_password=os_password,
             )
             targets.append(target)
             logger.debug("Loaded target: %s", target.display_name)

@@ -47,9 +47,9 @@ SA_ACCOUNT_COLUMNS = (
     ColumnDef("Current Name", 20, Alignments.LEFT),  # Column H
     ColumnDef("Default DB", 15, Alignments.LEFT),  # Column I
     STATUS_COLUMN,  # Column J: Review Status dropdown
-    ColumnDef("Justification", 40, Alignments.LEFT, is_manual=True),  # Column K
+    ColumnDef("Justification", 40, Alignments.CENTER_WRAP, is_manual=True),  # Column K
     LAST_REVIEWED_COLUMN,  # Column L
-    ColumnDef("Notes", 35, Alignments.LEFT_WRAP, is_manual=True),  # Column M
+    ColumnDef("Notes", 35, Alignments.CENTER_WRAP, is_manual=True),  # Column M
 )
 
 SA_ACCOUNT_CONFIG = SheetConfig(name="SA Account", columns=SA_ACCOUNT_COLUMNS)

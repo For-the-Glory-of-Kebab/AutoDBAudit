@@ -42,7 +42,7 @@ CONFIG_COLUMNS = (
     ColumnDef("Status", 12, Alignments.CENTER, is_status=True),  # Column H
     ColumnDef("Risk", 10, Alignments.CENTER),  # Column I
     STATUS_COLUMN,  # Review Status dropdown
-    ColumnDef("Justification", 45, Alignments.LEFT, is_manual=True),
+    ColumnDef("Justification", 45, Alignments.CENTER_WRAP, is_manual=True),
     LAST_REVIEWED_COLUMN,
 )
 
@@ -72,7 +72,11 @@ class ConfigSheetMixin(ServerGroupMixin, BaseSheetMixin):
         ws = self._config_sheet
 
         # Track grouping and get row color
-        row_color = self._track_group(server_name, instance_name, CONFIG_CONFIG.name)
+        # Track grouping and get row color
+        # Pass setting_name as the "database_name" discriminator to prevent detailed rows from merging into one block
+        row_color = self._track_group(
+            server_name, instance_name, CONFIG_CONFIG.name, setting_name
+        )
 
         # Determine compliance status
         status = "pass" if current_value == required_value else "fail"

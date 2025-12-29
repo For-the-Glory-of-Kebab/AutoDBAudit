@@ -25,7 +25,7 @@ class LayerTestContext:
 
     def __init__(self, temp_dir: Path):
         # Import here to ensure root conftest has added src to path
-        from autodbaudit.infrastructure.sqlite.history_store import HistoryStore
+        from autodbaudit.infrastructure.sqlite.store import HistoryStore
         from autodbaudit.application.annotation_sync import AnnotationSyncService
 
         self.temp_dir = temp_dir

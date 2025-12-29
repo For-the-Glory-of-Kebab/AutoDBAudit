@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from autodbaudit.infrastructure.config_loader import ConfigLoader, SqlTarget
 from autodbaudit.infrastructure.sql.connector import SqlConnector
@@ -24,6 +24,30 @@ if TYPE_CHECKING:
     pass
 
 logger = logging.getLogger(__name__)
+
+
+class ThreadSafeWriterWrapper:
+    """
+    Wraps EnhancedReportWriter with a thread lock.
+    Intercepts all attribute access and method calls to ensure thread safety.
+    """
+
+    def __init__(self, writer: EnhancedReportWriter, lock: Any) -> None:
+        self._writer = writer
+        self._lock = lock
+
+    def __getattr__(self, name: str) -> Any:
+        attr = getattr(self._writer, name)
+
+        if callable(attr):
+
+            def locked_method(*args, **kwargs):
+                with self._lock:
+                    return attr(*args, **kwargs)
+
+            return locked_method
+
+        return attr
 
 
 class AuditService:
@@ -125,13 +149,20 @@ class AuditService:
     ) -> tuple[EnhancedReportWriter, int, dict]:
         """
         Core audit logic: Connects, Scans, Collects.
+        Uses ThreadPoolExecutor for parallel execution.
 
         Returns:
             (populated_writer, audit_run_id, summary_counts)
         """
         logger.info("=" * 60)
-        logger.info("Starting SQL Server Audit Scan")
+        logger.info("Starting SQL Server Audit Scan (Parallel)")
         logger.info("=" * 60)
+
+        import concurrent.futures
+        import threading
+
+        # Thread-safety lock for Excel writer
+        writer_lock = threading.Lock()
 
         # Try to load audit config for metadata
         try:
@@ -145,7 +176,8 @@ class AuditService:
         final_org = organization or config_org or "Security Audit"
         audit_name = "SQL Server Security Audit"
 
-        # Initialize SQLite history store
+        # Initialize SQLite history store (Main thread only)
+        # We will create per-thread stores for workers
         store = self._get_history_store()
         audit_run = store.begin_audit_run(organization=final_org)
         self._audit_run_id = audit_run.id
@@ -163,43 +195,59 @@ class AuditService:
         success_count = 0
         error_count = 0
 
+        # Determine max workers
+        max_workers = 5  # Safe default for SQL connections
+
+        # Load SQL targets
         try:
-            # Load SQL targets
             targets = self.config_loader.load_sql_targets(targets_file)
             logger.info("Loaded %d SQL targets from %s", len(targets), targets_file)
-
-            # Process each target
-            for target in targets:
-                if not target.enabled:
-                    logger.info("Skipping disabled target: %s", target.display_name)
-                    continue
-
-                try:
-                    self._process_target(target, writer, store, expected_builds)
-                    success_count += 1
-                except Exception as e:
-                    error_count += 1
-                    logger.error(
-                        "Failed to process target %s: %s", target.display_name, e
-                    )
-
-            # Mark audit run as complete
-            status = "completed" if error_count == 0 else "completed_with_errors"
-            store.complete_audit_run(audit_run.id, status)
-
-            summary_counts = {"success": success_count, "error": error_count}
-
-            logger.info(
-                "Scan completed: %d succeeded, %d failed", success_count, error_count
-            )
-            return writer, audit_run.id, summary_counts
-
         except Exception as e:
-            # Mark audit run as failed
-            if self._audit_run_id:
-                store.complete_audit_run(self._audit_run_id, "failed")
-            logger.exception("Audit failed with fatal error: %s", e)
-            raise RuntimeError(f"Audit failed: {e}") from e
+            store.complete_audit_run(audit_run.id, "failed")
+            raise RuntimeError(f"Failed to load targets: {e}") from e
+
+        # Define wrapper for parallel execution
+        def process_target_safe(target_config):
+            # Each thread gets its own Store connection
+            thread_store = HistoryStore(self.output_dir / "audit_history.db")
+            try:
+                # Pass lock to _process_target (needs update)
+                self._process_target(
+                    target_config, writer, thread_store, expected_builds, writer_lock
+                )
+                return True
+            except Exception as exc:
+                logger.error("Error processing %s: %s", target_config.display_name, exc)
+                return False
+            finally:
+                thread_store.close()
+
+        # Execute in parallel
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_target = {
+                executor.submit(process_target_safe, t): t for t in targets if t.enabled
+            }
+
+            for future in concurrent.futures.as_completed(future_to_target):
+                target = future_to_target[future]
+                try:
+                    if future.result():
+                        success_count += 1
+                    else:
+                        error_count += 1
+                except Exception:
+                    error_count += 1
+
+        # Mark audit run as complete
+        status = "completed" if error_count == 0 else "completed_with_errors"
+        store.complete_audit_run(audit_run.id, status)
+
+        summary_counts = {"success": success_count, "error": error_count}
+
+        logger.info(
+            "Scan completed: %d succeeded, %d failed", success_count, error_count
+        )
+        return writer, audit_run.id, summary_counts
 
     def _process_target(
         self,
@@ -207,6 +255,7 @@ class AuditService:
         writer: EnhancedReportWriter,
         store: HistoryStore,
         expected_builds: dict[str, str] | None = None,
+        writer_lock: Any | None = None,
     ) -> None:
         """
         Process a single SQL target.
@@ -218,8 +267,14 @@ class AuditService:
             writer: Excel report writer
             store: SQLite history store
             expected_builds: Dict mapping SQL year to expected version
+            writer_lock: Optional lock for thread-safe writing
         """
         logger.info("Processing target: %s", target.display_name)
+
+        # Wrap writer if lock provided
+        safe_writer = writer
+        if writer_lock:
+            safe_writer = ThreadSafeWriterWrapper(writer, writer_lock)  # type: ignore
 
         # Create connector
         connector = SqlConnector(
@@ -267,10 +322,11 @@ class AuditService:
         query_provider = get_query_provider(version_info.version_major)
 
         # Create collector with SQLite connection for findings storage
+        # Pass the SAFE writer
         collector = AuditDataCollector(
             connector,
             query_provider,
-            writer,
+            safe_writer,
             db_conn=store._get_connection(),
             audit_run_id=self._audit_run_id,
             instance_id=instance.id,

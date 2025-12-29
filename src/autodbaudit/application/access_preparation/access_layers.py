@@ -109,6 +109,129 @@ class AccessLayer(ABC):
         return "unknown", "Check logs for details"
 
 
+class Layer0_LocalDirect(AccessLayer):
+    """Layer 0: Direct local execution (bypasses network)."""
+
+    name = "LocalDirect"
+    timeout = 60
+
+    def _is_local(self) -> bool:
+        """Check if target is current machine."""
+        import platform
+        import socket
+
+        normalized = self.hostname.lower()
+        if normalized in ("localhost", "127.0.0.1", ".", "::1"):
+            return True
+
+        try:
+            return (
+                normalized == platform.node().lower()
+                or normalized == socket.gethostname().lower()
+            )
+        except Exception:
+            return False
+
+    def test_access(self) -> bool:
+        """Always accessible if local."""
+        return self._is_local()
+
+    def enable_winrm(self) -> LayerResult:
+        """
+        Enable WinRM using an aggressive, multi-layered local approach.
+
+        Actions:
+        1. Enable-PSRemoting
+        2. Set WinRM service to Auto and Start it
+        3. Configure TrustedHosts to * (crucial for localhost creds)
+        4. Open Firewall Port 5985
+        5. Set Registry keys (DisableLoopbackCheck, LocalAccountTokenFilterPolicy)
+        6. VERIFY access by actually creating a session
+        """
+        if not self._is_local():
+            return LayerResult(
+                layer=self.name,
+                success=False,
+                error_type="not_applicable",
+                error_message="Target is not local machine",
+            )
+
+        # 1. Aggressive Enablement Script
+        # We use a single large block to minimize subprocess overhead and context switching
+        cmd = (
+            'powershell -NoProfile -ExecutionPolicy Bypass -Command "'
+            # A. Basic Enable
+            "Enable-PSRemoting -Force -SkipNetworkProfileCheck; "
+            # B. Service Enforcement
+            "Set-Service WinRM -StartupType Automatic; "
+            "Start-Service WinRM; "
+            # C. Registry: Allow Loopback (Required for using credentials against localhost)
+            "New-ItemProperty -Path HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa -Name DisableLoopbackCheck -Value 1 -PropertyType DWord -Force; "
+            # D. Registry: Local Account Token Filter (Allows admin shares with local accounts)
+            "New-ItemProperty -Path HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System -Name LocalAccountTokenFilterPolicy -Value 1 -PropertyType DWord -Force; "
+            # E. Trusted Hosts (Bypass auth restrictions for localhost)
+            "Set-Item WSMan:\\localhost\\Client\\TrustedHosts -Value * -Force; "
+            "Restart-Service WinRM; "
+            # F. Firewall (Ensure port 5985 is open)
+            "New-NetFirewallRule -Name 'AutoDBAudit_WinRM' -DisplayName 'AutoDBAudit WinRM' -Enabled True -Direction Inbound -Protocol TCP -Action Allow -LocalPort 5985 -ErrorAction SilentlyContinue; "
+            '"'
+        )
+
+        code, stdout, stderr = self._run_cmd(cmd)
+
+        if code != 0:
+            # Check for elevation error
+            if (
+                "run as administrator" in stdout.lower()
+                or "run as administrator" in stderr.lower()
+                or "access is denied" in stderr.lower()
+            ):
+                return LayerResult(
+                    layer=self.name,
+                    success=False,
+                    error_type="auth",
+                    error_message=f"Access Denied during setup. Run As Admin required.\nDetails: {stderr}",
+                    remediation_hint="Right-click -> Run as Administrator",
+                )
+
+            error_type, hint = self._classify_error(stderr or stdout)
+            return LayerResult(
+                layer=self.name,
+                success=False,
+                error_type=error_type,
+                error_message=f"Setup failed: {stderr or stdout}",
+                remediation_hint=hint,
+            )
+
+        # 2. Strict Verification
+        # We successfully ran the setup commands, but we must PROVE it works.
+        # Try to actually create a session to localhost.
+        verify_cmd = (
+            'powershell -NoProfile -ExecutionPolicy Bypass -Command "'
+            "$s = New-PSSession -ComputerName localhost; "
+            "if ($s) { Remove-PSSession $s; exit 0 } else { exit 1 }"
+            '"'
+        )
+
+        v_code, v_stdout, v_stderr = self._run_cmd(verify_cmd)
+
+        if v_code == 0:
+            return LayerResult(
+                layer=self.name,
+                success=True,
+                changes_made=[{"action": "local_direct_enable_verified"}],
+            )
+        else:
+            # Setup seemed to work, but connection still fails
+            return LayerResult(
+                layer=self.name,
+                success=False,
+                error_type="verification_failed",
+                error_message=f"Setup commands ran, but verification connection failed.\nVerify Error: {v_stderr} {v_stdout}",
+                remediation_hint="Check if port 5985 is blocked by 3rd party antivirus or firewall.",
+            )
+
+
 class Layer1_WinRM(AccessLayer):
     """Layer 1: Test existing WinRM access."""
 
@@ -116,8 +239,19 @@ class Layer1_WinRM(AccessLayer):
     timeout = 60
 
     def test_access(self) -> bool:
-        """Test if WinRM already works."""
-        cmd = f'powershell -NoProfile -Command "Test-WSMan -ComputerName {self.hostname} -ErrorAction Stop"'
+        """Test if WinRM works by establishing a real session."""
+        # Test-WSMan is insufficient (only checks port/service).
+        # We must verify a session can be created (auth + configuration).
+        creds = ""
+        if self.username and self.password:
+            creds = f"-Credential (New-Object System.Management.Automation.PSCredential ('{self.username}', (ConvertTo-SecureString '{self.password}' -AsPlainText -Force)))"
+
+        cmd = (
+            'powershell -NoProfile -ExecutionPolicy Bypass -Command "'
+            f"$s = New-PSSession -ComputerName {self.hostname} {creds} -ErrorAction Stop; "
+            "if ($s) { Remove-PSSession $s; exit 0 } else { exit 1 }"
+            '"'
+        )
         code, stdout, stderr = self._run_cmd(cmd)
         return code == 0
 
@@ -181,8 +315,14 @@ class Layer2_WMI(AccessLayer):
         cmd = f'wmic /node:"{self.hostname}" {creds} service where name="WinRM" call ChangeStartMode StartMode="Automatic"'
         self._run_cmd(cmd)
 
-        # Run winrm quickconfig via process create
-        cmd = f'wmic /node:"{self.hostname}" {creds} process call create "cmd /c winrm quickconfig -quiet"'
+        # Run Enable-PSRemoting via process create (more robust than winrm quickconfig)
+        # Also set LocalAccountTokenFilterPolicy for local admin access
+        cmd = (
+            f'wmic /node:"{self.hostname}" {creds} process call create '
+            f'"powershell -NoProfile -Command \\"Enable-PSRemoting -Force -SkipNetworkProfileCheck; '
+            f"New-ItemProperty -Path HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System -Name LocalAccountTokenFilterPolicy -Value 1 -PropertyType DWord -Force; "
+            f'New-ItemProperty -Path HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa -Name DisableLoopbackCheck -Value 1 -PropertyType DWord -Force\\""'
+        )
         code, stdout, stderr = self._run_cmd(cmd)
 
         return LayerResult(
@@ -247,7 +387,15 @@ class Layer3_PsExec(AccessLayer):
             creds = f"-u {self.username} -p {self.password}"
 
         # Enable WinRM via PsExec
-        cmd = f'"{psexec}" \\\\{self.hostname} {creds} -accepteula -s winrm quickconfig -quiet'
+
+        # Includes Enable-PSRemoting, LocalAccountTokenFilterPolicy, and DisableLoopbackCheck
+        cmd = (
+            f'"{psexec}" \\\\{self.hostname} {creds} -accepteula -s powershell -NoProfile -Command "'
+            f"Enable-PSRemoting -Force -SkipNetworkProfileCheck; "
+            f"New-ItemProperty -Path HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System -Name LocalAccountTokenFilterPolicy -Value 1 -PropertyType DWord -Force; "
+            f"New-ItemProperty -Path HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa -Name DisableLoopbackCheck -Value 1 -PropertyType DWord -Force"
+            f'"'
+        )
         code, stdout, stderr = self._run_cmd(cmd)
 
         if code != 0:
@@ -455,6 +603,7 @@ class AccessLayerOrchestrator:
 
         # Initialize layers in order
         self.layers: list[AccessLayer] = [
+            Layer0_LocalDirect(hostname, username, password),
             Layer1_WinRM(hostname, username, password),
             Layer2_WMI(hostname, username, password),
             Layer3_PsExec(hostname, username, password),

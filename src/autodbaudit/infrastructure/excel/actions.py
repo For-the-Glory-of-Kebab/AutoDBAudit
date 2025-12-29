@@ -38,8 +38,11 @@ from autodbaudit.infrastructure.excel_styles import (
     Fills,
     Icons,
     Fonts,
+    Icons,
+    Fonts,
     Borders,
 )
+from openpyxl.styles import PatternFill, Font
 from autodbaudit.infrastructure.excel.base import (
     BaseSheetMixin,
     SheetConfig,
@@ -53,19 +56,19 @@ __all__ = ["ActionSheetMixin", "ACTION_CONFIG"]
 # Changelog columns - simplified for audit trail purpose
 ACTION_COLUMNS = (
     ColumnDef("ID", 6, Alignments.CENTER),
-    ColumnDef("Server", 16, Alignments.LEFT),
-    ColumnDef("Instance", 14, Alignments.LEFT),
-    ColumnDef("Category", 20, Alignments.LEFT),  # Wider category
-    ColumnDef("Finding", 50, Alignments.LEFT_WRAP),  # Wider finding description
+    ColumnDef("Server", 16, Alignments.CENTER),
+    ColumnDef("Instance", 14, Alignments.CENTER),
+    ColumnDef("Category", 20, Alignments.CENTER),  # Wider category
+    ColumnDef("Finding", 50, Alignments.CENTER_WRAP),  # Wider finding description
     ColumnDef("Risk Level", 12, Alignments.CENTER),
-    ColumnDef("Change Description", 55, Alignments.LEFT_WRAP),  # Wider change desc
+    ColumnDef("Change Description", 55, Alignments.CENTER_WRAP),  # Wider change desc
     ColumnDef(
         "Change Type", 15, Alignments.CENTER, is_status=True
     ),  # Fixed/Regressed/New
     ColumnDef(
-        "Detected Date", 15, Alignments.CENTER
+        "Detected Date", 15, Alignments.CENTER_WRAP
     ),  # When change detected (editable)
-    ColumnDef("Notes", 60, Alignments.LEFT_WRAP, is_manual=True),  # Much wider notes
+    ColumnDef("Notes", 60, Alignments.CENTER_WRAP, is_manual=True),  # Much wider notes
 )
 
 ACTION_CONFIG = SheetConfig(name="Actions", columns=ACTION_COLUMNS)
@@ -74,19 +77,6 @@ ACTION_CONFIG = SheetConfig(name="Actions", columns=ACTION_COLUMNS)
 class ActionSheetMixin(BaseSheetMixin):
     """
     Mixin for Actions sheet functionality.
-
-    Provides the `add_action` method to record changelog entries.
-    Each change is automatically numbered and timestamped with
-    the date it was detected.
-
-    Change Types:
-        - Fixed: Issue was resolved (FAIL → PASS)
-        - Regressed: Issue came back (PASS → FAIL)
-        - New: Issue newly detected
-
-    Attributes:
-        _action_sheet: Reference to the Actions worksheet
-        _action_count: Counter for action ID assignment
     """
 
     _action_sheet = None
@@ -99,104 +89,97 @@ class ActionSheetMixin(BaseSheetMixin):
         category: str,
         finding: str,
         risk_level: str,
-        recommendation: str,  # Now used as "Change Description"
-        status: str = "Open",  # Now used as "Change Type"
+        recommendation: str,  # Change Description
+        status: str = "Open",  # Change Type
         found_date: datetime | None = None,
         notes: str | None = None,
-        action_id: int | None = None,  # DB action ID for row matching
+        action_id: int | None = None,
     ) -> None:
-        """
-        Add a changelog entry row with DB ID for row matching.
-
-        Args:
-            server_name: Server hostname
-            instance_name: SQL Server instance name
-            category: Finding category for grouping
-            finding: Description of what changed
-            risk_level: Severity (Low for fixes, High for regressions)
-            recommendation: Change description (what happened)
-            status: Change type (Closed for fixes, Open for issues)
-            found_date: When change was detected
-            notes: (Optional) User notes/commentary
-            action_id: (Optional) Database action ID for Excel row matching
-        """
+        """Add a changelog entry."""
         import logging
 
         logger = logging.getLogger(__name__)
 
-        ws = self._ensure_sheet(ACTION_CONFIG)
+        # CRITICAL: Assign to self._action_sheet so _finalize_actions can find it
+        if self._action_sheet is None:
+            self._action_sheet = self._ensure_sheet(ACTION_CONFIG)
+        ws = self._action_sheet
 
-        # Use DB ID if provided, otherwise auto-generate
+        # Prioritize DB ID (Rigorous Requirement)
         if action_id is not None:
             display_id = str(action_id)
+            # Update internal counter only if we see a higher ID (to prevent collisions on new rows)
+            if isinstance(action_id, int) and action_id > self._action_count:
+                self._action_count = action_id
         else:
             self._action_count += 1
             display_id = str(self._action_count)
 
-        # Determine status icon
-        status_icon = Icons.PENDING
-        if status.lower() in ("closed", "fixed", "resolved"):
-            status_icon = Icons.PASS  # ✅
-        elif status.lower() in ("exception", "warn"):
-            status_icon = Icons.PASS
-
-        logger.info(
-            "ActionWriter: Adding row ID=%s: %s | %s",
-            display_id,
-            category,
-            finding,
-        )
-
         if found_date is None:
             found_date = datetime.now()
 
+        # Handle "Unknown" server elegantly (though upstream should fix it)
+        srv = (
+            server_name
+            if server_name and server_name.lower() != "unknown"
+            else (server_name or "Unknown")
+        )
+        inst = instance_name or "(Default)"
+
         data = [
             display_id,
-            server_name,
-            instance_name or "(Default)",
+            srv,
+            inst,
             category,
             finding,
             risk_level.title(),
             recommendation,  # Change Description
             None,  # Change Type - styled separately
             format_date(found_date),  # Detected Date
-            notes or "",  # Notes - empty string if None
+            notes or "",  # Notes
         ]
 
         row = self._write_row(ws, ACTION_CONFIG, data)
 
-        # Style Change Type cell (column 8) - handle all status types
+        # Style Change Type cell (column 8)
         status_cell = ws.cell(row=row, column=8)
         status_lower = (
             status.lower().replace("✓", "").replace("⚠", "").replace("⏳", "").strip()
         )
 
+        # Map to Spec Values
         if status_lower == "fixed":
-            status_cell.value = f"{Icons.PASS} Fixed"
+            status_cell.value = "✅ Fixed"
             status_cell.fill = Fills.PASS
             status_cell.font = Fonts.PASS
         elif status_lower == "exception":
-            status_cell.value = f"{Icons.PASS} Exception"
-            status_cell.fill = Fills.PASS
-            status_cell.font = Fonts.PASS
+            status_cell.value = "🛡️ Exception Documented"
+            status_cell.fill = PatternFill(
+                start_color="BBDEFB", end_color="BBDEFB", fill_type="solid"
+            )  # Blue
         elif status_lower == "regression":
-            status_cell.value = f"{Icons.FAIL} Regression"
+            status_cell.value = "❌ Regression"
             status_cell.fill = Fills.FAIL
             status_cell.font = Fonts.FAIL
-        elif status_lower == "closed":
-            status_cell.value = f"{Icons.PASS} Closed"
-            status_cell.fill = Fills.PASS
-            status_cell.font = Fonts.PASS
-        else:  # open, pending, or anything else
-            status_cell.value = f"{Icons.PENDING} Open"
+        elif status_lower == "closed":  # Exception Removed
+            status_cell.value = "🗑️ Exception Removed"
+            status_cell.fill = PatternFill(
+                start_color="E0E0E0", end_color="E0E0E0", fill_type="solid"
+            )  # Gray
+        elif status_lower == "configuration change":
+            status_cell.value = "📝 Configuration Change"
+            status_cell.fill = PatternFill(
+                start_color="FFFFFF", end_color="FFFFFF", fill_type="solid"
+            )  # White
+        else:  # Open / New
+            status_cell.value = "🆕 New Issue"
             status_cell.fill = Fills.WARN
             status_cell.font = Fonts.WARN
 
-        # Style risk level cell with severity colors
+        # Style risk level cell (column 6)
         risk_cell = ws.cell(row=row, column=6)
         risk_lower = risk_level.lower()
         if risk_lower == "low":
-            # Low risk = good news (usually fixed items)
             risk_cell.fill = Fills.PASS
             risk_cell.font = Fonts.PASS
         elif risk_lower == "high":
@@ -205,32 +188,112 @@ class ActionSheetMixin(BaseSheetMixin):
         elif risk_lower == "medium":
             risk_cell.fill = Fills.WARN
             risk_cell.font = Fonts.WARN
+        elif risk_lower == "critical":
+            risk_cell.fill = PatternFill(
+                start_color="B71C1C", end_color="B71C1C", fill_type="solid"
+            )  # Dark Red
+            risk_cell.font = Font(color="FFFFFF", bold=True)
+        elif risk_lower == "info":
+            risk_cell.fill = PatternFill(
+                start_color="E3F2FD", end_color="E3F2FD", fill_type="solid"
+            )  # Light Blue
+            risk_cell.font = Font(color="0D47A1", bold=True)
+
+    def _finalize_actions(self) -> None:
+        """
+        Finalize Actions sheet - hide/lock ID column and add dropdowns.
+
+        ALWAYS creates the sheet with dropdowns/CF/protection, even if empty.
+        This allows users to manually add entries.
+        """
+        # CRITICAL: Ensure Actions sheet exists even if no actions were recorded
+        if self._action_sheet is None:
+            self._action_sheet = self._ensure_sheet(ACTION_CONFIG)
+
+        ws = self._action_sheet
+
+        # Rigorous Requirement: Lock & Hide ID column (A)
+        try:
+            ws.column_dimensions["A"].hidden = True
+        except Exception:
+            pass
+
+        # ALWAYS add dropdowns and CF - even for empty sheet for manual entries
+        self._add_action_dropdowns()
+
+        # Rigorous Requirement: Protect Sheet
+        # Unlock user-editable columns before protecting
+        self._protect_actions_sheet()
+
+    def _protect_actions_sheet(self) -> None:
+        """
+        Configure Action sheet for user editing.
+
+        CRITICAL: We do NOT protect the sheet at all.
+        Protection was causing the entire sheet to be locked.
+        The only thing we do is HIDE column A (ID) for cleanliness.
+        Users can edit everything freely.
+        """
+        ws = self._action_sheet
+        if ws is None:
+            return
+
+        # Just hide the ID column (column A), do NOT protect the sheet
+        # User can still unhide it if they want, but it's hidden by default
+        try:
+            ws.column_dimensions["A"].hidden = True
+        except Exception:
+            pass
+
+        # Note: NO sheet protection is applied.
+        # Protection was causing the sheet to be locked even with "unlock" settings.
+        # This is simpler and more user-friendly.
 
     def _add_action_dropdowns(self) -> None:
-        """Add dropdown validations for action columns."""
+        """Add rigorous dropdown validations for action columns."""
         from autodbaudit.infrastructure.excel.base import add_dropdown_validation
 
         ws = self._action_sheet
-        # Category column (D) - column 4
+        if not ws:
+            return
+
+        # Category column (D)
         add_dropdown_validation(
             ws,
             "D",
             [
                 "SA Account",
+                "Server Logins",
+                "Sensitive Roles",
                 "Configuration",
-                "Backup",
-                "Login",
+                "Services",
+                "Databases",
+                "DB Users",
+                "DB Roles",
                 "Permissions",
-                "Service",
-                "Database",
+                "Audit Settings",
+                "Backups",
+                "Encryption",
+                "Linked Servers",
+                "Network",
                 "Other",
             ],
         )
-        # Risk Level column (F) - column 6
-        add_dropdown_validation(ws, "F", ["Low", "Medium", "High"])
-        # Change Type column (H) - column 8
+        # Risk Level column (F)
+        add_dropdown_validation(ws, "F", ["Critical", "High", "Medium", "Low", "Info"])
+
+        # Change Type column (H) - Rigorous values
         add_dropdown_validation(
-            ws, "H", ["⏳ Open", "✓ Fixed", "✓ Exception", "❌ Regression", "✓ Closed"]
+            ws,
+            "H",
+            [
+                "✅ Fixed",
+                "❌ Regression",
+                "🆕 New Issue",
+                "🛡️ Exception Documented",
+                "🗑️ Exception Removed",
+                "📝 Configuration Change",
+            ],
         )
 
         # --- Add Conditional Formatting for dynamic styling ---
@@ -258,6 +321,25 @@ class ActionSheetMixin(BaseSheetMixin):
             start_color="FFCDD2", end_color="FFCDD2", fill_type="solid"
         )  # Red
         fail_font = Font(color="B71C1C", bold=True)
+
+        # New Colors
+        info_fill = PatternFill(
+            start_color="E3F2FD", end_color="E3F2FD", fill_type="solid"
+        )  # Light Blue for Info
+        info_font = Font(color="0D47A1", bold=True)
+
+        crit_fill = PatternFill(
+            start_color="B71C1C", end_color="B71C1C", fill_type="solid"
+        )  # Dark Red for Critical
+        crit_font = Font(color="FFFFFF", bold=True)
+
+        blue_fill = PatternFill(
+            start_color="BBDEFB", end_color="BBDEFB", fill_type="solid"
+        )  # Blue for Exceptions
+
+        gray_fill = PatternFill(
+            start_color="E0E0E0", end_color="E0E0E0", fill_type="solid"
+        )  # Gray for Removed
 
         # Risk Level (Column F) - Dynamic based on value
         f_range = f"F2:F{ws.max_row + 500}"
@@ -292,33 +374,60 @@ class ActionSheetMixin(BaseSheetMixin):
                 font=fail_font,
             ),
         )
-        # Critical = Dark Red (if ever used)
+        # Critical = Dark Red
         ws.conditional_formatting.add(
             f_range,
             FormulaRule(
                 formula=['ISNUMBER(SEARCH("Critical",F2))'],
                 stopIfTrue=True,
-                fill=fail_fill,
-                font=fail_font,
+                fill=crit_fill,
+                font=crit_font,
+            ),
+        )
+        # Info = Blue
+        ws.conditional_formatting.add(
+            f_range,
+            FormulaRule(
+                formula=['ISNUMBER(SEARCH("Info",F2))'],
+                stopIfTrue=True,
+                fill=info_fill,
+                font=info_font,
             ),
         )
 
         # Change Type (Column H) - Dynamic based on value
         h_range = f"H2:H{ws.max_row + 500}"
 
-        # Fixed/Closed/Exception = Green (Good news)
+        # Fixed = Green
         ws.conditional_formatting.add(
             h_range,
             FormulaRule(
-                formula=[
-                    'OR(ISNUMBER(SEARCH("Fixed",H2)), ISNUMBER(SEARCH("Closed",H2)), ISNUMBER(SEARCH("Exception",H2)))'
-                ],
+                formula=['ISNUMBER(SEARCH("Fixed",H2))'],
                 stopIfTrue=True,
                 fill=pass_fill,
                 font=pass_font,
             ),
         )
-        # Regression = Red (Bad news)
+        # Exception Documented = Blue
+        ws.conditional_formatting.add(
+            h_range,
+            FormulaRule(
+                formula=['ISNUMBER(SEARCH("Exception Documented",H2))'],
+                stopIfTrue=True,
+                fill=blue_fill,
+                # font not specified in old Spec but seems logical to keep black or standard
+            ),
+        )
+        # Exception Removed = Gray
+        ws.conditional_formatting.add(
+            h_range,
+            FormulaRule(
+                formula=['ISNUMBER(SEARCH("Exception Removed",H2))'],
+                stopIfTrue=True,
+                fill=gray_fill,
+            ),
+        )
+        # Regression = Red
         ws.conditional_formatting.add(
             h_range,
             FormulaRule(
@@ -328,13 +437,11 @@ class ActionSheetMixin(BaseSheetMixin):
                 font=fail_font,
             ),
         )
-        # Open/Pending = Orange (Needs attention)
+        # New Issue = Yellow (Warn)
         ws.conditional_formatting.add(
             h_range,
             FormulaRule(
-                formula=[
-                    'OR(ISNUMBER(SEARCH("Open",H2)), ISNUMBER(SEARCH("Pending",H2)))'
-                ],
+                formula=['ISNUMBER(SEARCH("New Issue",H2))'],
                 stopIfTrue=True,
                 fill=warn_fill,
                 font=warn_font,

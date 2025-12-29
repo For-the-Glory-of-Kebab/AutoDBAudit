@@ -29,7 +29,9 @@ a = Analysis(
     [os.path.join(src_path, 'main.py')],
     pathex=[src_path],
     binaries=[],
-    datas=[],
+    datas=[
+        (assets_path, 'assets'),
+    ],
     hiddenimports=[
         'rich.console',
         'rich.panel', 
@@ -41,7 +43,10 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=[
+        'PyQt6', 'PySide6', 'PyQt5', 'PySide2', 
+        'tkinter', 'matplotlib', 'IPython', 'notebook'
+    ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,

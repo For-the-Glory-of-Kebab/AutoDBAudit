@@ -29,6 +29,7 @@ class RemediationContext:
     port: int
     conn_user: str | None
     aggressiveness: int
+    host_platform: str | None = "Windows"  # "Windows" or "Linux"
 
     # Mutable state for collecting secrets
     secrets_log: list[str] = field(default_factory=list)

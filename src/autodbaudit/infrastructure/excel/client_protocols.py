@@ -63,9 +63,9 @@ CLIENT_PROTOCOL_COLUMNS = (
     ColumnDef("Enabled", 10, Alignments.CENTER),  # Column F
     ColumnDef("Port", 10, Alignments.CENTER),  # Column G
     ColumnDef("Status", 14, Alignments.CENTER),  # Column H
-    ColumnDef("Notes", 30, Alignments.LEFT_WRAP),  # Column I
+    ColumnDef("Notes", 30, Alignments.CENTER_WRAP),  # Column I
     STATUS_COLUMN,  # Review Status dropdown
-    ColumnDef("Justification", 40, Alignments.LEFT, is_manual=True),
+    ColumnDef("Justification", 40, Alignments.CENTER_WRAP, is_manual=True),
     LAST_REVIEWED_COLUMN,
 )
 
@@ -102,7 +102,10 @@ class ClientProtocolSheetMixin(ServerGroupMixin, BaseSheetMixin):
             self._client_protocol_sheet = self._ensure_sheet_with_uuid(
                 CLIENT_PROTOCOL_CONFIG
             )
-            self._init_grouping(self._client_protocol_sheet, CLIENT_PROTOCOL_CONFIG)
+            # Disable database merging (database_col_idx=0) to prevent Protocol column from being merged
+            self._init_grouping(
+                self._client_protocol_sheet, CLIENT_PROTOCOL_CONFIG, database_col_idx=0
+            )
             self._add_protocol_dropdowns()
 
         ws = self._client_protocol_sheet

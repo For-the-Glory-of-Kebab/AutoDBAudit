@@ -1,0 +1,44 @@
+name: Docs CI
+
+on:
+  pull_request:
+    paths:
+      - 'docs/**'
+      - '.github/workflows/**'
+  push:
+    branches:
+      - 'main'
+    paths:
+      - 'docs/**'
+
+jobs:
+  docs-lint:
+    name: Docs Lint & Link Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Super-Linter (markdown)
+        uses: github/super-linter@v4
+        env:
+          VALIDATE_MARKDOWN: true
+          VALIDATE_MARKDOWN_LESS: false
+
+      - name: Check links with lychee
+        uses: lycheeverse/lychee-action@v1
+        with:
+          # default behavior checks links in the repo
+          args: --no-progress
+
+      - name: Fail on file:/// URIs
+        run: |
+          echo "Scanning for file:/// URIs..."
+          set -e
+          if grep -R --line-number --binary-files=without-match 'file:///' docs; then
+            echo "Found file:/// URIs in docs. Please replace absolute file URIs with repo-relative links or mark as 'External reference: <original path>'."
+            exit 1
+          fi
+          echo "No file:/// URIs found."
+
+      - name: Done
+        run: echo "Docs CI completed."

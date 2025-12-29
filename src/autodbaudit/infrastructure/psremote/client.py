@@ -19,6 +19,10 @@ Auth Priority:
 from __future__ import annotations
 
 import logging
+import os
+import socket
+import subprocess
+import tempfile
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
@@ -38,7 +42,6 @@ class Transport(Enum):
 class AuthMethod(Enum):
     """WinRM authentication methods."""
 
-    NEGOTIATE = "negotiate"
     KERBEROS = "kerberos"
     NTLM = "ntlm"
     BASIC = "basic"
@@ -53,7 +56,7 @@ class ConnectionConfig:
     password: str | None = None
     port_http: int = 5985
     port_https: int = 5986
-    timeout_seconds: int = 30
+    timeout_seconds: int = 60
     operation_timeout_sec: int = 120
 
     # Retry settings
@@ -100,7 +103,6 @@ class PSRemoteClient:
     def connect(self) -> bool:
         """
         Establish connection trying all combinations.
-
         Returns True if connection established, False otherwise.
         """
         cache_key = f"{self.config.hostname}:{self.config.username}"
@@ -118,7 +120,7 @@ class PSRemoteClient:
         attempts = []
 
         # HTTPS with SSL verification
-        for auth in [AuthMethod.NEGOTIATE, AuthMethod.KERBEROS, AuthMethod.NTLM]:
+        for auth in [AuthMethod.KERBEROS, AuthMethod.NTLM]:
             if self._try_connect(Transport.HTTPS, auth, verify_ssl=True):
                 self._connection_cache[cache_key] = (Transport.HTTPS, auth, True)
                 return True
@@ -126,7 +128,6 @@ class PSRemoteClient:
 
         # HTTPS without SSL verification
         for auth in [
-            AuthMethod.NEGOTIATE,
             AuthMethod.KERBEROS,
             AuthMethod.NTLM,
             AuthMethod.BASIC,
@@ -139,8 +140,8 @@ class PSRemoteClient:
                 return True
             attempts.append({"transport": "https", "auth": auth.value, "ssl": False})
 
-        # HTTP (only negotiate/kerberos/ntlm, never basic)
-        for auth in [AuthMethod.NEGOTIATE, AuthMethod.KERBEROS, AuthMethod.NTLM]:
+        # HTTP (only kerberos/ntlm, never basic)
+        for auth in [AuthMethod.KERBEROS, AuthMethod.NTLM]:
             if self._try_connect(Transport.HTTP, auth, verify_ssl=False):
                 self._connection_cache[cache_key] = (Transport.HTTP, auth, False)
                 logger.warning(
@@ -167,15 +168,19 @@ class PSRemoteClient:
             "Trying: %s with %s (SSL verify: %s)", endpoint, auth.value, verify_ssl
         )
 
+        last_error = ""
+
         for attempt in range(self.config.max_retries_per_combo):
             try:
+                # Add message_encryption='auto' to support NTLM/Kerberos properly
                 session = winrm.Session(
                     target=endpoint,
                     auth=(self.config.username, self.config.password),
                     transport=auth.value,
                     server_cert_validation="validate" if verify_ssl else "ignore",
+                    message_encryption="auto",  # Crucial for some NTLM setups
                     operation_timeout_sec=self.config.operation_timeout_sec,
-                    read_timeout_sec=self.config.timeout_seconds + 10,
+                    read_timeout_sec=self.config.operation_timeout_sec + 30,
                 )
 
                 # Test connection with simple command
@@ -189,19 +194,34 @@ class PSRemoteClient:
                     self._working_verify_ssl = verify_ssl
                     return True
 
+                # If command ran but failed (non-zero or no OK)
+                logger.warning(
+                    "Connection test failed (Code %d). Stdout: %s Stderr: %s",
+                    result.status_code,
+                    result.std_out,
+                    result.std_err,
+                )
+
             except Exception as e:
+                last_error = str(e)
                 logger.debug(
                     "Attempt %d failed: %s - %s",
                     attempt + 1,
                     type(e).__name__,
-                    str(e)[:100],
+                    last_error[:200],  # Log more detail
                 )
+
+        # Log why this combination failed completely
+        if last_error:
+            logger.warning(
+                "Method failed [%s + %s]: %s", transport.value, auth.value, last_error
+            )
 
         return False
 
     def run_ps(self, script: str) -> PSRemoteResult:
         """
-        Execute PowerShell script on remote host.
+        Execute PowerShell script on remote host (or localhost via winrm).
 
         Args:
             script: PowerShell script content

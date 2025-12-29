@@ -106,6 +106,14 @@ SELECT db_name(database_id), * FROM sys.dm_database_encryption_keys;
 
     def generate_os_script(self) -> str:
         """Generate a comprehensive PowerShell script for OS-level audit and remediation."""
+
+        # CRITICAL: Do not generate PowerShell for non-Windows hosts
+        if self.ctx.host_platform and self.ctx.host_platform.lower() != "windows":
+            return f"""# UNIX/LINUX DETECTED
+# PowerShell remediation is skipped for {self.ctx.host_platform}.
+# Please use manual remediation for OS-level settings.
+"""
+
         return f"""<#
 .SYNOPSIS
     OS-Level Audit and Remediation Script for {self.ctx.server_name}
@@ -164,33 +172,49 @@ $RestartRequired = $false
 # 1. Services Audit
 Write-Host "`n[1] Checking Services..."
 
-# 1.1 SQL Browser
-$browser = Get-Service -Name "SQLBrowser" -ErrorAction SilentlyContinue
-if ($browser) {{
-    if ($browser.StartType -ne 'Disabled') {{
-        Write-Host "  [WARN] SQL Browser is $($browser.StartType) (Expected: Disabled)" -ForegroundColor Yellow
-        if ($ApplyFix -or $Aggressiveness -ge 2) {{
-             Write-Host "  [FIX] Disabling SQL Browser..."
-             Set-Service -Name "SQLBrowser" -StartupType Disabled
-             Stop-Service -Name "SQLBrowser" -Force
-             Write-Host "  [OK] Disabled." -ForegroundColor Green
+# Helper: Disable and Stop Service (robust with retry/wait)
+function Disable-SqlService {{
+    param([string]$ServiceName, [string]$DisplayName)
+    $svc = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
+    if ($svc) {{
+        if ($svc.StartType -ne 'Disabled' -or $svc.Status -eq 'Running') {{
+            Write-Host "  [WARN] $DisplayName ($ServiceName) is $($svc.Status)/$($svc.StartType)" -ForegroundColor Yellow
+            if ($ApplyFix -or $Aggressiveness -ge 2) {{
+                Write-Host "  [FIX] Disabling $DisplayName..."
+                try {{
+                    Set-Service -Name $ServiceName -StartupType Disabled -ErrorAction Stop
+                    if ($svc.Status -eq 'Running') {{
+                        Stop-Service -Name $ServiceName -Force -ErrorAction SilentlyContinue
+                        # Wait up to 15 seconds for stop
+                        $wait = 15
+                        while ((Get-Service -Name $ServiceName -ErrorAction SilentlyContinue).Status -eq 'Running' -and $wait -gt 0) {{
+                            Start-Sleep -Seconds 1
+                            $wait--
+                        }}
+                    }}
+                    Write-Host "  [OK] $DisplayName disabled." -ForegroundColor Green
+                }} catch {{
+                    Write-Host "  [ERR] Failed: $_" -ForegroundColor Red
+                }}
+            }}
+        }} else {{
+            Write-Host "  [PASS] $DisplayName is Disabled." -ForegroundColor Green
         }}
-    }} else {{
-        Write-Host "  [PASS] SQL Browser is Disabled." -ForegroundColor Green
     }}
 }}
 
-# 1.2 SQL Telemetry (CEIP)
-$ceip = Get-Service -Name "SQLTELEMETRY`$$InstanceName" -ErrorAction SilentlyContinue
-if ($ceip -and $ceip.StartType -ne 'Disabled') {{
-    Write-Host "  [WARN] SQL Telemetry service is $($ceip.StartType)" -ForegroundColor Yellow
-    if ($ApplyFix -or $Aggressiveness -ge 2) {{
-        Write-Host "  [FIX] Disabling SQL Telemetry..."
-        Set-Service -Name $ceip.Name -StartupType Disabled
-        Stop-Service -Name $ceip.Name -Force
-        Write-Host "  [OK] Disabled." -ForegroundColor Green
-    }}
+# 1.1 SQL Browser
+Disable-SqlService -ServiceName "SQLBrowser" -DisplayName "SQL Browser"
+
+# 1.2 SQL Telemetry (CEIP) - different name for default vs named instance
+if ($InstanceName -eq "MSSQLSERVER") {{
+    Disable-SqlService -ServiceName "SQLTELEMETRY" -DisplayName "SQL Telemetry"
+}} else {{
+    Disable-SqlService -ServiceName "SQLTELEMETRY`$$InstanceName" -DisplayName "SQL Telemetry"
 }}
+
+# 1.3 VSSWriter (SQLWriter) - often not needed
+Disable-SqlService -ServiceName "SQLWriter" -DisplayName "SQL VSS Writer"
 
 # 2. Client Protocols
 Write-Host "`n[2] Checking Client Protocols..."

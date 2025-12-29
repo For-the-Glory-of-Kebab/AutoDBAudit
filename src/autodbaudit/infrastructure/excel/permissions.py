@@ -41,16 +41,16 @@ PERMISSION_COLUMNS = (
     ColumnDef("Instance", 15, Alignments.LEFT),  # Column D
     ColumnDef("Scope", 10, Alignments.CENTER),  # Column E
     ColumnDef("Database", 20, Alignments.LEFT),  # Column F
-    ColumnDef("Grantee", 25, Alignments.LEFT),  # Column G
-    ColumnDef("Permission", 25, Alignments.LEFT),  # Column H
+    ColumnDef("Grantee", 25, Alignments.CENTER),  # Column G
+    ColumnDef("Permission", 25, Alignments.CENTER),  # Column H
     ColumnDef("State", 15, Alignments.CENTER),  # Column I
     ColumnDef("Entity Type", 15, Alignments.CENTER),  # Column J
-    ColumnDef("Entity Name", 35, Alignments.LEFT),  # Column K
+    ColumnDef("Entity Name", 35, Alignments.CENTER),  # Column K
     ColumnDef("Risk", 12, Alignments.CENTER),  # Column L
     STATUS_COLUMN,  # Review Status dropdown
-    ColumnDef("Justification", 35, Alignments.LEFT, is_manual=True),
+    ColumnDef("Justification", 35, Alignments.CENTER_WRAP, is_manual=True),
     LAST_REVIEWED_COLUMN,
-    ColumnDef("Notes", 30, Alignments.LEFT_WRAP, is_manual=True),
+    ColumnDef("Notes", 30, Alignments.CENTER_WRAP, is_manual=True),
 )
 
 PERMISSION_CONFIG = SheetConfig(name="Permission Grants", columns=PERMISSION_COLUMNS)
@@ -88,14 +88,32 @@ class PermissionSheetMixin(ServerGroupMixin, BaseSheetMixin):
         """Add a permission grant/deny row."""
         if self._permission_sheet is None:
             self._permission_sheet = self._ensure_sheet_with_uuid(PERMISSION_CONFIG)
-            self._init_grouping(self._permission_sheet, PERMISSION_CONFIG)
+            # Permission sheet has Scope column at E (5), Database at F (6)
+            # Default logic puts DB at 5. We override to 6.
+            self._init_grouping(
+                self._permission_sheet, PERMISSION_CONFIG, database_col_idx=6
+            )
             self._add_permission_dropdowns()
 
         ws = self._permission_sheet
 
         # Track grouping and get row color
+        # Pass unique discriminator as "database_name" arg for 3rd level merging
+        # For permissions, we don't want to merge all permissions for a database into one block,
+        # but rather group by database if possible.
+        # Use combined scope/db as the 3rd level grouping key.
+        # Actually, user wants distinct rows. If we set database_name to the actual DB,
+        # rows for the same DB will merge the DB cell. This IS desired for Permissions sheet (DB column merge).
+        # But we must ensure the *rows* don't get mixed up.
+        # `_track_group` returns color based on Instance alternation, but handles merging for Server/Instance/Database cols.
+        # If we pass `database_name`, it will merge the 'Database' column for consecutive rows with same DB.
+        # This seems correct for Permissions sheet provided the rows are sorted by Server->Instance->Database.
         row_color = self._track_group(
-            server_name, instance_name, PERMISSION_CONFIG.name
+            server_name,
+            instance_name,
+            PERMISSION_CONFIG.name,
+            database_name=database_name
+            or "(Server)",  # Use "(Server)" for empty DB to allow grouping
         )
 
         # Analyze Risk
@@ -191,7 +209,7 @@ class PermissionSheetMixin(ServerGroupMixin, BaseSheetMixin):
             "",  # Notes
         ]
 
-        row, row_uuid = self._write_row_with_uuid(ws, PERMISSION_CONFIG, data)
+        row, _ = self._write_row_with_uuid(ws, PERMISSION_CONFIG, data)
 
         # Apply action indicator (column 1)
         apply_action_needed_styling(ws.cell(row=row, column=2), needs_action)

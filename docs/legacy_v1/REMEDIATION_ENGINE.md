@@ -22,11 +22,11 @@ INSERT INTO @LoginsToFix (login_name) VALUES (N'user3');
 
 ### 3. Aggressiveness Levels
 
-| Level | Exceptions | Connecting User |
-|-------|------------|-----------------|
-| 1 | Commented out | Commented + DANGER warning |
-| 2 | Commented + warning | Commented + DANGER warning |
-| 3 | Active but marked | STILL commented + DANGER warning |
+| Level | Exceptions | Connecting User | SA Account |
+|-------|------------|-----------------|------------|
+| 1 (Default) | Commented | Commented + DANGER | ACTIVE (unless conn user) |
+| 2 | Commented | Commented + DANGER | ACTIVE |
+| 3 | Active | Commented + DANGER | ACTIVE |
 
 ### 4. Connecting User Protection
 Your audit login is NEVER auto-uncommented, even at level 3:

@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
-    from autodbaudit.infrastructure.sqlite.history_store import HistoryStore
+    from autodbaudit.infrastructure.sqlite.store import HistoryStore
     from autodbaudit.infrastructure.config_loader import SqlTarget
 
 logger = logging.getLogger(__name__)
@@ -315,9 +315,16 @@ class AccessPreparationService:
                     if "linux" in platform:
                         return "linux"
         except Exception as e:
-            logger.warning(
-                "Could not detect OS via dm_os_host_info for %s: %s", target.id, e
-            )
+            # Check for 'Invalid object name' (Error 208/42S02) - typical for older SQL versions
+            error_str = str(e)
+            if "Invalid object name" in error_str or "42S02" in error_str:
+                logger.debug(
+                    "sys.dm_os_host_info not available (likely pre-2017 SQL): %s", e
+                )
+            else:
+                logger.warning(
+                    "Could not detect OS via dm_os_host_info for %s: %s", target.id, e
+                )
             # Fallback: @@VERSION
             try:
                 with pyodbc.connect(conn_str, timeout=target.connect_timeout) as conn:

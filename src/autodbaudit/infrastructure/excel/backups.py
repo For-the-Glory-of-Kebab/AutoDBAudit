@@ -45,13 +45,13 @@ BACKUP_COLUMNS = (
     ColumnDef("Recovery Model", 14, Alignments.CENTER),  # Column F
     ColumnDef("Last Full Backup", 16, Alignments.CENTER),  # Column G
     ColumnDef("Days Since", 10, Alignments.CENTER),  # Column H
-    ColumnDef("Backup Path", 40, Alignments.LEFT),  # Column I
-    ColumnDef("Size (MB)", 12, Alignments.RIGHT),  # Column J
+    ColumnDef("Backup Path", 40, Alignments.CENTER),  # Column I
+    ColumnDef("Size (MB)", 12, Alignments.CENTER),  # Column J
     ColumnDef("Status", 10, Alignments.CENTER, is_status=True),  # Column K
     STATUS_COLUMN,  # Review Status dropdown
-    ColumnDef("Justification", 35, Alignments.LEFT, is_manual=True),
+    ColumnDef("Justification", 35, Alignments.CENTER_WRAP, is_manual=True),
     LAST_REVIEWED_COLUMN,
-    ColumnDef("Notes", 25, Alignments.LEFT_WRAP, is_manual=True),
+    ColumnDef("Notes", 25, Alignments.CENTER_WRAP, is_manual=True),
 )
 
 BACKUP_CONFIG = SheetConfig(name="Backups", columns=BACKUP_COLUMNS)
@@ -85,7 +85,10 @@ class BackupSheetMixin(ServerGroupMixin, BaseSheetMixin):
         ws = self._backup_sheet
 
         # Track grouping and get row color
-        row_color = self._track_group(server_name, instance_name, BACKUP_CONFIG.name)
+        # Track grouping and get row color
+        row_color = self._track_group(
+            server_name, instance_name, BACKUP_CONFIG.name, database_name
+        )
 
         # Determine compliance status
         if days_since is None or days_since > BACKUP_FAIL_DAYS:
