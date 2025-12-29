@@ -3,6 +3,8 @@
 Welcome to the comprehensive documentation for the **AutoDBAudit** project.
 This documentation is structured to be the **Single Source of Truth** for all functionalities, schemas, and workflows.
 
+> NOTE: For the upcoming rewrite these documents are the authoritative, spec-first source for design decisions. Treat them as the canonical documentation during the rewrite; implementation may lag behind.
+
 > **Navigation Tip**: Start here and follow the links to deep-dive sections.
 
 ---
@@ -34,7 +36,10 @@ Generates T-SQL and PowerShell scripts to fix detected issues.
 ## ⌨️ [CLI Reference](cli/reference.md)
 *   **[Command Manual](cli/reference.md)**: Exhaustive reference for every command (`audit`, `sync`, `remediate`, etc.) and argument.
 
-## 📊 [Status & Validation](GAP_ANALYSIS_AND_RECOMMENDATIONS.md)
+## � Design Decisions (ADRs)
+*   **ADRs**: Design decision records are in `docs/adrs/` — use them to understand historical choices (UUIDs, Sync semantics, Remediation policy, Agent governance).
+
+## �📊 [Status & Validation](GAP_ANALYSIS_AND_RECOMMENDATIONS.md)
 *   **[Gap Analysis Report](GAP_ANALYSIS_AND_RECOMMENDATIONS.md)**: Critical analysis of current implementation vs. standards, with refactoring recommendations.
 
 ---

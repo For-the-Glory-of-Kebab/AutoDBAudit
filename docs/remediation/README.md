@@ -2,6 +2,8 @@
 
 The Remediation Engine translates **Audit Findings** into executable **Fix Scripts** (T-SQL and PowerShell).
 
+See docs/remediation/requirements.md for the concise, authoritative requirements (R1–R6) that the remediation engine must meet.
+
 **Philosophy**: "Safe by Default, Powerful by Choice."
 
 ## Core Capabilities
