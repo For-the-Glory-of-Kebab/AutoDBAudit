@@ -36,9 +36,9 @@ __all__ = ["EncryptionSheetMixin", "ENCRYPTION_CONFIG"]
 
 ENCRYPTION_COLUMNS = (
     ACTION_COLUMN,  # Column B: Action indicator
-    ColumnDef("Server", 18, Alignments.LEFT),
-    ColumnDef("Instance", 15, Alignments.LEFT),
-    ColumnDef("Database", 20, Alignments.LEFT),
+    ColumnDef("Server", 18, Alignments.CENTER),
+    ColumnDef("Instance", 15, Alignments.CENTER),
+    ColumnDef("Database", 20, Alignments.CENTER),
     ColumnDef("Key Type", 16, Alignments.CENTER),
     ColumnDef("Key Name", 25, Alignments.CENTER),
     ColumnDef("Algorithm", 14, Alignments.CENTER),

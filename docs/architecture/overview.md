@@ -49,3 +49,10 @@ The application follows a **Domain-Driven Design (DDD)** inspired layered archit
 *   **Single Source of Truth**: Prioritize the Code (Registry) over config files for schema.
 *   **Safe Defaults**: Remediation is commented by default.
 *   **Lossless Sync**: Never delete user data (annotations) without explicit intent.
+
+## Performance Architecture
+*   **Parallel Execution**: The `AuditService` uses `concurrent.futures.ThreadPoolExecutor` to scan multiple SQL targets concurrently.
+    *   **Max Workers**: Limited (default 5) to prevent resource exhaustion.
+    *   **Thread Safety**:
+        *   **SQLite**: Each thread uses a dedicated `HistoryStore` instance (connection isolation).
+        *   **Excel Writer**: A `ThreadSafeWriterWrapper` protects the shared `EnhancedReportWriter` using a `threading.Lock`.

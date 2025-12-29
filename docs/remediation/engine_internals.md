@@ -16,28 +16,29 @@ The engine follows a strict "Measure Twice, Cut Once" philosophy.
     *   **Primary Pathway (Hybrid)**: For standard Windows Domain environments:
         *   **T-SQL Phase**: Uses ODBC for DB-level changes (`GRANT`, `sp_configure`).
         *   **PowerShell Phase**: Uses `Invoke-Command` for OS-level changes (`Services`, `Registry`, `Firewall`).
-    *   **Fallback Pathway (T-SQL Only)**:
-        *   *Trigger*: Occurs if PSRemote is unavailable, target is **Linux**, or explicit connection failure.
+    *   **Fallback Pathway (Platform-Aware)**:
+        *   *Trigger*: **Host Platform Detection**. The engine checks the `host_platform` of findings. If `!= Windows` (e.g. Linux, Docker container), it **automatically disables** OS-level script generation.
         *   *Behavior*:
-            *   Executes **ALL** possible T-SQL fixes.
-            *   **Skips** OS-level fixes (Services, etc.).
-            *   **Logs** a warning: *"Skipping OS remediation for [Target]. Manual intervention required for Service checks."*
-            *   **Excel Update**: Sheets dependent on PS (e.g., Client Protocols, Services) are left as-is (Manual/Default) in the report.
+            *   Executes **ALL** possible T-SQL fixes via the Python SQL Driver.
+            *   **Completely Omitted**: `02_OS_Remediation.ps1` is either not generated or replaced with a "Manual Action" placeholder comment.
+            *   **Safety**: This prevents Windows-specific PowerShell (Registry/Service calls) from crashing on Linux hosts.
+            *   **Excel Update**: Sheets dependent on PS data remain in "Audit Only" or "Manual" state.
 
 3.  **Script Location & Path Resolution (PyInstaller Safe)**:
     *   **Problem**: In frozen applications (PyInstaller), relative paths like `./scripts/` fail.
     *   **Solution**: The engine resolves template and output paths dynamically.
         *   *Dev Mode*: Uses `src/autodbaudit/...`.
         *   *Frozen Mode*: Uses `sys._MEIPASS` or the executable's directory.
-    *   **Execution**: When running `--apply`, the CLI looks for scripts in the **User Output Directory** (e.g., `output/audit_1/remediation/`), NOT the internal source folder.
+    *   **Execution**: When running `--apply`, the CLI looks for scripts in the **User Output Directory**.
 
-4.  **Template Rendering**:
-    *   Feeds the findings + context into **Jinja2** templates.
-    *   Applies "Aggressiveness" filters.
+4.  **Template Rendering & Connectivity Header**:
+    *   **TargetServer Injection**: To solve "IP vs Hostname" mismatch (where `@@SERVERNAME` != Connection String), the engine injects a `TargetServer: <ip_or_fqdn>` header into the generated SQL script.
+    *   **Execution Logic**: The `ScriptExecutor` parses this header to determine *exactly* which connection string to use, ignoring the internal server name for connection purposes.
+    *   **Exceptions**: Logic filters out findings with valid, documented exceptions (via Jinja2 logic).
 
 5.  **Output Generation**:
     *   Writes `01_T-SQL_Remediation.sql`.
-    *   Writes `02_OS_Remediation.ps1`.
+    *   Writes `02_OS_Remediation.ps1` (Windows Only).
     *   Writes `00_Rollback_Instructions.txt`.
 
 ---

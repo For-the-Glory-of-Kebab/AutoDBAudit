@@ -185,6 +185,11 @@ class ServerGroupMixin:
     def _merge_database(self, config_name: str) -> None:
         """Merge Database cells for current database group."""
         state = self._grp_states[config_name]
+
+        # Skip if database merging is disabled (database_col_idx=0)
+        if state.database_col_idx <= 0:
+            return
+
         current_row = self._row_counters[config_name]
 
         if current_row > state.database_start_row:

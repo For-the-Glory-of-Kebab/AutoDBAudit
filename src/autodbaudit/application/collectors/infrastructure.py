@@ -58,10 +58,10 @@ class InfrastructureCollector(BaseCollector):
                 if svc_type in ("SQL Browser", "VSS Writer", "Integration Services"):
                     svc_instance = "(Shared)"
 
-                service_name = svc.get("ServiceName") or svc.get("DisplayName", "")
-                service_account = svc.get("ServiceAccount", "")
-                status = svc.get("Status", "Unknown")
-                startup_type = svc.get("StartupType", "")
+                service_name = svc.get("ServiceName") or svc.get("DisplayName") or ""
+                service_account = svc.get("ServiceAccount") or ""
+                status = svc.get("Status") or "Unknown"
+                startup_type = svc.get("StartupType") or ""
 
                 self.writer.add_service(
                     server_name=self.ctx.server_name,
@@ -188,9 +188,14 @@ class InfrastructureCollector(BaseCollector):
 
             # Parse services from Result object
             # { "name": ..., "display_name": ..., "start_mode": ..., "state": ..., "start_name": ... }
-            ps_services = result.data.get("services", [])
+            ps_services = (result.data or {}).get("services", [])
             if not ps_services:
-                logger.warning("PowerShell executed but returned no services.")
+                logger.warning(
+                    "PowerShell executed but returned no services. Raw Output Sample: %s",
+                    str(result.raw_output)[:500] if result.raw_output else "None",
+                )
+                if result.error:
+                    logger.warning("PS Result Error: %s", result.error)
                 return 0
 
             for svc in ps_services:

@@ -102,7 +102,10 @@ class ClientProtocolSheetMixin(ServerGroupMixin, BaseSheetMixin):
             self._client_protocol_sheet = self._ensure_sheet_with_uuid(
                 CLIENT_PROTOCOL_CONFIG
             )
-            self._init_grouping(self._client_protocol_sheet, CLIENT_PROTOCOL_CONFIG)
+            # Disable database merging (database_col_idx=0) to prevent Protocol column from being merged
+            self._init_grouping(
+                self._client_protocol_sheet, CLIENT_PROTOCOL_CONFIG, database_col_idx=0
+            )
             self._add_protocol_dropdowns()
 
         ws = self._client_protocol_sheet

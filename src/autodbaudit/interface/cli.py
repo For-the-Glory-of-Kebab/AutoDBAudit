@@ -399,8 +399,10 @@ def handle_remediation_command(args) -> int:
             sql_success = failed == 0
 
         if not sql_success:
-            print("⚠️  SQL Remediation had errors. Aborting OS hooks.")
-            return 1
+            print(
+                "⚠️  SQL Remediation had errors. Proceeding to OS hooks (Best Effort)..."
+            )
+            # Do not return 1, continue to allow OS scripts to run
 
         # -- OS Hook Part --
         # Check config but default to TRUE if not specified,

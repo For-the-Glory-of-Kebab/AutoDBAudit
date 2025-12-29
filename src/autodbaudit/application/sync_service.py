@@ -296,10 +296,9 @@ class SyncService:
                     ekey = ex.get("entity_key")
                     full_key = ex.get("full_key", "")
 
-                    # Map change strings to ChangeType
+                    # Map change strings to ChangeType and create action
                     if ctype == "removed":
-                        ct = ChangeType.EXCEPTION_REMOVED
-                        # Clear review_status in DB
+                        # REMOVED Exception - clear status AND log action
                         set_annotation(
                             connection=conn,
                             entity_type=etype,
@@ -308,11 +307,20 @@ class SyncService:
                             field_value="",
                         )
                         logger.info("Cleared review_status for %s", full_key[:60])
-                    elif ctype == "updated":
-                        # UPDATED Exception - Fix the unassigned 'ct' variable
-                        ct = ChangeType.EXCEPTION_UPDATED
+                        # Also create action for Action Log
                         action = create_exception_action(
-                            change_type=ct,
+                            change_type=ChangeType.EXCEPTION_REMOVED,
+                            entity_type=etype,
+                            entity_key=ekey,
+                            justification="Exception removed",
+                            server=ex.get("server"),
+                            instance=ex.get("instance"),
+                        )
+                        exception_changes.append(action)
+                    elif ctype == "updated":
+                        # UPDATED Exception
+                        action = create_exception_action(
+                            change_type=ChangeType.EXCEPTION_UPDATED,
                             entity_type=etype,
                             entity_key=ekey,
                             justification=ex.get("new_justification")
@@ -322,10 +330,9 @@ class SyncService:
                         )
                         exception_changes.append(action)
                     else:
-                        # NEW Exception (added fallback to handle ADDED correctly)
-                        ct = ChangeType.EXCEPTION_ADDED
+                        # NEW Exception (added)
                         action = create_exception_action(
-                            change_type=ct,
+                            change_type=ChangeType.EXCEPTION_ADDED,
                             entity_type=etype,
                             entity_key=ekey,
                             justification=ex.get("new_justification")

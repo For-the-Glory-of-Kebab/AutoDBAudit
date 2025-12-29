@@ -182,10 +182,14 @@ class ScriptExecutor:
 
         # Parse server/instance/port from script header
         server_match = re.search(r"Server:\s*(.+)", content)
+        target_server_match = re.search(r"TargetServer:\s*(.+)", content)
         instance_match = re.search(r"Instance:\s*(.+)", content)
         port_match = re.search(r"Port:\s*(\d+)", content)
 
         server = server_match.group(1).strip() if server_match else ""
+        target_server = (
+            target_server_match.group(1).strip() if target_server_match else None
+        )
         instance = instance_match.group(1).strip() if instance_match else ""
 
         port: int | None = None
@@ -209,15 +213,22 @@ class ScriptExecutor:
                     # Extract 1434 from (Default:1434)
                     inner = instance.strip("()")
                     _, p_str = inner.split(":", 1)
-                    port = int(p_str)
+                    # Only override header port if header port was missing
+                    if not port:
+                        port = int(p_str)
                 except (ValueError, IndexError):
                     pass
 
             # Default instance name is empty string
             cleaned_instance = ""
 
-        # Find matching target with port AND instance awareness
-        target = self._find_target(server, port, cleaned_instance)
+        # Priority Lookup: TargetServer > Server
+        target = None
+        if target_server:
+            target = self._find_target(target_server, port, cleaned_instance)
+
+        if not target:
+            target = self._find_target(server, port, cleaned_instance)
         connection_login = None
 
         if target:
@@ -322,7 +333,7 @@ class ScriptExecutor:
         Execute all scripts in a folder.
 
         Args:
-            folder: Path to folder containing .sql scripts
+            folder: Path to folder containing .sql and .ps1 scripts
             dry_run: If True, only show what would be executed
             rollback: If True, execute _ROLLBACK.sql scripts instead
         """
@@ -331,7 +342,7 @@ class ScriptExecutor:
             logger.error("Folder not found: %s", folder)
             return []
 
-        # Find scripts
+        # Find SQL scripts
         if rollback:
             scripts = sorted(folder.glob("*_ROLLBACK.sql"))
         else:
@@ -339,7 +350,10 @@ class ScriptExecutor:
                 s for s in folder.glob("*.sql") if "_ROLLBACK" not in s.name
             )
 
-        if not scripts:
+        # Find PS1 scripts (OS-level remediation)
+        ps1_scripts = sorted(folder.glob("*_OS_AUDIT.ps1"))
+
+        if not scripts and not ps1_scripts:
             logger.info("No scripts found in %s", folder)
             return []
 
@@ -348,13 +362,24 @@ class ScriptExecutor:
         print(f"{'DRY RUN - ' if dry_run else ''}APPLY REMEDIATION")
         print(f"{'='*60}")
         print(f"Folder: {folder}")
-        print(f"Scripts: {len(scripts)}")
+        print(f"SQL Scripts: {len(scripts)}")
+        print(f"PS1 Scripts: {len(ps1_scripts)}")
         print(f"Mode: {'Rollback' if rollback else 'Remediation'}")
         print(f"{'='*60}\n")
 
+        # Execute SQL scripts first
         for script in scripts:
             result = self.execute_script(script, dry_run=dry_run)
             results.append(result)
+
+        # Execute PS1 scripts (OS-level remediations)
+        if ps1_scripts and not rollback:
+            print(f"\n{'='*60}")
+            print("EXECUTING OS-LEVEL REMEDIATIONS (PowerShell)")
+            print(f"{'='*60}\n")
+
+            for ps1_script in ps1_scripts:
+                self._execute_ps1_script(ps1_script, dry_run=dry_run)
 
         # Summary
         print(f"\n{'='*60}")
@@ -363,8 +388,10 @@ class ScriptExecutor:
         total_success = sum(1 for r in results if r.success)
         total_failed = len(results) - total_success
         print(
-            f"Scripts: {len(results)} total, {total_success} successful, {total_failed} with errors"
+            f"SQL Scripts: {len(results)} total, {total_success} successful, {total_failed} with errors"
         )
+        if ps1_scripts:
+            print(f"PS1 Scripts: {len(ps1_scripts)} executed")
 
         for result in results:
             status = "✓" if result.success else "✗"
@@ -373,6 +400,101 @@ class ScriptExecutor:
             )
 
         return results
+
+    def _execute_ps1_script(self, script_path: Path, dry_run: bool = False) -> bool:
+        """
+        Execute a PowerShell remediation script.
+
+        Args:
+            script_path: Path to the .ps1 script
+            dry_run: If True, only show what would be executed
+
+        Returns:
+            True if successful
+        """
+        import subprocess
+
+        print(f"\n--- Processing: {script_path.name} ---")
+
+        # Parse server from script name (e.g., localhost_1444_3_MSSQLSERVER_OS_AUDIT.ps1)
+        name_parts = script_path.stem.split("_")
+        if len(name_parts) >= 1:
+            server = name_parts[0]
+            print(f"Target Server: {server}")
+
+        if dry_run:
+            # For display, show the path as it will be resolved
+            display_path = (
+                (Path.cwd() / script_path).resolve()
+                if not script_path.is_absolute()
+                else script_path
+            )
+            print("[DRY RUN] Would execute PowerShell script:")
+            print(
+                f"  powershell.exe -ExecutionPolicy Bypass -File {display_path} -ApplyFix"
+            )
+            return True
+
+        # PyInstaller compatibility: Resolve relative to CWD, not to source
+        # The output folder is always relative to where the EXE runs
+        if script_path.is_absolute():
+            abs_script_path = str(script_path)
+        else:
+            # Resolve relative to CWD (where the executable runs)
+            abs_script_path = str((Path.cwd() / script_path).resolve())
+
+        # Build command - run with -ApplyFix flag to actually apply changes
+        cmd = [
+            "powershell.exe",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-NoProfile",
+            "-File",
+            abs_script_path,
+            "-ApplyFix",
+        ]
+
+        try:
+            print("Executing PowerShell script...")
+            # Run from script's directory for any relative paths IN the script
+            script_dir = Path(abs_script_path).parent
+            # Run with extended timeout for slow machines (5 minutes)
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=300,  # 5 minute timeout
+                cwd=script_dir,
+            )
+
+            # Print output
+            if result.stdout:
+                for line in result.stdout.strip().split("\n"):
+                    print(f"  {line}")
+
+            if result.returncode == 0:
+                print(f"✓ PowerShell script completed successfully")
+                return True
+            else:
+                print(f"✗ PowerShell script failed (exit code: {result.returncode})")
+                if result.stderr:
+                    logger.error("PS1 stderr: %s", result.stderr[:500])
+                return False
+
+        except subprocess.TimeoutExpired:
+            logger.error(
+                "PowerShell script timed out after 5 minutes: %s", script_path.name
+            )
+            print("✗ PowerShell script timed out (5 minute limit)")
+            return False
+        except FileNotFoundError:
+            logger.error("PowerShell not found - cannot execute OS scripts")
+            print("✗ PowerShell not found on this system")
+            return False
+        except Exception as e:
+            logger.error("Failed to execute PS1: %s", e)
+            print(f"✗ Error: {e}")
+            return False
 
     def execute_script(
         self,
@@ -506,7 +628,14 @@ class ScriptExecutor:
         return result
 
     def _connect(self, server: str, instance: str, port: int | None = None):
-        """Create connection to SQL Server."""
+        """
+        Create connection to SQL Server.
+
+        Connection string logic:
+        - If port is specified (Docker, non-standard), use: server,port
+        - If only instance name (named instance, no port), use: server\\instance
+        - Default (port 1433 with default instance): server,1433
+        """
         import pyodbc
 
         # Find matching target
@@ -525,10 +654,22 @@ class ScriptExecutor:
         # Use target port if defined, otherwise passed port, otherwise 1433
         target_port = target.port or port or 1433
 
-        if instance:
+        # CONNECTION STRING LOGIC:
+        # - If port is NOT default 1433 (like Docker), ALWAYS use "host,port" format
+        # - If port is 1433 AND we have a named instance, use "host\\instance"
+        # - Default: use "host,port"
+        if target_port != 1433:
+            # Non-default port (Docker, custom) - always use port syntax
+            server_str = f"{host},{target_port}"
+        elif instance and instance.upper() != "MSSQLSERVER":
+            # Named instance on default port - use instance syntax
             server_str = f"{host}\\{instance}"
         else:
+            # Default instance - use port syntax
             server_str = f"{host},{target_port}"
+
+        # Extended timeout for slow machines/networks
+        timeout = 30  # 30 seconds for slow connections
 
         if target.auth == "integrated":
             conn_str = (
@@ -536,6 +677,7 @@ class ScriptExecutor:
                 f"SERVER={server_str};"
                 f"Trusted_Connection=yes;"
                 f"TrustServerCertificate=yes;"
+                f"Connection Timeout={timeout};"
             )
         else:
             username = target.username or "sa"
@@ -546,9 +688,11 @@ class ScriptExecutor:
                 f"UID={username};"
                 f"PWD={password};"
                 f"TrustServerCertificate=yes;"
+                f"Connection Timeout={timeout};"
             )
 
-        return pyodbc.connect(conn_str, autocommit=True)
+        logger.debug("Connecting with: %s", server_str)
+        return pyodbc.connect(conn_str, autocommit=True, timeout=timeout)
 
 
 def main():

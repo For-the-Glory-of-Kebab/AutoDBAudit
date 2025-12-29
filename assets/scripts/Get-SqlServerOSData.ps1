@@ -8,7 +8,7 @@
     - Service Accounts (actual account from WMI)
     - Service Status and Startup Type
     
-    Self-elevates if not running as Administrator.
+    Self-elevates if not running as Administrator (skipped when remote).
 
 .PARAMETER InstanceName
     The SQL Server instance name. Use "MSSQLSERVER" for default instance.
@@ -20,17 +20,19 @@
     .\Get-SqlServerOSData.ps1 -InstanceName "MSSQLSERVER"
 #>
 
-#Requires -Version 5.1
+#Requires -Version 2.0
 param(
-    [Parameter(Mandatory)]
+    [Parameter(Mandatory = $true)]
     [string]$InstanceName
 )
 
 # ============================================================================
-# Self-Elevation Check
+# Self-Elevation Check (Skip if running via WinRM/PSRemoting)
 # ============================================================================
+$isRemote = $env:WINRM_SHELL_ID -or $PSVersionTable.PSEdition -eq 'Core' -or [bool]$Host.Runspace.ConnectionInfo
 $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-if (-not $isAdmin) {
+
+if (-not $isAdmin -and -not $isRemote) {
     Write-Warning "Script requires elevation - attempting elevation"
     $elevationArgs = "-ExecutionPolicy Bypass -File `"$PSCommandPath`" -InstanceName $InstanceName"
     Start-Process powershell -Verb RunAs -ArgumentList $elevationArgs -Wait
@@ -98,25 +100,28 @@ try {
     # ========================================================================
     # 2. Service Accounts via WMI
     # ========================================================================
-    $serviceFilter = if ($InstanceName -eq "MSSQLSERVER") {
-        { $_.Name -eq "MSSQLSERVER" -or $_.Name -eq "SQLSERVERAGENT" -or $_.Name -like "*SQL*" }
-    }
-    else {
-        { $_.Name -like "*$InstanceName*" -or $_.Name -like "*SQL*$InstanceName*" }
-    }
+    # Get ALL services first, then filter (script blocks don't survive minification)
+    $allServices = Get-WmiObject Win32_Service -ErrorAction SilentlyContinue
     
-    $services = Get-WmiObject Win32_Service | Where-Object $serviceFilter
-    
-    $result.data.services = $services | ForEach-Object {
-        @{
-            name         = $_.Name
-            display_name = $_.DisplayName
-            start_mode   = $_.StartMode
-            state        = $_.State
-            start_name   = $_.StartName  # Actual service account
-            path         = $_.PathName
+    # Filter to SQL-related services using string matching
+    $sqlServices = @()
+    foreach ($svc in $allServices) {
+        $name = $svc.Name
+        $dispName = $svc.DisplayName
+        if ($name -like "*SQL*" -or $name -like "*MSSQL*" -or $name -like "*ReportServer*" -or 
+            $name -like "*MsDts*" -or $name -like "*Launchpad*" -or $dispName -like "*SQL Server*") {
+            $sqlServices += @{
+                name         = $svc.Name
+                display_name = $svc.DisplayName
+                start_mode   = $svc.StartMode
+                state        = $svc.State
+                start_name   = $svc.StartName
+                path         = $svc.PathName
+            }
         }
     }
+    
+    $result.data.services = $sqlServices
     
     # ========================================================================
     # 3. OS Audit Policy Sample
