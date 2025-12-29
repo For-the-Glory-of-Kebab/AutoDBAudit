@@ -3,6 +3,7 @@
 This document captures the essential requirements for Remediation generation and execution. It is a condensed, actionable spec intended to be authoritative for the rewrite.
 
 ## Aggressiveness Levels
+
 | Level | CLI Flag | Behavior |
 |-------|----------|----------|
 | 1 | `--aggressiveness 1` | Safe: exceptionalized fixes are commented out by default. |
@@ -12,6 +13,7 @@ This document captures the essential requirements for Remediation generation and
 **Default**: level 1 (safe).
 
 ## Core Requirements
+
 - R1: Exception-aware generation — findings with valid exceptions must be excluded from generated fixes.
 - R2: Hybrid remediation approach — use T-SQL for DB-level fixes and PSRemote (PowerShell) for OS-level remediation on Windows. No PSRemote on Linux/Docker.
 - R3: Service restart policy — when a config change requires a restart: gracefully stop (60s timeout), allow connections to drain, restart with retry (3 attempts), then verify service is running.
@@ -20,13 +22,16 @@ This document captures the essential requirements for Remediation generation and
 - R6: Template-driven generation — use Jinja2 templates under `src/autodbaudit/application/remediation/templates/` and produce metadata snapshots per run.
 
 ## Implementation notes
+
 - Always write a metadata snapshot for each remediation run (remediation_runs, remediation_items) to ensure auditability and rollback.
 - Provide `--dry-run` and `--apply` flows; `--dry-run` must show actionable commands without running them.
 - Remediation scripts should include safe-guards (e.g., checks that the target is in an expected state before applying change).
 
 ## Tests (suggested)
+
 - Generate scripts at each aggressiveness level and assert the presence/absence of commented vs active fixes.
 - Integration test: simulate a service change requiring restart and verify the generated restart script follows R3 sequence.
 
 ## Where to find more
+
 For a deeper discussion, see docs/remediation/engine_internals.md and the legacy backup branch for implementation notes and sample templates.
