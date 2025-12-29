@@ -5,7 +5,7 @@ This document captures the essential requirements for Remediation generation and
 ## Aggressiveness Levels
 
 | Level | CLI Flag | Behavior |
-|-------|----------|----------|
+| --- | --- | --- |
 | 1 | `--aggressiveness 1` | Safe: exceptionalized fixes are commented out by default. |
 | 2 | `--aggressiveness 2` | Moderate: exceptionalized fixes are included but clearly flagged with warnings/comments. |
 | 3 | `--aggressiveness 3` | Aggressive: include fixes for non-exceptional checks. Use with caution. |
