@@ -21,3 +21,9 @@ trigger: always_on
 - Keep task.md, implementation_plan.md updated
 - no out of sync or misleading or deprecated comments, docs or files should be left around.
 - Goal: New session resumes with full context at anytime with any AI model.
+
+## VS Code Agent Preferences (Synced)
+
+- **Git Operations**: Never perform server-side git operations like push, pull, merge, or any remote repository actions without explicit user instruction. Always ask the user to execute them. Commits and local operations are fine, but no server-side actions.
+- **Persistence**: Preferences are stored persistently across sessions.
+- **Tracking**: Use AgentStuff/ for session logs, decisions, and backlog.

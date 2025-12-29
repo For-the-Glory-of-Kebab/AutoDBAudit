@@ -4,7 +4,7 @@
 
 - **Date**: 2025-12-29
 - **Context**: Need persistent session and progress data via git.
-- **Decision**: Create `progress/` folder with `sessions/`, `decisions/`, `backlog/` subfolders.
+- **Decision**: Create `AgentStuff/` folder with `sessions/`, `decisions/`, `backlog/` subfolders.
 - **Rationale**: Git-tracked for persistence, structured for easy navigation.
 - **Consequences**: Manual updates required; commit regularly.
 

@@ -1,6 +1,6 @@
-# Progress Tracking Hub
+# AgentStuff Tracking Hub
 
-This folder (`progress/`) serves as the persistent, git-tracked repository for session data, project progress, and key decisions.
+This folder (`AgentStuff/`) serves as the persistent, git-tracked repository for session data, project progress, and key decisions.
 
 ## Structure
 

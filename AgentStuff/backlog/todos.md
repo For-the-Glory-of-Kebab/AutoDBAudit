@@ -18,7 +18,7 @@
 
 ## Completed
 
-- [x] Set up progress tracking folder.
+- [x] Set up AgentStuff tracking folder.
 - [x] Clean up legacy docs.
 
 Last Updated: 2025-12-29

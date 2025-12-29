@@ -49,6 +49,10 @@ Generates T-SQL and PowerShell scripts to fix detected issues.
 
 * **[Gap Analysis Report](GAP_ANALYSIS_AND_RECOMMENDATIONS.md)**: Critical analysis of current implementation vs. standards, with refactoring recommendations.
 
+## 🤖 [AgentStuff](AgentStuff/)
+
+* **[Progress Hub](AgentStuff/)**: Persistent tracking of sessions, decisions, and backlog for project continuity.
+
 ---
 
 ## 🗄️ Legacy Archive
