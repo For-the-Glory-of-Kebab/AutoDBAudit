@@ -14,12 +14,31 @@ This document captures the essential requirements for Remediation generation and
 
 ## Core Requirements
 
-- R1: Exception-aware generation — findings with valid exceptions must be excluded from generated fixes.
-- R2: Hybrid remediation approach — use T-SQL for DB-level fixes and PSRemote (PowerShell) for OS-level remediation on Windows. No PSRemote on Linux/Docker.
+- R1: Exception-aware generation — findings with valid exceptions must be excluded from generated fixes. **Note**: Current implementation may not fully enforce this; users should manually review and comment out exceptional fixes in generated scripts.
+- R2: Hybrid remediation approach — use T-SQL for DB-level fixes and PSRemote (PowerShell) for OS-level remediation on Windows. No PSRemote on Linux/Docker. Prioritize PSRemote if available/reliable for data/alterations (e.g., services, protocols); gracefully fallback to T-SQL if PSRemote fails or unavailable.
 - R3: Service restart policy — when a config change requires a restart: gracefully stop (60s timeout), allow connections to drain, restart with retry (3 attempts), then verify service is running.
 - R4: Data priority/fallback chain — when determining current state: Manual user input > PSRemote live data (if available) > Cached data > T-SQL fallback.
 - R5: Docker/Linux exemptions — no OS-level remediation via PSRemote; note differences in implementation and UI messaging.
 - R6: Template-driven generation — use Jinja2 templates under `src/autodbaudit/application/remediation/templates/` and produce metadata snapshots per run.
+
+## Manual Review Process
+
+Due to current limitations, remediation scripts do not automatically account for exceptions. The process is:
+
+1. Generate scripts with desired aggressiveness.
+2. Manually review and comment out lines for exceptional findings.
+3. Apply the edited scripts.
+4. Run sync to update state.
+5. Optionally regenerate remediate for remaining issues.
+
+**Future**: Automate exception skipping in generation.
+
+## Execution & Rollback
+
+- **Mapping**: Scripts auto-map to hosts/instances based on entity data.
+- **Rollback**: Each script includes robust rollback commands (e.g., reverse changes, restore backups).
+- **Collaborative Execution**: T-SQL and PSRemote work in tandem; if PSRemote fails, fallback to T-SQL. Ensure changes sync across both (e.g., service restart via PS updates T-SQL state).
+- **Issues**: Current execution is broken—collaborative changes/rollbacks don't work, data for services/protocols invalid. Fix: Improve PSRemote reliability, add cross-language state sync.
 
 ## Implementation notes
 

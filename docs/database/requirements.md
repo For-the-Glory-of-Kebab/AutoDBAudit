@@ -165,4 +165,3 @@ SQL Server Security Hierarchy:
 > - The application primarily populates the `findings` table in the SQLite database to track compliance status (PASS/FAIL/WARN).
 > - Raw inventory tables (`logins`, `server_info`) exist in the schema (V2) but are currently **not populated** by default.
 > - This is an intentional design choice to focus on actionable compliance data for the current phase.
-

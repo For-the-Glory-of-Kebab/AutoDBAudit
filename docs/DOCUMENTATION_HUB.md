@@ -3,61 +3,123 @@
 Welcome to the comprehensive documentation for the **AutoDBAudit** project.
 This documentation is structured to be the **Single Source of Truth** for all functionalities, schemas, and workflows.
 
-> NOTE: For the upcoming rewrite these documents are the authoritative, spec-first source for design decisions. Treat them as the canonical documentation during the rewrite; implementation may lag behind.
-
-> **Navigation Tip**: Start here and follow the links to deep-dive sections.
-
----
-
-## � [Excel Interface](excel/reference.md)
-
-The core input/output of the application. The Excel Report serves as a bidirectional data entry interface.
-
-* **[Excel Visual Reference](excel/reference.md)**: Defines Colors, Icons (`⏳, ✅, ❌`), Fonts, and valid `Status` enum values.
-* **[Sheet Specifications](excel/spec_definitions.md)**: **The Ground Truth**. Detailed schema for EVERY sheet (Key Columns, Editable Columns, Entity Types).
-* **[System Overview](excel/README.md)**: Conceptual guide to the "Excel as Database" model (UUIDs, Legacy Keys).
-
-## 🔄 [Sync Engine](sync/logic.md)
-
-The heart of the "Persistent Audit". Reconciles *User Truth* (Excel) with *System Truth* (Database).
-
-* **[Sync Logic Internal Flow](sync/logic.md)**: Precise, phase-by-phase breakdown of `sync_service.py` (Pre-flight -> Read Anno -> Re-audit -> Diff...).
-* **[Annotation System](sync/annotations.md)**: How "Justifications" and "Review Status" drives compliance.
-
-## 🛠️ [Remediation Engine](remediation/engine_internals.md)
-
-Generates T-SQL and PowerShell scripts to fix detected issues.
-
-* **[Engine Internals](remediation/engine_internals.md)**: Deep dive into R1-R6 requirements, Hybrid Architecture (TSQL+PS), and Template variables.
-* **[Usage Guide](remediation/README.md)**: Explanation of Aggressiveness Levels and Safety.
-
-## 💾 [Data & Architecture](database/schema_comprehensive.md)
-
-* **[Architecture Standards](architecture/standards.md)**: **Must Read**. The "Uncompromisable Standards" for Modern OOP, Resilience, and Performance.
-* **[Database Schema](database/schema_comprehensive.md)**: Detailed SQLite tables (`findings`, `row_annotations`), relationships, and the UUID system.
-* **[High-Level Overview](architecture/overview.md)**: The Domain-Driven Design (DDD) layering strategy.
-
-## ⌨️ [CLI Reference](cli/reference.md)
-
-* **[Command Manual](cli/reference.md)**: Exhaustive reference for every command (`audit`, `sync`, `remediate`, etc.) and argument.
-
-## � Design Decisions (ADRs)
-
-* **ADRs**: Design decision records are in `docs/adrs/` — use them to understand historical choices (UUIDs, Sync semantics, Remediation policy, Agent governance).
-
-## �📊 [Status & Validation](GAP_ANALYSIS_AND_RECOMMENDATIONS.md)
-
-* **[Gap Analysis Report](GAP_ANALYSIS_AND_RECOMMENDATIONS.md)**: Critical analysis of current implementation vs. standards, with refactoring recommendations.
-
-## 🤖 [AgentStuff](AgentStuff/)
-
-* **[Progress Hub](AgentStuff/)**: Persistent tracking of sessions, decisions, and backlog for project continuity.
+> **Navigation**: Use the breadcrumbs at the top of each page and cross-references throughout.
+> **For AI/Developers**: Each document includes prerequisites, related docs, and implementation standards.
+> **Version**: This documentation is for AutoDBAudit v1.0.0
 
 ---
 
-## 🗄️ Legacy Archive
+## 🚀 [Getting Started](getting-started/README.md)
 
-* Old documentation has been moved to `docs/legacy_v1/` for reference.
+Everything you need to set up and start using AutoDBAudit.
+
+* **[System Requirements](getting-started/requirements.md)**: Hardware, software, and permission prerequisites
+* **[Installation Guide](getting-started/installation.md)**: Step-by-step setup for different environments
+* **[Quick Start](getting-started/quick-start.md)**: Get auditing in 10 minutes
+* **[Configuration Guide](getting-started/configuration.md)**: All configuration options explained
+
+## 👥 [User Guide](user-guide/README.md)
+
+Complete end-to-end workflows for all user roles.
+
+* **[Audit Lifecycle](user-guide/audit-lifecycle.md)**: Complete audit process from start to finish
+* **[Excel Interface Guide](user-guide/excel-interface.md)**: Using the Excel report interface
+* **[Remediation Workflows](user-guide/remediation-workflows.md)**: Generating and applying fixes
+* **[Multi-Audit Management](user-guide/multi-audit-management.md)**: Managing multiple audit cycles
+
+## 🔧 [Reference Documentation](reference/README.md)
+
+Technical reference for implementation and integration.
+
+* **[CLI Reference](cli/reference.md)**: Complete command reference with examples
+* **[API Reference](reference/api.md)**: Developer API documentation
+* **[Configuration Schema](reference/configuration-schema.md)**: All config file specifications
+* **[Database Schema](database/schema_comprehensive.md)**: SQLite schema reference
+* **[Error Codes](reference/error-codes.md)**: Exit codes and error handling
+
+## 🏗️ [Architecture & Design](architecture/README.md)
+
+System architecture, design patterns, and standards.
+
+* **[Architecture Overview](architecture/overview.md)**: High-level system design
+* **[Design Standards](architecture/standards.md)**: Coding standards and patterns
+* **[Domain Models](architecture/domain-models.md)**: Core business logic models
+* **[ADRs](adrs/)**: Architecture Decision Records
+
+## 🧪 [Testing & Quality](testing/README.md)
+
+Testing strategies, simulation tools, and quality assurance.
+
+* **[Testing Strategy](testing/strategy.md)**: Overall testing approach
+* **[Discrepancy Simulation](testing/discrepancy_simulation.md)**: Test data generation
+* **[End-to-End Testing](testing/e2e-testing.md)**: Full workflow validation
+
+## 🚀 [Deployment & Operations](deployment/README.md)
+
+Production deployment, monitoring, and maintenance.
+
+* **[Deployment Guide](deployment/guide.md)**: Production deployment procedures
+* **[Monitoring](deployment/monitoring.md)**: Health checks and alerting
+* **[Troubleshooting](deployment/troubleshooting.md)**: Common issues and solutions
+* **[Backup & Recovery](deployment/backup-recovery.md)**: Data protection strategies
+* **[Performance Guide](deployment/performance.md)**: Performance optimization and scaling
+
+## 🤝 [Contributing](contributing/README.md)
+
+Guidelines for contributors and maintainers.
+
+* **[Development Setup](contributing/development-setup.md)**: Setting up development environment
+* **[Coding Standards](contributing/coding-standards.md)**: Code style and conventions
+* **[Testing Guidelines](contributing/testing.md)**: Writing and running tests
+* **[Release Process](contributing/release-process.md)**: Versioning and releases
+
+## 📚 [Appendices](appendices/README.md)
+
+Supporting information and resources.
+
+* **[Glossary](appendices/glossary.md)**: All terms, acronyms, and concepts
+* **[FAQ](appendices/faq.md)**: Frequently asked questions
+* **[Changelog](appendices/changelog.md)**: Version history and changes
+* **[License](appendices/license.md)**: Licensing information
 
 ---
-Generated by Antigravity Agent - 2025-12-27
+
+## 📖 Documentation Standards
+
+### Navigation & Structure
+
+* **Breadcrumbs**: Each page shows its location in the hierarchy
+* **Cross-references**: Related documents are linked throughout
+* **Table of Contents**: Every document has a TOC
+* **Consistent Headers**: Standardized section naming
+
+### Content Standards
+
+* **Prerequisites**: Each document lists what you need to know first
+* **Related Documents**: Links to connected information
+* **Implementation Standards**: References to coding standards
+* **Version Information**: When content was last updated
+
+### For AI/Developers
+
+* **Single Source of Truth**: No duplicate information
+* **Cascading Information**: Standards flow from general to specific
+* **Machine-readable**: Structured for automated processing
+* **Complete Coverage**: Nothing left to imagination
+
+---
+
+## 🔍 Quick Navigation
+
+| I want to... | Go to... |
+| --- | --- |
+| Start using AutoDBAudit | [Quick Start](getting-started/quick-start.md) |
+| Understand the system | [Architecture Overview](architecture/overview.md) |
+| Run commands | [CLI Reference](cli/reference.md) |
+| Configure the system | [Configuration Guide](getting-started/configuration.md) |
+| Fix issues | [Troubleshooting](deployment/troubleshooting.md) |
+| Contribute code | [Contributing](contributing/README.md) |
+
+---
+
+Last updated: 2025-12-30 | AutoDBAudit v1.0.0

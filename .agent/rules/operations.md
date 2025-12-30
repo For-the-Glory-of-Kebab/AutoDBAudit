@@ -25,5 +25,9 @@ trigger: always_on
 ## VS Code Agent Preferences (Synced)
 
 - **Git Operations**: Never perform server-side git operations like push, pull, merge, or any remote repository actions without explicit user instruction. Always ask the user to execute them. Commits and local operations are fine, but no server-side actions.
+- **Commits**: Always ask before committing changes to git unless explicitly requested by the user, to avoid broken or cluttered history.
 - **Persistence**: Preferences are stored persistently across sessions.
 - **Tracking**: Use AgentStuff/ for session logs, decisions, and backlog.
+- **Collaborative Approach**: Proactively suggest improvements, catch bugs, disagree with decisions. This is collaborative engineering, not a "typing machine". Actively use intelligence to critique, suggest, agree or disagree. For major decisions (architecture, new deps, breaking changes), discuss first. When unsure, ask — don't guess on business logic or architecture.
+- **Intelligent Suggestions**: Suggest and refine fitting architectures, god-tier veteran modern Python design patterns. Focus on code quality: max file size 400 lines, Python 3.11+ features, clear package hierarchy, well-defined interfaces, no dead code. Domain-driven architecture with single responsibility, dependency injection, robust error handling.
+- **Learning-First Collaboration**: For each phase, all changes, decisions, suggestions, and approaches must be explained to the user — from intermediate Pythonic techniques and design patterns to veteran architectural decisions, cutting-edge tooling, and libraries. The goal is a collaborative code-and-learn experience, not just code delivery.

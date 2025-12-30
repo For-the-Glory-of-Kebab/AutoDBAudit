@@ -114,49 +114,80 @@ Identical to `audit`, but with a focus on **User Actions**:
 | Argument | Type | Description |
 | :--- | :--- | :--- |
 | `--audit-id [ID]` | Int | The Audit ID. |
+| `--baseline-run [ID]` | Int | Specific run ID to finalize (defaults to latest). |
 | `--force` | Flag | Bypass checking for outstanding Fails. |
+| `--status` | Flag | Check readiness only. |
+| `--apply-exceptions` | Flag | Apply Excel exceptions before finalizing. |
+| `--excel [FILE]` | String | Excel file for exceptions. |
+| `--persian` | Flag | Use Persian calendar for dates. |
 
 ### Expectations
-*   **Immutable**: Once finalized, an audit cannot be synced or remediated.
-*   **Final Output**: Generates a timestamped `Final_Report_YYYYMMDD.xlsx` containing the definitive state.
-*   **Closure**: Prints a final summary of compliance and outstanding risks.
+
+* **Immutable**: Once finalized, an audit cannot be synced or remediated.
+* **Final Output**: Generates a timestamped `Final_Report_YYYYMMDD.xlsx` containing the definitive state.
+* **Closure**: Prints a final summary of compliance and outstanding risks.
+
+---
+
+## 4b. `definalize`
+**Purpose**: Revert a finalized audit back to in-progress state.
+
+| Argument | Type | Description |
+| :--- | :--- | :--- |
+| `--audit-id [ID]` | Int | The Audit ID to revert (required). |
+
+### Definalize Expectations
+
+* **Reversible**: Allows modification of previously finalized audits.
+* **State Reset**: Changes audit status from "finalized" back to "in_progress".
+* **Data Preservation**: All historical data and runs are preserved.
+* **Re-sync Capability**: Allows running sync and remediation again.
 
 ---
 
 ## 5. `prepare`
 **Purpose**: Manage remote access (PSRemote/WMI) for targets. **Prerequisite for full audits.**
 
+**Status**: Currently **BROKEN** - See `docs/sync/prepare.md` for detailed analysis of issues and required fixes.
+
 | Argument | Type | Description |
 | :--- | :--- | :--- |
 | `--status` | Flag | Show current access status for all targets. |
 | `--revert` | Flag | Revert changes (disconnect/cleanup). |
+| `--mark-accessible [ID]` | String | Manually mark a target as accessible. |
+| `--targets [FILE]` | String | Target config file (default: `sql_targets.json`). |
 | `--yes` | Flag | Skip confirmation prompts. |
 
 ### The "Trusted Host" & Credential Requirement
+
 **Critical Failure Mode**: When targets are specified by **IP Address** (not hostname/FQDN), Windows defaults to blocking authentication (Kerberos failure).
 
 **Robust Strategy**:
-1.  **TrustedHosts Update**: The tool must configure `WSMan:\localhost\Client\TrustedHosts`.
-    *   *Command*: `Set-Item WSMan:\localhost\Client\TrustedHosts -Value '{IP_ADDRESS_LIST}' -Concatenate`
-    *   *Scope*: Client-side (the machine running the audit).
-2.  **Explicit Credentials**:
-    *   When using IP addresses, `Invoke-Command` cannot infer credentials from the current session context reliably.
-    *   *Requirement*: The CLI must accept `--credentials` (encrypted in `secrets.json`) and pass a generic `PSCredential` object explicitly to the remoting call.
-3.  **Multi-Layered Connection Attempt**:
-    *   **Layer 1 (Standard)**: Attempt `Invoke-Command -ComputerName [Target]`. (Works for Domain/FQDN).
-    *   **Layer 2 (IP Fallback)**: If Layer 1 fails and target is an IP:
-        *   Prompt user (or Auto-Fix) to add IP to `TrustedHosts`.
-        *   Retry with `-Credential` object explicitly.
 
-### Expectations
-*   **WMI/RPC**: Checks connectivity logic used by the audit collectors.
-*   **Agentless**: Does *not* install software. Uses standard Windows protocols.
+1. **TrustedHosts Update**: The tool must configure `WSMan:\localhost\Client\TrustedHosts`.
+   * *Command*: `Set-Item WSMan:\localhost\Client\TrustedHosts -Value '{IP_ADDRESS_LIST}' -Concatenate`
+   * *Scope*: Client-side (the machine running the audit).
+2. **Explicit Credentials**:
+   * When using IP addresses, `Invoke-Command` cannot infer credentials from the current session context reliably.
+   * *Requirement*: The CLI must accept `--credentials` (encrypted in `secrets.json`) and pass a generic `PSCredential` object explicitly to the remoting call.
+3. **Multi-Layered Connection Attempt**:
+   * **Layer 1 (Standard)**: Attempt `Invoke-Command -ComputerName [Target]`. (Works for Domain/FQDN).
+   * **Layer 2 (IP Fallback)**: If Layer 1 fails and target is an IP:
+     * Prompt user (or Auto-Fix) to add IP to `TrustedHosts`.
+     * Retry with `-Credential` object explicitly.
+
+### Requirements
+
+* **WMI/RPC**: Checks connectivity logic used by the audit collectors.
+* **Agentless**: Does *not* install software. Uses standard Windows protocols.
 
 ---
 
 ## 6. `util`
+
 **Purpose**: Tooling and Setup.
-*   `--check-drivers`: Verification of ODBC Driver 17/18 for SQL Server.
-*   `--validate-config`: Syntax check for `sql_targets.json`.
-*   `--setup-credentials`: Interactive prompt to encrypt credentials into `secrets.json`.
+
+* `--check-drivers`: Verification of ODBC Driver 17/18 for SQL Server.
+* `--validate-config`: Syntax check for `sql_targets.json`.
+* `--setup-credentials`: Interactive prompt to encrypt credentials into `secrets.json`.
 

@@ -10,6 +10,7 @@
 
 - [ ] Add more cross-links in docs.
 - [ ] Explore codebase for rewrite insights.
+- [ ] Migrate from PyInstaller to Nuitka for better performance and native code compilation (deferred for now, as PyInstaller is functional).
 
 ## Low Priority
 

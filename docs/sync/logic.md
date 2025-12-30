@@ -4,6 +4,10 @@ The Synchronization Engine (`--sync`) is a precise, multi-phase process that rec
 
 **Source Code**: `src/autodbaudit/application/sync_service.py`
 
+**Prerequisites**:
+- Run `prepare` command first to set up PowerShell remoting on target machines (see `docs/sync/prepare.md`)
+- Ensure `Audit_Latest.xlsx` is not open in Excel
+
 ## Execution Phases
 
 ### Phase 1: Pre-flight Checks
@@ -23,6 +27,9 @@ Before doing anything, the engine ensures the environment is safe:
 ### Phase 3: Re-Audit (The "Sync Run")
 The engine performs a **fresh audit** of the targets.
 *   **Action**: Connectivity is re-established, and all collectors run again.
+*   **Data Collection**: Uses hybrid T-SQL + PowerShell approach.
+* **T-SQL**: For DB-internal data (logins, configs, permissions).
+* **PowerShell (PSRemote)**: For OS-level data (services, client protocols, registry). Prioritizes PS if available/reliable; gracefully falls back to T-SQL or cached data if PS fails or unavailable (e.g., Linux/Docker).
 *   **Result**: A new "Sync Run" (Run ID > Baseline) is created in the database.
 *   **Failure Handling**: If the re-audit crashes, the new run is marked as `FAILED`.
 
