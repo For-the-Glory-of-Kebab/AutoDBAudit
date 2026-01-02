@@ -99,6 +99,7 @@ class Server:
 
 @dataclass(slots=True)
 class Instance:
+    # pylint: disable=too-many-instance-attributes
     """
     Represents a SQL Server instance on a server.
     
@@ -143,6 +144,7 @@ class Requirement:
 
 @dataclass(slots=True)
 class RequirementResult:
+    # pylint: disable=too-many-instance-attributes
     """
     Result of checking a requirement against a specific instance.
     
@@ -160,6 +162,7 @@ class RequirementResult:
 
 @dataclass(slots=True)
 class Action:
+    # pylint: disable=too-many-instance-attributes
     """
     Represents a remediation action taken.
     

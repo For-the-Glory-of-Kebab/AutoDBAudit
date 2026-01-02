@@ -6,9 +6,8 @@ from __future__ import annotations
 
 import logging
 import json
-from pathlib import Path
 from autodbaudit.application.collectors.base import BaseCollector
-from autodbaudit.infrastructure.psremote.executor import ScriptExecutor
+from autodbaudit.infrastructure.psremoting.executor.script_executor import ScriptExecutor
 from autodbaudit.utils.resources import get_base_path
 
 logger = logging.getLogger(__name__)
@@ -31,18 +30,8 @@ class InfrastructureCollector(BaseCollector):
             "backups": self._collect_backups(),
         }
 
-    def _collect_services(self) -> int:
-        """Collect service status using PowerShell (primary) with T-SQL fallback."""
-        # 1. Try Primary Method: PowerShell (WMI/CIM)
-        # This provides better data for OS-level services
-        count = self._collect_services_via_powershell()
-        if count > 0:
-            logger.info("Services collected via PowerShell: %d", count)
-            return count
-
-        logger.warning("PowerShell returned no services. Attempting T-SQL fallback...")
-
-        # 2. Fallback: T-SQL DMV
+    def _collect_services_via_tsql(self) -> int:
+        """Collect services using T-SQL DMV as fallback."""
         try:
             services = self.conn.execute_query(self.prov.get_sql_services())
             if not services:
@@ -79,44 +68,15 @@ class InfrastructureCollector(BaseCollector):
                 )
 
                 # Determine if this service needs review
-                acct_lower = service_account.lower().strip()
-                status_lower = status.lower().strip()
-                startup_lower = startup_type.lower().strip()
-
-                # Rules:
-                # 1. Non-compliant accounts (System, LocalService, etc)
-                non_compliant_accounts = {
-                    "nt authority\\system",
-                    "localsystem",
-                    "local service",
-                    "network service",
-                }
-                is_bad_account = acct_lower in non_compliant_accounts
-
-                # 2. Key services that should be running but are stopped
-                # (Simple heuristic: If set to Auto Start, it should be Running)
-                is_stopped_auto = (
-                    "auto" in startup_lower and "running" not in status_lower
+                finding_status, risk_level, description = self._evaluate_service_finding(
+                    service_account, status, startup_type
                 )
 
-                is_issue = is_bad_account or is_stopped_auto
-                finding_status = "WARN" if is_issue else "PASS"
-
-                desc_parts = []
-                if is_bad_account:
-                    desc_parts.append(f"running as '{service_account}'")
-                if is_stopped_auto:
-                    desc_parts.append("Auto-start service is stopped")
-                if not is_issue:
-                    desc_parts.append("Service configuration OK")
-
-                description = f"Service '{service_name}': " + "; ".join(desc_parts)
-
-                rec = []
-                if is_bad_account:
-                    rec.append("Use managed service accounts")
-                if is_stopped_auto:
-                    rec.append(
+                rec_parts = []
+                if "running as" in description:
+                    rec_parts.append("Use managed service accounts")
+                if "Auto-start service is stopped" in description:
+                    rec_parts.append(
                         "Start service or change startup type to Manual/Disabled"
                     )
 
@@ -124,9 +84,9 @@ class InfrastructureCollector(BaseCollector):
                     finding_type="service",
                     entity_name=service_name,
                     status=finding_status,
-                    risk_level="medium" if is_issue else None,
-                    description=description,
-                    recommendation="; ".join(rec) if rec else None,
+                    risk_level=risk_level,
+                    description=f"Service '{service_name}': {description}",
+                    recommendation="; ".join(rec_parts) if rec_parts else None,
                     entity_key=entity_key,
                 )
 
@@ -144,40 +104,120 @@ class InfrastructureCollector(BaseCollector):
             )
             return 0
 
-    def _collect_services_via_powershell(self) -> int:
+    def _collect_services(self) -> int:
+        """Collect service status using PowerShell (primary) with T-SQL fallback."""
+        # 1. Try Primary Method: PowerShell (WMI/CIM)
+        # This provides better data for OS-level services
+        count = self._collect_services_via_powershell()
+        if count > 0:
+            logger.info("Services collected via PowerShell: %d", count)
+            return count
+
+        logger.warning("PowerShell returned no services. Attempting T-SQL fallback...")
+
+        # 2. Fallback: T-SQL DMV
+        return self._collect_services_via_tsql()
+
+    def _load_credentials(self) -> tuple[str | None, str | None]:
+        """Load credentials from local_remote.json file."""
+        cred_path = get_base_path() / "credentials" / "local_remote.json"
+        username = None
+        password = None
+
+        if cred_path.exists():
+            try:
+                with open(cred_path, "r", encoding="utf-8") as f:
+                    creds = json.load(f)
+                    username = creds.get("username")
+                    password = creds.get("password")
+            except Exception:
+                logger.warning("Failed to load generic credentials for PSRemoting.")
+
+        if username:
+            logger.info("PSRemote: loaded credentials for user '%s'", username)
+        else:
+            logger.warning("PSRemote: No username found in credentials file.")
+
+        return username, password
+
+    def _create_executor(
+        self, target_host: str, username: str | None, password: str | None
+    ) -> ScriptExecutor:
+        """Create and return a ScriptExecutor for the target host."""
+        return ScriptExecutor.from_config(
+            hostname=target_host, username=username, password=password
+        )
+
+    def _determine_service_type(self, svc_name: str, instance: str) -> tuple[str, str]:
+        """Determine service type and instance based on service name."""
+        svc_type = "Other"
+        svc_instance = instance  # assume belongs to this instance mostly
+
+        name_lower = svc_name.lower()
+        if "sql" in name_lower and "agent" in name_lower:
+            svc_type = "SQL Agent"
+        elif "sql" in name_lower and "browser" in name_lower:
+            svc_type = "SQL Browser"
+            svc_instance = "(Shared)"
+        elif "mssql" in name_lower:
+            svc_type = "Database Engine"
+        elif "writer" in name_lower:
+            svc_type = "VSS Writer"
+            svc_instance = "(Shared)"
+
+        return svc_type, svc_instance
+
+    def _evaluate_service_finding(
+        self,
+        account: str,
+        state: str,
+        start_mode: str
+    ) -> tuple[str, str | None, str]:
+        """Evaluate service configuration and return finding details."""
+        acct_lower = account.lower().strip()
+        status_lower = state.lower().strip()
+        startup_lower = start_mode.lower().strip()
+
+        non_compliant_accounts = {
+            "nt authority\\system",
+            "localsystem",
+            "local service",
+            "network service",
+        }
+        is_bad_account = acct_lower in non_compliant_accounts
+        is_stopped_auto = (
+            "auto" in startup_lower and "running" not in status_lower
+        )
+
+        is_issue = is_bad_account or is_stopped_auto
+        finding_status = "WARN" if is_issue else "PASS"
+        risk_level = "medium" if is_issue else None
+
+        desc_parts = []
+        if is_bad_account:
+            desc_parts.append(f"running as '{account}'")
+        if is_stopped_auto:
+            desc_parts.append("Auto-start service is stopped")
+        if not is_issue:
+            desc_parts.append("Service configuration OK (via PowerShell)")
+
+        description = "; ".join(desc_parts)
+
+        return finding_status, risk_level, description
+
+    def _collect_services_via_powershell(self) -> int:  # pylint: disable=too-many-locals
         """Collect services using PowerShell/WMI (fallback)."""
         try:
-            # Load credentials (naive implementation for now, should be in context)
-            # get_base_path() returns project root (verified in resources.py)
-            cred_path = get_base_path() / "credentials" / "local_remote.json"
-            username = None
-            password = None
-
-            if cred_path.exists():
-                try:
-                    with open(cred_path, "r", encoding="utf-8") as f:
-                        creds = json.load(f)
-                        username = creds.get("username")
-                        password = creds.get("password")
-                except Exception:
-                    logger.warning("Failed to load generic credentials for PSRemoting.")
-
-            if username:
-                logger.info("PSRemote: loaded credentials for user '%s'", username)
-            else:
-                logger.warning("PSRemote: No username found in credentials file.")
-
-            # Create executor
-            # Use 127.0.0.1 for localhost to avoid IPv6/resolution issues with WinRM
-            target_host = self.ctx.server_name
-            if target_host.lower() in ("localhost", ".", "(local)"):
-                target_host = "127.0.0.1"
-
-            executor = ScriptExecutor.from_config(
-                hostname=target_host, username=username, password=password
+            # Load credentials and create executor
+            username, password = self._load_credentials()
+            target_host = (
+                "127.0.0.1"
+                if self.ctx.server_name.lower() in ("localhost", ".", "(local)")
+                else self.ctx.server_name
             )
+            executor = self._create_executor(target_host, username, password)
 
-            # Get instance name for filter
+            # Get services
             instance = self.ctx.instance_name or "MSSQLSERVER"
             result = executor.get_os_data(instance_name=instance)
             executor.close()
@@ -186,12 +226,11 @@ class InfrastructureCollector(BaseCollector):
                 logger.error("PowerShell service collection failed: %s", result.error)
                 return 0
 
-            # Parse services from Result object
-            # { "name": ..., "display_name": ..., "start_mode": ..., "state": ..., "start_name": ... }
             ps_services = (result.data or {}).get("services", [])
             if not ps_services:
                 logger.warning(
-                    "PowerShell executed but returned no services. Raw Output Sample: %s",
+                    "PowerShell executed but returned no services. "
+                    "Raw Output Sample: %s",
                     str(result.raw_output)[:500] if result.raw_output else "None",
                 )
                 if result.error:
@@ -200,26 +239,15 @@ class InfrastructureCollector(BaseCollector):
 
             for svc in ps_services:
                 svc_name = svc.get("name", "")
-                disp_name = svc.get("display_name", "")
-                start_mode = svc.get("start_mode", "")  # "Auto", "Manual"
-                state = svc.get("state", "")  # "Running", "Stopped"
+                start_mode = svc.get("start_mode", "")
+                state = svc.get("state", "")
                 account = svc.get("start_name", "")
 
-                # Determine Service Type/Instance roughly
-                svc_type = "Other"
-                svc_instance = instance  # assume belongs to this instance mostly
-
-                name_lower = svc_name.lower()
-                if "sql" in name_lower and "agent" in name_lower:
-                    svc_type = "SQL Agent"
-                elif "sql" in name_lower and "browser" in name_lower:
-                    svc_type = "SQL Browser"
-                    svc_instance = "(Shared)"
-                elif "mssql" in name_lower:
-                    svc_type = "Database Engine"
-                elif "writer" in name_lower:
-                    svc_type = "VSS Writer"
-                    svc_instance = "(Shared)"
+                # Determine type and evaluate finding
+                svc_type, svc_instance = self._determine_service_type(svc_name, instance)
+                finding_status, risk_level, desc = self._evaluate_service_finding(
+                    account, state, start_mode
+                )
 
                 self.writer.add_service(
                     server_name=self.ctx.server_name,
@@ -231,44 +259,13 @@ class InfrastructureCollector(BaseCollector):
                     service_account=account,
                 )
 
-                # --- DUPLICATE FINDING LOGIC (Simplified) ---
-                # Build entity_key: server|instance|service_name
                 entity_key = f"{self.ctx.server_name}|{svc_instance}|{svc_name}".lower()
-
-                acct_lower = account.lower().strip()
-                status_lower = state.lower().strip()
-                startup_lower = start_mode.lower().strip()
-
-                non_compliant_accounts = {
-                    "nt authority\\system",
-                    "localsystem",
-                    "local service",
-                    "network service",
-                }
-                is_bad_account = acct_lower in non_compliant_accounts
-                is_stopped_auto = (
-                    "auto" in startup_lower and "running" not in status_lower
-                )
-
-                is_issue = is_bad_account or is_stopped_auto
-                finding_status = "WARN" if is_issue else "PASS"
-
-                desc_parts = []
-                if is_bad_account:
-                    desc_parts.append(f"running as '{account}'")
-                if is_stopped_auto:
-                    desc_parts.append("Auto-start service is stopped")
-                if not is_issue:
-                    desc_parts.append("Service configuration OK (via PowerShell)")
-
-                description = f"Service '{svc_name}': " + "; ".join(desc_parts)
-
                 self.save_finding(
                     finding_type="service",
                     entity_name=svc_name,
                     status=finding_status,
-                    risk_level="medium" if is_issue else None,
-                    description=description,
+                    risk_level=risk_level,
+                    description=f"Service '{svc_name}': {desc}",
                     recommendation="Review service configuration",
                     entity_key=entity_key,
                 )
@@ -344,7 +341,10 @@ class InfrastructureCollector(BaseCollector):
                     entity_name=name,
                     status=finding_status,
                     risk_level=risk_level,
-                    description=f"Protocol '{name}' is {'enabled' if is_enabled else 'disabled'} ({source})",
+                    description=(
+                        f"Protocol '{name}' is {'enabled' if is_enabled else 'disabled'} "
+                        f"({source})"
+                    ),
                     recommendation=(
                         "Disable unused protocols" if finding_status == "WARN" else None
                     ),
@@ -355,6 +355,85 @@ class InfrastructureCollector(BaseCollector):
         except Exception as e:
             logger.warning("Client protocols failed: %s", e)
             return 0
+
+    def _process_linked_server(self, ls: dict, login_map: dict[str, list[dict]]) -> int:
+        """Process a single linked server and its login mappings."""
+        # FIXED: Query returns LinkedServerName, not ServerName
+        ls_name = ls.get("LinkedServerName", "")
+        # FIXED: Query returns Provider and Product, not ProviderName/ProductName
+        provider = ls.get("Provider", "")
+        product = ls.get("Product", "")
+        data_source = ls.get("DataSource", "")
+        is_rpc_out_enabled = bool(ls.get("RpcOutEnabled"))
+
+        # Get login mappings for this linked server
+        mappings = login_map.get(ls_name, [])
+        count = 0
+
+        if mappings:
+            # One row per login mapping (can be multiple per linked server)
+            for mapping in mappings:
+                local_login = mapping.get("LocalLogin", "")
+                remote_login = mapping.get("RemoteLogin", "")
+                impersonate = bool(mapping.get("Impersonate"))
+                risk_level = mapping.get("RiskLevel", "")
+
+                self.writer.add_linked_server(
+                    server_name=self.ctx.server_name,
+                    instance_name=self.ctx.instance_name,
+                    linked_server_name=ls_name,
+                    product=product,
+                    provider=provider,
+                    data_source=data_source,
+                    rpc_out=is_rpc_out_enabled,
+                    local_login=local_login,
+                    remote_login=remote_login,
+                    impersonate=impersonate,
+                    risk_level=risk_level,
+                )
+                count += 1
+
+                # Security check: High privilege = discrepant
+                if risk_level == "HIGH_PRIVILEGE":
+                    self.save_finding(
+                        finding_type="linked_server",
+                        entity_name=f"{ls_name}|{local_login}|{remote_login}",
+                        status="FAIL",
+                        risk_level="high",
+                        description=(
+                            f"Linked server '{ls_name}' uses high-privilege "
+                            f"remote login '{remote_login}'"
+                        ),
+                        recommendation=(
+                            "Use least-privilege credentials for linked "
+                            "server connections"
+                        ),
+                    )
+        else:
+            # No login mappings - still add the linked server
+            self.writer.add_linked_server(
+                server_name=self.ctx.server_name,
+                instance_name=self.ctx.instance_name,
+                linked_server_name=ls_name,
+                product=product,
+                provider=provider,
+                data_source=data_source,
+                rpc_out=is_rpc_out_enabled,
+            )
+            count += 1
+
+            # Warn if RPC Out is enabled (less critical than high-priv creds)
+            if is_rpc_out_enabled:
+                self.save_finding(
+                    finding_type="linked_server",
+                    entity_name=ls_name,
+                    status="WARN",
+                    risk_level="medium",
+                    description=f"Linked server '{ls_name}' has RPC Out enabled",
+                    recommendation="Disable RPC Out unless required",
+                )
+
+        return count
 
     def _collect_linked_servers(self) -> int:
         """Collect linked servers with login mappings."""
@@ -376,73 +455,7 @@ class InfrastructureCollector(BaseCollector):
 
             count = 0
             for ls in linked:
-                # FIXED: Query returns LinkedServerName, not ServerName
-                ls_name = ls.get("LinkedServerName", "")
-                # FIXED: Query returns Provider and Product, not ProviderName/ProductName
-                provider = ls.get("Provider", "")
-                product = ls.get("Product", "")
-                data_source = ls.get("DataSource", "")
-                is_rpc_out_enabled = bool(ls.get("RpcOutEnabled"))
-
-                # Get login mappings for this linked server
-                mappings = login_map.get(ls_name, [])
-
-                if mappings:
-                    # One row per login mapping (can be multiple per linked server)
-                    for mapping in mappings:
-                        local_login = mapping.get("LocalLogin", "")
-                        remote_login = mapping.get("RemoteLogin", "")
-                        impersonate = bool(mapping.get("Impersonate"))
-                        risk_level = mapping.get("RiskLevel", "")
-
-                        self.writer.add_linked_server(
-                            server_name=self.ctx.server_name,
-                            instance_name=self.ctx.instance_name,
-                            linked_server_name=ls_name,
-                            product=product,
-                            provider=provider,
-                            data_source=data_source,
-                            rpc_out=is_rpc_out_enabled,
-                            local_login=local_login,
-                            remote_login=remote_login,
-                            impersonate=impersonate,
-                            risk_level=risk_level,
-                        )
-                        count += 1
-
-                        # Security check: High privilege = discrepant
-                        if risk_level == "HIGH_PRIVILEGE":
-                            self.save_finding(
-                                finding_type="linked_server",
-                                entity_name=f"{ls_name}|{local_login}|{remote_login}",
-                                status="FAIL",
-                                risk_level="high",
-                                description=f"Linked server '{ls_name}' uses high-privilege remote login '{remote_login}'",
-                                recommendation="Use least-privilege credentials for linked server connections",
-                            )
-                else:
-                    # No login mappings - still add the linked server
-                    self.writer.add_linked_server(
-                        server_name=self.ctx.server_name,
-                        instance_name=self.ctx.instance_name,
-                        linked_server_name=ls_name,
-                        product=product,
-                        provider=provider,
-                        data_source=data_source,
-                        rpc_out=is_rpc_out_enabled,
-                    )
-                    count += 1
-
-                    # Warn if RPC Out is enabled (less critical than high-priv creds)
-                    if is_rpc_out_enabled:
-                        self.save_finding(
-                            finding_type="linked_server",
-                            entity_name=ls_name,
-                            status="WARN",
-                            risk_level="medium",
-                            description=f"Linked server '{ls_name}' has RPC Out enabled",
-                            recommendation="Disable RPC Out unless required",
-                        )
+                count += self._process_linked_server(ls, login_map)
 
             return count
         except Exception as e:
@@ -457,8 +470,6 @@ class InfrastructureCollector(BaseCollector):
                 db_name = bak.get("DatabaseName", "")
                 recovery_model = bak.get("RecoveryModel", "")
                 last_full = bak.get("LastFullBackup")
-                # last_diff and last_log retrieved but currently unused in report
-                # last_diff = bak.get("LastDiffBackup")
                 last_log = bak.get("LastLogBackup")
 
                 self.writer.add_backup_info(
@@ -487,8 +498,12 @@ class InfrastructureCollector(BaseCollector):
                         entity_name=db_name,
                         status="WARN",
                         risk_level="medium",
-                        description=f"Database '{db_name}' is in FULL recovery but has no LOG backups",
-                        recommendation="Schedule transaction log backups or switch to SIMPLE recovery",
+                        description=(
+                            f"Database '{db_name}' is in FULL recovery but has no LOG backups"
+                        ),
+                        recommendation=(
+                            "Schedule transaction log backups or switch to SIMPLE recovery"
+                        ),
                     )
             return len(backups)
         except Exception as e:

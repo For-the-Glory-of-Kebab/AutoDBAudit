@@ -208,12 +208,8 @@ def main() -> int:
         if db_path.exists():
             store = HistoryStore(db_path)
             # We don't call initialize_schema here to avoid creating tables if they don't exist
-            # but cleanup_stale_runs might fail if tables are missing.
-            try:
-                store.cleanup_stale_runs()
-            except Exception:
-                # Likely tables don't exist yet, which is fine
-                pass
+            # but cleanup operations might fail if tables are missing.
+            # Removed cleanup_stale_runs call as method doesn't exist
             store.close()
     except Exception as e:
         logger.warning("Startup cleanup failed (non-critical): %s", e)
@@ -266,13 +262,8 @@ def main() -> int:
             elif args.validate_config:
                 return validate_config(args)
             elif args.setup_credentials:
-                from autodbaudit.infrastructure.credentials import (
-                    setup_credentials_interactive,
-                )
-
-                # Assuming this function exists or just placeholder if not
-                # Since I didn't see it, I'll print not implemented for safety to avoid import error
-                print("Credential setup utility not connected.")
+                # Credential setup utility not implemented yet
+                print("Credential setup utility not implemented yet.")
                 return 1
             else:
                 # Retrieve the util subparser to print its help
@@ -551,7 +542,6 @@ def handle_finalize_command(args) -> int:
     # Generate Persian copy if requested
     if getattr(args, "persian", False):
         from autodbaudit.application.persian_generator import generate_persian_report
-        from pathlib import Path
 
         # Find the generated Excel file
         excel_path = result.get("excel_path")
@@ -587,7 +577,6 @@ def handle_definalize_command(args) -> int:
 def handle_prepare_command(args) -> int:
     """Handler for 'prepare' subcommand - Access Preparation."""
     from autodbaudit.infrastructure.sqlite.store import HistoryStore
-    from autodbaudit.infrastructure.config_loader import ConfigLoader
     from autodbaudit.application.access_preparation import AccessPreparationService
 
     db_path = DEFAULT_OUTPUT_DIR / "audit_history.db"

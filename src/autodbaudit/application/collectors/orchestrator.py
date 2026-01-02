@@ -34,7 +34,7 @@ class AuditDataCollector:
     Previously known as the monolithic DataCollector.
     """
 
-    def __init__(
+    def __init__(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
         connector: SqlConnector,
         query_provider: QueryProvider,
@@ -55,7 +55,7 @@ class AuditDataCollector:
         self.instance_id = instance_id
         self.expected_builds = expected_builds or {}
 
-    def collect_all(
+    def collect_all(  # pylint: disable=too-many-locals
         self,
         server_name: str,
         instance_name: str,
@@ -81,33 +81,22 @@ class AuditDataCollector:
         counts = {}
 
         # 2. Instantiate and run collectors
-
-        # Instance Properties
         prop_collector = ServerPropertiesCollector(context)
         counts["instances"] = prop_collector.collect(config_name, ip_address)
 
-        # Access Control (Logins, Roles, SA)
         access_collector = AccessControlCollector(context)
-        access_counts = access_collector.collect()
-        counts.update(access_counts)
+        counts.update(access_collector.collect())
 
-        # Configuration (sp_configure)
         config_collector = ConfigurationCollector(context)
         counts["config"] = config_collector.collect()
 
-        # Infrastructure (Services, Protocols, Linked, Backups)
         infra_collector = InfrastructureCollector(context)
-        infra_counts = infra_collector.collect()
-        counts.update(infra_counts)
+        counts.update(infra_collector.collect())
 
-        # Databases (DBs, Users, Roles, Triggers, Permissions)
         db_collector = DatabaseCollector(context)
-        db_counts = db_collector.collect()
-        counts.update(db_counts)
+        counts.update(db_collector.collect())
 
-        # Security Policy (Audit, Encryption)
         sec_collector = SecurityPolicyCollector(context)
-        sec_counts = sec_collector.collect()
-        counts.update(sec_counts)
+        counts.update(sec_collector.collect())
 
         return counts

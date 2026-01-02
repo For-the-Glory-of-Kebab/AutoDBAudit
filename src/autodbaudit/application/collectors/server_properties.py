@@ -17,7 +17,7 @@ class ServerPropertiesCollector(BaseCollector):
     Performs version compliance checks.
     """
 
-    def collect(self, config_name: str, config_ip: str) -> int:
+    def collect(self, config_name: str, config_ip: str) -> int:  # pylint: disable=arguments-differ,too-many-locals
         """
         Collect instance properties.
         Returns 1 if successful, 0 otherwise.

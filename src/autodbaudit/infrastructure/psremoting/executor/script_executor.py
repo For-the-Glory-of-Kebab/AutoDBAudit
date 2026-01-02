@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from autodbaudit.infrastructure.psremote.client import (
+from autodbaudit.infrastructure.psremoting.executor.connection_client import (
     PSRemoteClient,
     ConnectionConfig,
 )

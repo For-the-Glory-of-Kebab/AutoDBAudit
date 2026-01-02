@@ -19,6 +19,7 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True, slots=True)
 class SheetSpec:
+    # pylint: disable=too-many-instance-attributes
     """
     Complete specification for an Excel sheet.
 

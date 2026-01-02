@@ -123,34 +123,34 @@ class ExcelAnnotationReader:
             # Find status column
             status_idx = headers.get("Review Status") or headers.get("Status Override")
 
-            # Read data rows
-            for row_num, row in enumerate(ws.iter_rows(min_row=2), start=2):
-                cells = list(row)
+        def get_cell(cells_list: list, idx: int | None) -> str | None:
+            if idx is not None and idx < len(cells_list):
+                val = cells_list[idx].value
+                return str(val) if val is not None else None
+            return None
 
-                def get_cell(idx: int | None) -> str | None:
-                    if idx is not None and idx < len(cells):
-                        val = cells[idx].value
-                        return str(val) if val is not None else None
-                    return None
+        # Read data rows
+        for row_num, row in enumerate(ws.iter_rows(min_row=2), start=2):
+            cells = list(row)
 
-                # Build composite entity key from ALL key columns
-                key_parts = []
-                for key_col, idx in key_indices:
-                    val = get_cell(idx) or ""
-                    # Handle default instance
-                    if key_col == "Instance" and not val:
-                        val = "(Default)"
-                    key_parts.append(val)
+            # Build composite entity key from ALL key columns
+            key_parts = []
+            for key_col, idx in key_indices:
+                val = get_cell(cells, idx) or ""
+                # Handle default instance
+                if key_col == "Instance" and not val:
+                    val = "(Default)"
+                key_parts.append(val)
 
-                entity_key = "|".join(key_parts)
+            entity_key = "|".join(key_parts)
 
-                # Get annotation and status
-                annotation = get_cell(annotation_idx)
-                status = get_cell(status_idx)
+            # Get annotation and status
+            annotation = get_cell(cells, annotation_idx)
+            status = get_cell(cells, status_idx)
 
-                # Skip if no annotations
-                if not annotation and not status:
-                    continue
+            # Skip if no annotations
+            if not annotation and not status:
+                continue
 
                 # Skip empty entity keys
                 if all(not p or p == "(Default)" for p in key_parts):

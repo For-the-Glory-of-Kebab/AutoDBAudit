@@ -297,7 +297,6 @@ class ScriptExecutor:
         # Check for SA if connection is SA
         if connection_login.lower() == "sa":
             sa_pattern = re.compile(r"ALTER\s+LOGIN\s+\[?sa\]?", re.IGNORECASE)
-            # rename_pattern = re.compile(r"WITH\s+NAME\s*=", re.IGNORECASE) # Unused var
 
             for i, batch in enumerate(batches):
                 # Clean again or reuse cleaner logic if I refactored, but simple repeat is fine

@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum, auto
+from enum import Enum
 from typing import Any
 
 
@@ -201,6 +201,7 @@ class TransitionResult:
 
 @dataclass
 class DetectedChange:
+    # pylint: disable=too-many-instance-attributes
     """
     A detected change ready for logging.
 
@@ -275,11 +276,18 @@ class ExceptionInfo:
         An exception is valid if it has justification OR
         the review status is set to "Exception".
         """
-        return self.has_justification or (self.review_status is not None and "Exception" in str(self.review_status))
+        return (
+            self.has_justification
+            or (
+                self.review_status is not None
+                and "Exception" in str(self.review_status)
+            )
+        )
 
 
 @dataclass
 class SyncStats:
+    # pylint: disable=too-many-instance-attributes
     """
     Statistics from a sync operation.
 

@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import logging
 from autodbaudit.application.collectors.base import BaseCollector
+from autodbaudit.infrastructure.sqlite.schema import save_login
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +81,11 @@ class AccessControlCollector(BaseCollector):
             pwd_policy = lg.get("PasswordPolicyEnforced")
 
             logger.warning(
-                f"DEBUG: Login={login_name}, Type={login_type}, Disabled={is_disabled}, Policy={pwd_policy}"
+                "DEBUG: Login=%s, Type=%s, Disabled=%s, Policy=%s",
+                login_name,
+                login_type,
+                is_disabled,
+                pwd_policy,
             )
 
             self.writer.add_login(
@@ -96,8 +101,6 @@ class AccessControlCollector(BaseCollector):
             # Persist to SQLite (optional)
             if self.ctx.db_conn and self.ctx.instance_id:
                 try:
-                    from autodbaudit.infrastructure.sqlite.schema import save_login
-
                     save_login(
                         connection=self.ctx.db_conn,
                         instance_id=self.ctx.instance_id,
@@ -157,13 +160,13 @@ class AccessControlCollector(BaseCollector):
                 # "Results-Based Persistence": Findings table drives compliance
                 role_name = r.get("RoleName", "")
                 member_name = r.get("MemberName", "")
-                
+
                 # Determine status based on role sensitivity
                 status = "PASS"
                 risk_level = None
                 desc = f"Member of '{role_name}': {member_name}"
                 rec = None
-                
+
                 if role_name == "sysadmin":
                     status = "FAIL"
                     risk_level = "critical"

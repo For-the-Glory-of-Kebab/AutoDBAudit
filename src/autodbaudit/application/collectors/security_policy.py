@@ -52,7 +52,9 @@ class SecurityPolicyCollector(BaseCollector):
                         entity_name=setting_name,
                         status="FAIL",
                         risk_level="medium",
-                        description=f"Audit setting '{setting_name}' is non-compliant: {current_value}",
+                        description=(
+                            f"Audit setting '{setting_name}' is non-compliant: {current_value}"
+                        ),
                         recommendation=f"Set to {recommended}",
                     )
             return len(audits)

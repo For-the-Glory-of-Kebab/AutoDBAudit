@@ -4,9 +4,26 @@
 
 **Source Code**: `src/autodbaudit/interface/cli.py`
 
+## CLI Behavior Standards
+
+### Help Display
+
+- **Automatic Help**: Commands invoked without required parameters show an error with guidance to use `--help`
+- **Help Synonyms**: `--help` displays help information (implementation note: `-h` may not be available in all contexts)
+- **Contextual Help**: Each command level provides relevant help for its specific functionality
+
+### Command Invocation
+
+- **Required Parameters**: Commands without required arguments show help automatically
+- **Optional Parameters**: Commands with optional parameters execute with defaults when help is not requested
+- **Error Handling**: Invalid parameters show usage information alongside error messages
+
+---
+
 ## Global Arguments
-*   `--verbose`, `-v`: Enable verbose (DEBUG) logging. **Use this for troubleshooting.**
-*   `--log-file [PATH]`: Write logs to a specific file. Useful for automated cron jobs.
+
+- `--verbose`, `-v`: Enable verbose (DEBUG) logging. **Use this for troubleshooting.**
+- `--log-file [PATH]`: Write logs to a specific file. Useful for automated cron jobs.
 
 ---
 
@@ -148,38 +165,96 @@ Identical to `audit`, but with a focus on **User Actions**:
 ## 5. `prepare`
 **Purpose**: Manage remote access (PSRemote/WMI) for targets. **Prerequisite for full audits.**
 
-**Status**: Currently **BROKEN** - See `docs/sync/prepare.md` for detailed analysis of issues and required fixes.
+**Status**: Currently **IN DEVELOPMENT** - Server consolidation implemented, comprehensive PS remoting strategy in progress.
+
+| Subcommand | Purpose | Arguments |
+| :--- | :--- | :--- |
+| `apply` | Apply PS remoting setup to targets | Optional `--targets`, `--config`, `--credentials`, `--parallel`, `--timeout`, `--dry-run` |
+| `revert` | Revert PS remoting changes | Optional `--targets`, `--config`, `--credentials`, `--parallel`, `--timeout`, `--dry-run`, `--force` |
+| `status` | Show recorded connection status for all servers | `--format` (table/json), `--filter` (successful/failed/all) |
+
+### `prepare apply` - Apply PS Remoting Setup
+
+**Default Behavior**: When no arguments provided, applies PS remoting setup to ALL enabled targets from `sql_targets.json`.
 
 | Argument | Type | Description |
 | :--- | :--- | :--- |
-| `--status` | Flag | Show current access status for all targets. |
-| `--revert` | Flag | Revert changes (disconnect/cleanup). |
-| `--mark-accessible [ID]` | String | Manually mark a target as accessible. |
-| `--targets [FILE]` | String | Target config file (default: `sql_targets.json`). |
-| `--yes` | Flag | Skip confirmation prompts. |
+| `--targets` | Optional[List[str]] | Specific target server names. **If omitted, uses all enabled targets** |
+| `--config` | String | Path to audit configuration file (default: `audit_config.json`) |
+| `--credentials` | String | Path to credentials file (default: uses `os_credential_file` from each target) |
+| `--parallel/--sequential` | Flag | Process servers in parallel (default: parallel) |
+| `--timeout` | Int | Timeout in seconds per server (default: 300) |
+| `--dry-run` | Flag | Show what would be done without executing |
 
-### The "Trusted Host" & Credential Requirement
+**Server Consolidation**: Multiple SQL instances on same server = 1 PS remoting operation.
 
-**Critical Failure Mode**: When targets are specified by **IP Address** (not hostname/FQDN), Windows defaults to blocking authentication (Kerberos failure).
+**Examples**:
 
-**Robust Strategy**:
+```bash
+# Apply to all enabled targets (default behavior)
+autodbaudit prepare apply
 
-1. **TrustedHosts Update**: The tool must configure `WSMan:\localhost\Client\TrustedHosts`.
-   * *Command*: `Set-Item WSMan:\localhost\Client\TrustedHosts -Value '{IP_ADDRESS_LIST}' -Concatenate`
-   * *Scope*: Client-side (the machine running the audit).
-2. **Explicit Credentials**:
-   * When using IP addresses, `Invoke-Command` cannot infer credentials from the current session context reliably.
-   * *Requirement*: The CLI must accept `--credentials` (encrypted in `secrets.json`) and pass a generic `PSCredential` object explicitly to the remoting call.
-3. **Multi-Layered Connection Attempt**:
-   * **Layer 1 (Standard)**: Attempt `Invoke-Command -ComputerName [Target]`. (Works for Domain/FQDN).
-   * **Layer 2 (IP Fallback)**: If Layer 1 fails and target is an IP:
-     * Prompt user (or Auto-Fix) to add IP to `TrustedHosts`.
-     * Retry with `-Credential` object explicitly.
+# Apply to specific servers only
+autodbaudit prepare apply --targets sql-prod-01 sql-prod-02
 
-### Requirements
+# Dry run to see what would happen
+autodbaudit prepare apply --dry-run
+```
 
-* **WMI/RPC**: Checks connectivity logic used by the audit collectors.
-* **Agentless**: Does *not* install software. Uses standard Windows protocols.
+### `prepare revert` - Revert PS Remoting Changes
+
+**Default Behavior**: When no arguments provided, reverts PS remoting setup on ALL enabled targets.
+
+| Argument | Type | Description |
+| :--- | :--- | :--- |
+| `--targets` | Optional[List[str]] | Specific target server names. **If omitted, uses all enabled targets** |
+| `--config` | String | Path to audit configuration file |
+| `--credentials` | String | Path to credentials file |
+| `--parallel/--sequential` | Flag | Process servers in parallel (default: parallel) |
+| `--timeout` | Int | Timeout in seconds per server (default: 300) |
+| `--dry-run` | Flag | Show what would be reverted without executing |
+| `--force` | Flag | Skip confirmation prompts |
+
+**Examples**:
+
+```bash
+# Revert all enabled targets
+autodbaudit prepare revert
+
+# Revert specific servers
+autodbaudit prepare revert --targets sql-dev-01
+
+# Force revert without confirmation
+autodbaudit prepare revert --force
+```
+
+### `prepare status` - Show Connection Status Report
+
+**Purpose**: Display the recorded PS remoting connection status and availability for all servers.
+
+| Argument | Type | Description |
+| :--- | :--- | :--- |
+| `--format` | String | Output format: `table` (default), `json`, `csv` |
+| `--filter` | String | Filter results: `all` (default), `successful`, `failed`, `manual` |
+
+**Displays**:
+
+- Server hostname/IP
+- Connection method used (PowerShell Remoting, SSH, WMI, etc.)
+- Authentication method (Kerberos, NTLM, Negotiate, etc.)
+- Last successful connection timestamp
+- Associated SQL targets on that server
+- Status (Successful, Failed, Manual Override Required)
+
+**Examples**:
+
+```bash
+# Show all server statuses in table format
+autodbaudit prepare status
+
+# Show only failed connections in JSON format
+autodbaudit prepare status --filter failed --format json
+```
 
 ---
 
@@ -187,7 +262,7 @@ Identical to `audit`, but with a focus on **User Actions**:
 
 **Purpose**: Tooling and Setup.
 
-* `--check-drivers`: Verification of ODBC Driver 17/18 for SQL Server.
-* `--validate-config`: Syntax check for `sql_targets.json`.
-* `--setup-credentials`: Interactive prompt to encrypt credentials into `secrets.json`.
+- `--check-drivers`: Verification of ODBC Driver 17/18 for SQL Server.
+- `--validate-config`: Syntax check for `sql_targets.json`.
+- `--setup-credentials`: Interactive prompt to encrypt credentials into `secrets.json`.
 

@@ -28,10 +28,6 @@ import logging
 from pathlib import Path
 
 from autodbaudit.application.sync.config import get_all_sync_configs
-from autodbaudit.application.sync.db_ops import (
-    persist_annotations,
-    load_annotations,
-)
 from autodbaudit.application.sync.excel_reader import read_all_sheets
 from autodbaudit.application.sync.excel_writer import write_all_sheets
 from autodbaudit.application.sync.differ import (
@@ -99,7 +95,8 @@ class AnnotationSyncService:
         Returns:
             Number of annotations saved
         """
-        return persist_annotations(self.db_path, annotations)
+        from autodbaudit.utils.database import persist_annotations_to_db
+        return persist_annotations_to_db(self.db_path, annotations)
 
     def load_from_db(self) -> dict[str, dict]:
         """
@@ -108,7 +105,8 @@ class AnnotationSyncService:
         Returns:
             Dict of {entity_type|entity_key: {field_name: value}}
         """
-        return load_annotations(self.db_path)
+        from autodbaudit.utils.database import load_annotations_from_db
+        return load_annotations_from_db(self.db_path)
 
     def get_all_annotations(self) -> dict[str, dict]:
         """

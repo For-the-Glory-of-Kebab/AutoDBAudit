@@ -9,6 +9,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from autodbaudit.infrastructure.sqlite.schema import save_finding, build_entity_key
+
 if TYPE_CHECKING:
     from autodbaudit.infrastructure.sql.connector import SqlConnector
     from autodbaudit.infrastructure.sql.query_provider import QueryProvider
@@ -18,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
-class CollectorContext:
+class CollectorContext:  # pylint: disable=too-many-instance-attributes
     """
     Shared context/state for all collectors.
     Propagated through the collector hierarchy.
@@ -55,9 +57,8 @@ class BaseCollector(ABC):
         """
         Execute collection logic.
         """
-        pass
 
-    def save_finding(
+    def save_finding(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
         finding_type: str,
         entity_name: str,
@@ -77,20 +78,17 @@ class BaseCollector(ABC):
         """
         if self.ctx.db_conn is None or self.ctx.audit_run_id is None:
             logger.warning(
-                f"DEBUG: save_finding skipped! Conn: {self.ctx.db_conn}, RunID: {self.ctx.audit_run_id}"
+                "DEBUG: save_finding skipped! Conn: %s, RunID: %s",
+                self.ctx.db_conn,
+                self.ctx.audit_run_id,
             )
             return
 
         logger.warning(
-            f"DEBUG: save_finding called for {entity_name}, Status: {status}"
+            "DEBUG: save_finding called for %s, Status: %s", entity_name, status
         )
 
         try:
-            from autodbaudit.infrastructure.sqlite.schema import (
-                save_finding,
-                build_entity_key,
-            )
-
             # Use provided entity_key or build default
             if entity_key is None:
                 entity_key = build_entity_key(

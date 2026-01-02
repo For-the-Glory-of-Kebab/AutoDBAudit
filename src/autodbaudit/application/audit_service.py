@@ -7,10 +7,14 @@ Phase 2: SQLite persistence (store audit data for history tracking)
 
 from __future__ import annotations
 
+import concurrent.futures
 import logging
+import threading
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+
+from dataclasses import dataclass
 
 from autodbaudit.infrastructure.config_loader import ConfigLoader, SqlTarget
 from autodbaudit.infrastructure.sql.connector import SqlConnector
@@ -24,6 +28,25 @@ if TYPE_CHECKING:
     pass
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class TargetProcessingContext:
+    """Context for processing a single target."""
+    writer: EnhancedReportWriter
+    store: HistoryStore
+    expected_builds: dict[str, str]
+    writer_lock: Any | None = None
+
+
+@dataclass
+class ScanContext:
+    """Context for parallel scan execution."""
+    targets: list[SqlTarget]
+    writer: EnhancedReportWriter
+    expected_builds: dict[str, str]
+    writer_lock: threading.Lock
+    run_id: int
 
 
 class ThreadSafeWriterWrapper:
@@ -101,7 +124,7 @@ class AuditService:
             self._history_store = HistoryStore(db_path)
             self._history_store.initialize_schema()
             # Initialize v2 tables (extended schema)
-            initialize_schema_v2(self._history_store._get_connection())
+            initialize_schema_v2(self._history_store._get_connection())  # pylint: disable=protected-access
         return self._history_store
 
     def run_audit(
@@ -141,6 +164,52 @@ class AuditService:
         # Standard flow: Save and return path
         return self._save_report(writer, run_id)
 
+    def _initialize_audit_run(
+        self,
+        organization: str | None,
+        writer: EnhancedReportWriter | None,
+    ) -> tuple[EnhancedReportWriter, int, dict[str, str]]:
+        """Initialize audit run and writer."""
+        # Try to load audit config for metadata
+        try:
+            audit_config = self.config_loader.load_audit_config()
+            config_org = audit_config.organization
+            expected_builds = audit_config.expected_builds
+        except Exception:
+            config_org = None
+            expected_builds = {}
+
+        final_org = organization or config_org or "Security Audit"
+        audit_name = "SQL Server Security Audit"
+
+        # Initialize SQLite history store (Main thread only)
+        store = self._get_history_store()
+        audit_run = store.begin_audit_run(organization=final_org)
+        self._audit_run_id = audit_run.id
+
+        # Create Excel writer if not provided
+        if writer is None:
+            writer = EnhancedReportWriter()
+            writer.set_audit_info(
+                run_id=audit_run.id,
+                organization=final_org,
+                audit_name=audit_name,
+                started_at=datetime.now(),
+            )
+
+        return writer, audit_run.id, expected_builds
+
+    def _load_targets(self, targets_file: str) -> list[SqlTarget]:
+        """Load SQL targets from file."""
+        try:
+            targets = self.config_loader.load_sql_targets(targets_file)
+            logger.info("Loaded %d SQL targets from %s", len(targets), targets_file)
+            return targets
+        except Exception as e:
+            store = self._get_history_store()
+            store.complete_audit_run(self._audit_run_id, "failed")
+            raise RuntimeError(f"Failed to load targets: {e}") from e
+
     def _perform_audit_scan(
         self,
         targets_file: str,
@@ -158,53 +227,36 @@ class AuditService:
         logger.info("Starting SQL Server Audit Scan (Parallel)")
         logger.info("=" * 60)
 
-        import concurrent.futures
-        import threading
-
         # Thread-safety lock for Excel writer
         writer_lock = threading.Lock()
 
-        # Try to load audit config for metadata
-        try:
-            audit_config = self.config_loader.load_audit_config()
-            config_org = audit_config.organization
-            expected_builds = audit_config.expected_builds
-        except Exception:
-            config_org = None
-            expected_builds = {}
+        writer, run_id, expected_builds = self._initialize_audit_run(organization, writer)
+        targets = self._load_targets(targets_file)
 
-        final_org = organization or config_org or "Security Audit"
-        audit_name = "SQL Server Security Audit"
-
-        # Initialize SQLite history store (Main thread only)
-        # We will create per-thread stores for workers
-        store = self._get_history_store()
-        audit_run = store.begin_audit_run(organization=final_org)
-        self._audit_run_id = audit_run.id
-
-        # Create Excel writer if not provided
-        if writer is None:
-            writer = EnhancedReportWriter()
-            writer.set_audit_info(
-                run_id=audit_run.id,
-                organization=final_org,
-                audit_name=audit_name,
-                started_at=datetime.now(),
+        success_count, error_count = self._execute_parallel_scan(
+            ScanContext(
+                targets=targets,
+                writer=writer,
+                expected_builds=expected_builds,
+                writer_lock=writer_lock,
+                run_id=run_id,
             )
+        )
 
+        summary_counts = {"success": success_count, "error": error_count}
+
+        logger.info(
+            "Scan completed: %d succeeded, %d failed", success_count, error_count
+        )
+        return writer, run_id, summary_counts
+
+    def _execute_parallel_scan(self, context: ScanContext) -> tuple[int, int]:
+        """Execute parallel scan of targets."""
         success_count = 0
         error_count = 0
 
         # Determine max workers
         max_workers = 5  # Safe default for SQL connections
-
-        # Load SQL targets
-        try:
-            targets = self.config_loader.load_sql_targets(targets_file)
-            logger.info("Loaded %d SQL targets from %s", len(targets), targets_file)
-        except Exception as e:
-            store.complete_audit_run(audit_run.id, "failed")
-            raise RuntimeError(f"Failed to load targets: {e}") from e
 
         # Define wrapper for parallel execution
         def process_target_safe(target_config):
@@ -212,9 +264,13 @@ class AuditService:
             thread_store = HistoryStore(self.output_dir / "audit_history.db")
             try:
                 # Pass lock to _process_target (needs update)
-                self._process_target(
-                    target_config, writer, thread_store, expected_builds, writer_lock
+                processing_context = TargetProcessingContext(
+                    writer=context.writer,
+                    store=thread_store,
+                    expected_builds=context.expected_builds,
+                    writer_lock=context.writer_lock,
                 )
+                self._process_target(target_config, processing_context)
                 return True
             except Exception as exc:
                 logger.error("Error processing %s: %s", target_config.display_name, exc)
@@ -225,11 +281,11 @@ class AuditService:
         # Execute in parallel
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
             future_to_target = {
-                executor.submit(process_target_safe, t): t for t in targets if t.enabled
+                executor.submit(process_target_safe, t): t for t in context.targets if t.enabled
             }
 
             for future in concurrent.futures.as_completed(future_to_target):
-                target = future_to_target[future]
+                _ = future_to_target[future]
                 try:
                     if future.result():
                         success_count += 1
@@ -239,23 +295,16 @@ class AuditService:
                     error_count += 1
 
         # Mark audit run as complete
+        store = self._get_history_store()
         status = "completed" if error_count == 0 else "completed_with_errors"
-        store.complete_audit_run(audit_run.id, status)
+        store.complete_audit_run(context.run_id, status)
 
-        summary_counts = {"success": success_count, "error": error_count}
-
-        logger.info(
-            "Scan completed: %d succeeded, %d failed", success_count, error_count
-        )
-        return writer, audit_run.id, summary_counts
+        return success_count, error_count
 
     def _process_target(
         self,
         target: SqlTarget,
-        writer: EnhancedReportWriter,
-        store: HistoryStore,
-        expected_builds: dict[str, str] | None = None,
-        writer_lock: Any | None = None,
+        context: TargetProcessingContext,
     ) -> None:
         """
         Process a single SQL target.
@@ -264,17 +313,16 @@ class AuditService:
 
         Args:
             target: SQL target configuration
-            writer: Excel report writer
-            store: SQLite history store
-            expected_builds: Dict mapping SQL year to expected version
-            writer_lock: Optional lock for thread-safe writing
+            context: Processing context with writer, store, etc.
         """
         logger.info("Processing target: %s", target.display_name)
 
         # Wrap writer if lock provided
-        safe_writer = writer
-        if writer_lock:
-            safe_writer = ThreadSafeWriterWrapper(writer, writer_lock)  # type: ignore
+        safe_writer = context.writer
+        if context.writer_lock:
+            safe_writer = ThreadSafeWriterWrapper(
+                context.writer, context.writer_lock
+            )  # type: ignore
 
         # Create connector
         connector = SqlConnector(
@@ -302,10 +350,10 @@ class AuditService:
         # Port is required to distinguish default instances on same host
         # Instance name: prefer detected from SQL Server, fallback to config
         detected_instance = version_info.instance_name or ""
-        server = store.upsert_server(
+        server = context.store.upsert_server(
             hostname=target.server, ip_address=target.ip_address
         )
-        instance = store.upsert_instance(
+        instance = context.store.upsert_instance(
             server=server,
             instance_name=detected_instance,  # Use SQL Server's actual instance name
             port=target.port or 1433,
@@ -317,7 +365,7 @@ class AuditService:
 
         # Link instance to this audit run
         if self._audit_run_id:
-            store.link_instance_to_run(self._audit_run_id, instance.id)
+            context.store.link_instance_to_run(self._audit_run_id, instance.id)
 
         query_provider = get_query_provider(version_info.version_major)
 
@@ -327,10 +375,10 @@ class AuditService:
             connector,
             query_provider,
             safe_writer,
-            db_conn=store._get_connection(),
+            db_conn=context.store._get_connection(),  # pylint: disable=protected-access
             audit_run_id=self._audit_run_id,
             instance_id=instance.id,
-            expected_builds=expected_builds or {},
+            expected_builds=context.expected_builds or {},
         )
         counts = collector.collect_all(
             server_name=target.server,
@@ -359,7 +407,7 @@ class AuditService:
             Path to generated Excel file
         """
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"sql_audit_{timestamp}.xlsx"
+        filename = f"sql_audit_{run_id}_{timestamp}.xlsx"
         output_path = self.output_dir / filename
 
         writer.save(output_path)

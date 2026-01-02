@@ -34,17 +34,27 @@ dependencies = [
     "pywin32>=306",
     "jinja2>=3.0",
     "pywinrm>=0.4.0",
+    "rich>=13.0",  # For enhanced CLI output
+    "typer>=0.9.0",  # Modern CLI framework
+    "pydantic>=2.0",  # Data validation
+    "structlog>=23.0",  # Structured logging
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
-    "hypothesis>=6.0",
-    "allpairspy>=2.5",
+    "pytest-xdist>=3.0",  # Parallel test execution
+    "hypothesis>=6.0",  # Property-based testing
+    "allpairspy>=2.5",  # Combinatorial testing
     "faker>=18.0",
     "mypy>=1.0",
     "ruff>=0.1.0",
+    "pre-commit>=3.0",  # Git hooks
+    "sqlfluff>=2.0",  # SQL linting
+    "coverage[toml]>=7.0",  # Enhanced coverage
+    "pytest-mock>=3.0",
+    "pytest-benchmark>=4.0",  # Performance testing
 ]
 
 [project.scripts]
@@ -84,3 +94,7 @@ testpaths = ["tests"]
 pythonpath = ["src"]
 python_files = ["test_*.py"]
 addopts = "-v --tb=short"
+
+[tool.pylint]
+extension-pkg-allow-list = ["pyodbc"]
+disable = ["E1128"]

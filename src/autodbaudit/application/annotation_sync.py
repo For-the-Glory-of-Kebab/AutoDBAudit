@@ -15,6 +15,28 @@ but it is INCOMPLETE. This module remains the working implementation.
 
 from __future__ import annotations
 
+import logging
+from pathlib import Path
+
+from openpyxl import load_workbook
+
+from autodbaudit.domain.entity_key import (
+    annotation_key_to_finding_key,
+    normalize_key_string,
+)
+from autodbaudit.infrastructure.excel.base import (
+    apply_action_needed_styling,
+    apply_exception_documented_styling,
+    parse_datetime_flexible,
+    STATUS_VALUES,
+)
+from autodbaudit.utils.database import (
+    load_annotations_from_db,
+    persist_annotations_to_db,
+)
+
+logger = logging.getLogger(__name__)
+
 
 def _clean_key_value(val: str) -> str:
     """
@@ -25,18 +47,6 @@ def _clean_key_value(val: str) -> str:
         return ""
     # Encode to ASCII (ignore errors drops non-ascii) then decode back
     return str(val).encode("ascii", "ignore").decode("ascii").strip()
-
-
-import logging
-from datetime import datetime
-from pathlib import Path
-
-from autodbaudit.domain.entity_key import (
-    normalize_key_string,
-    annotation_key_to_finding_key,
-)
-
-logger = logging.getLogger(__name__)
 
 
 # Sheet configuration: entity type, key columns, editable columns
@@ -292,8 +302,6 @@ class AnnotationSyncService:
         Returns:
             Dict of {entity_key: {field_name: value}}
         """
-        from openpyxl import load_workbook
-
         excel_path = Path(excel_path)
         all_annotations: dict[str, dict] = {}
 
@@ -335,6 +343,7 @@ class AnnotationSyncService:
         Uses header row to find column positions dynamically.
         Handles merged cells by tracking last non-empty values for key columns.
         """
+        # pylint: disable=too-many-locals,too-many-branches,too-many-statements,too-many-nested-blocks
         annotations: dict[str, dict] = {}
 
         # Get header row to find column indices
@@ -472,7 +481,10 @@ class AnnotationSyncService:
                     status_col_idx = idx
 
         logger.warning(
-            f"DEBUG: Sheet {ws.title} ActionCol={action_col_idx} StatusCol={status_col_idx}"
+            "DEBUG: Sheet %s ActionCol=%s StatusCol=%s",
+            ws.title,
+            action_col_idx,
+            status_col_idx,
         )
 
         # Track last non-empty values for key columns (handles merged cells)
@@ -558,10 +570,6 @@ class AnnotationSyncService:
                             or "revised" in field_name.lower()
                             or "reviewed" in field_name.lower()
                         ):
-                            from autodbaudit.infrastructure.excel.base import (
-                                parse_datetime_flexible,
-                            )
-
                             parsed_date = parse_datetime_flexible(
                                 val, log_errors=True, context=f"{ws.title}|{entity_key}"
                             )
@@ -578,7 +586,8 @@ class AnnotationSyncService:
                         fields[field_name] = ""
                         has_any_value = True
 
-            # AUTO-STATUS: Check Justification ONLY (notes/purpose are documentation, NOT exception triggers)
+            # AUTO-STATUS: Check Justification ONLY
+            # (notes/purpose are documentation, NOT exception triggers)
             raw_just = fields.get("justification")
 
             # Check review status for "Exception"
@@ -586,8 +595,6 @@ class AnnotationSyncService:
             is_explicit_exception = raw_status and "Exception" in str(raw_status)
 
             if (raw_just and str(raw_just).strip()) or is_explicit_exception:
-                from autodbaudit.infrastructure.excel.base import STATUS_VALUES
-
                 # We enforce Exception status so it syncs back to Excel next time
                 fields["review_status"] = STATUS_VALUES.EXCEPTION
                 # NOTE: Do NOT set action_needed here - that's only for actual discrepant rows
@@ -607,7 +614,10 @@ class AnnotationSyncService:
                 action_val = row[action_col_idx]
                 if "Sensitive-Role" in entity_key:
                     logger.warning(
-                        f"DEBUG: {entity_key} ActionVal='{action_val}' ActionCol={action_col_idx}"
+                        "DEBUG: %s ActionVal='%s' ActionCol=%d",
+                        entity_key,
+                        action_val,
+                        action_col_idx,
                     )
                 # ⏳ = needs action (FAIL), ✅ = documented exception
                 if action_val and "⏳" in str(action_val):
@@ -652,8 +662,6 @@ class AnnotationSyncService:
         Returns:
             Number of cells updated
         """
-        from openpyxl import load_workbook
-
         excel_path = Path(excel_path)
         if not excel_path.exists():
             logger.warning("Excel file not found: %s", excel_path)
@@ -690,8 +698,9 @@ class AnnotationSyncService:
             logger.info("Wrote %d annotation cells to %s", total_updated, excel_path)
         except PermissionError:
             logger.error(
-                f"❌ Cannot write to '{excel_path.name}' - file is open!\n"
-                f"   Please close the file in Excel and try again."
+                "❌ Cannot write to '%s' - file is open!\n"
+                "   Please close the file in Excel and try again.",
+                excel_path.name,
             )
             return 0
         except Exception as e:
@@ -705,15 +714,18 @@ class AnnotationSyncService:
         self, ws, config: dict, annotations: dict[str, dict]
     ) -> int:
         """Write annotations to a single worksheet."""
+        # pylint: disable=too-many-locals,too-many-branches,too-many-statements,too-many-nested-blocks
         updated = 0
         logger.warning(
-            f"DEBUG: _write_sheet_annotations for {ws.title} with {len(annotations)} items"
+            "DEBUG: _write_sheet_annotations for %s with %d items",
+            ws.title,
+            len(annotations),
         )
 
         # Get header row to find column indices
         header_row = [cell.value for cell in ws[1]]
         if not header_row:
-            logger.warning(f"DEBUG: No header row found in {ws.title}")
+            logger.warning("DEBUG: No header row found in %s", ws.title)
             return 0
 
         # Map header names to column indices (1-indexed for openpyxl write)
@@ -744,7 +756,7 @@ class AnnotationSyncService:
                         break
 
         if len(key_indices) != len(config["key_cols"]):
-            logger.warning(f"DEBUG: Header mismatch in {ws.title}. Start Search.")
+            logger.warning("DEBUG: Header mismatch in %s. Start Search.", ws.title)
 
         # Find editable column indices (1-indexed)
         editable_indices = {}
@@ -780,7 +792,7 @@ class AnnotationSyncService:
 
         # Build legacy key map for fallback matching (recovers annotations if UUIDs changed)
         legacy_key_map = {}
-        for key, fields in annotations.items():
+        for _, fields in annotations.items():
             legacy_key = fields.get("_legacy_entity_key")
             if legacy_key:
                 legacy_key_map[legacy_key.lower()] = fields
@@ -865,10 +877,6 @@ class AnnotationSyncService:
                                 or "reviewed" in field_name.lower()
                             )
                         ):
-                            from autodbaudit.infrastructure.excel.base import (
-                                parse_datetime_flexible,
-                            )
-
                             dt = parse_datetime_flexible(val, log_errors=False)
                             if dt:
                                 val = dt
@@ -905,16 +913,13 @@ class AnnotationSyncService:
 
                     if (has_just or has_exception) and is_discrepant:
                         # DISCREPANT + (justification OR Exception status) = Valid Exception
-                        from autodbaudit.infrastructure.excel.base import (
-                            apply_exception_documented_styling,
-                        )
-
                         apply_exception_documented_styling(
                             ws.cell(row=row_num, column=action_col_idx)
                         )
                         updated += 1
                         logger.warning(
-                            "DEBUG: Updated Excel Indicator for %s (Just=%s, Exc=%s, Stat=%s, Row=%d)",
+                            "DEBUG: Updated Excel Indicator for %s "
+                            "(Just=%s, Exc=%s, Stat=%s, Row=%d)",
                             display_key,
                             has_just,
                             has_exception,
@@ -924,10 +929,6 @@ class AnnotationSyncService:
                     elif is_discrepant and not (has_just or has_exception):
                         # Was an exception (or marked discrepant), but justification removed.
                         # Revert to Needs Action (⏳)
-                        from autodbaudit.infrastructure.excel.base import (
-                            apply_action_needed_styling,
-                        )
-
                         apply_action_needed_styling(
                             ws.cell(row=row_num, column=action_col_idx),
                             needs_action=True,
@@ -952,7 +953,8 @@ class AnnotationSyncService:
                             )
                     else:
                         logger.warning(
-                            "DEBUG: Skipped Indicator Update for %s (Just=%s, Exc=%s, Disc=%s, Stat=%s, Row=%d)",
+                            "DEBUG: Skipped Indicator Update for %s "
+                            "(Just=%s, Exc=%s, Disc=%s, Stat=%s, Row=%d)",
                             display_key,
                             has_just,
                             has_exception,
@@ -960,7 +962,8 @@ class AnnotationSyncService:
                             status_val,
                             row_num,
                         )
-                    # Note: has_just and not is_discrepant → justification kept as documentation (no action needed)
+                    # Note: has_just and not is_discrepant →
+                    # justification kept as documentation (no action needed)
 
         return updated
 
@@ -974,38 +977,7 @@ class AnnotationSyncService:
         Returns:
             Number of annotations saved
         """
-        import sqlite3
-        from autodbaudit.infrastructure.sqlite.schema import set_annotation
-
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
-
-        count = 0
-        for full_key, fields in annotations.items():
-            parts = full_key.split("|", 1)
-            if len(parts) != 2:
-                continue
-
-            entity_type, entity_key = parts
-
-            for field_name, value in fields.items():
-                if value is not None:
-                    # Convert datetime to string if needed
-                    if isinstance(value, datetime):
-                        value = value.isoformat()
-
-                    set_annotation(
-                        connection=conn,
-                        entity_type=entity_type,
-                        entity_key=entity_key,
-                        field_name=field_name,
-                        field_value=str(value),
-                    )
-                    count += 1
-
-        conn.close()
-        logger.info("Persisted %d annotations to database", count)
-        return count
+        return persist_annotations_to_db(self.db_path, annotations)
 
     def load_from_db(self) -> dict[str, dict]:
         """
@@ -1014,29 +986,7 @@ class AnnotationSyncService:
         Returns:
             Dict of {entity_type|entity_key: {field_name: value}}
         """
-        import sqlite3
-
-        annotations: dict[str, dict] = {}
-
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
-
-        rows = conn.execute(
-            "SELECT entity_type, entity_key, field_name, field_value FROM annotations"
-        ).fetchall()
-
-        for row in rows:
-            # Normalize to lowercase for consistent matching
-            entity_type = row["entity_type"].lower() if row["entity_type"] else ""
-            entity_key = row["entity_key"].lower() if row["entity_key"] else ""
-            full_key = f"{entity_type}|{entity_key}"
-            if full_key not in annotations:
-                annotations[full_key] = {}
-            annotations[full_key][row["field_name"]] = row["field_value"]
-
-        conn.close()
-        logger.info("Loaded %d annotation entries from database", len(annotations))
-        return annotations
+        return load_annotations_from_db(self.db_path)
 
     def get_all_annotations(self) -> dict[str, dict]:
         """
@@ -1075,11 +1025,13 @@ class AnnotationSyncService:
             List of {entity_key, entity_type, justification, is_new, change_type}
             where change_type is 'added', 'updated', or 'removed'
         """
+        # pylint: disable=too-many-locals,too-many-branches,too-many-statements,too-many-nested-blocks
         exceptions = []
 
         # Build findings map for status AND server/instance lookup with LOWERCASE keys
         # Key format in findings: entity_key like "type|SERVER|INSTANCE|entity_name"
-        # Key format in annotations: "entity_type|UUID" with _legacy_entity_key storing "server|instance|entity"
+        # Key format in annotations: "entity_type|UUID" with _legacy_entity_key
+        # storing "server|instance|entity"
         # We normalize ALL keys to lowercase for case-insensitive matching
         findings_status_map: dict[str, str] = {}
         findings_full_map: dict[str, dict] = {}  # Full finding data for server/instance
@@ -1104,31 +1056,6 @@ class AnnotationSyncService:
         def was_previously_exception(fields: dict) -> bool:
             if not fields:
                 return False
-            raw_just = fields.get("justification")
-            justification = str(raw_just).strip() if raw_just else ""
-            raw_status = fields.get("review_status", "")
-            has_exception_status = "Exception" in str(raw_status)
-            return bool(justification) or has_exception_status
-
-        # Helper to check if Excel annotation qualifies as NEW exception
-        # Must be DISCREPANT (FAIL/WARN) to count as exception
-        def is_new_exception(fields: dict) -> bool:
-            if not fields:
-                return False
-
-            # First check status - must be FAIL/WARN to be exception
-            row_status = str(fields.get("status", "")).upper()
-            is_discrepant = row_status in ("FAIL", "WARN", "⏳", "⚠")
-
-            # Also treat as discrepant if action_needed was explicitly set
-            if fields.get("action_needed", False):
-                is_discrepant = True
-
-            # If row is passing, it's NOT an exception (just documentation)
-            if not is_discrepant:
-                return False
-
-            # Now check if it has justification or Exception status
             raw_just = fields.get("justification")
             justification = str(raw_just).strip() if raw_just else ""
             raw_status = fields.get("review_status", "")
@@ -1164,7 +1091,8 @@ class AnnotationSyncService:
             if "_legacy_entity_key" in fields and fields["_legacy_entity_key"]:
                 # Use stored legacy key (UUID-based annotations)
                 finding_key = fields["_legacy_entity_key"]
-                # entity_type = ""  <-- REMOVED clearing of entity_type, we use current_entity_type variable
+                # entity_type = ""  <-- REMOVED clearing of entity_type,
+                # we use current_entity_type variable
             else:
                 # Fallback: Extract entity_key from full_key (legacy format)
                 # Note: This overwrites local variables, but main loop uses full_key
@@ -1194,13 +1122,15 @@ class AnnotationSyncService:
                 # Also check for emoji indicators in status
                 if "⏳" in row_status or "⚠" in row_status or "✗" in row_status:
                     is_discrepant = True
-                # CRITICAL: For sheets without Status column (Sensitive Roles, Services),
-                # the ONLY way to detect discrepancy is via action_needed field
-                # which was set from the ⏳ icon in Action column during Excel read
+                # CRITICAL: For sheets without Status column (Sensitive Roles,
+                # Services), the ONLY way to detect discrepancy is via
+                # action_needed field which was set from the ⏳ icon in Action
+                # column during Excel read
                 if fields.get("action_needed", False):
                     is_discrepant = True
                 logger.info(
-                    "Using Excel status fallback for %s: status=%s, action_needed=%s, discrepant=%s",
+                    "Using Excel status fallback for %s: status=%s, "
+                    "action_needed=%s, discrepant=%s",
                     full_key,
                     row_status or "(empty)",
                     fields.get("action_needed", False),
@@ -1227,7 +1157,8 @@ class AnnotationSyncService:
                 legacy_key_val = fields.get("_legacy_entity_key")
                 if legacy_key_val:
                     # We need to find the old annotation that has this legacy key
-                    # This is O(N) unless we build an index. Given N is usually small (<1000), iteration is fine.
+                    # This is O(N) unless we build an index. Given N is usually
+                    # small (<1000), iteration is fine.
                     # Or build index at start of method. Let's build index for performance.
                     pass
 
@@ -1417,7 +1348,7 @@ class AnnotationSyncService:
                 # Try matching by _legacy_entity_key
                 old_legacy_key = old_fields.get("_legacy_entity_key")
                 if old_legacy_key:
-                    for new_key, nf in new_annotations.items():
+                    for _, nf in new_annotations.items():
                         if nf.get("_legacy_entity_key") == old_legacy_key:
                             new_fields = nf
                             break

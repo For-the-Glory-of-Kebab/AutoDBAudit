@@ -7,7 +7,7 @@ Provides utilities for manipulating Excel files in tests.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from openpyxl import load_workbook
 from openpyxl.workbook import Workbook
@@ -71,7 +71,7 @@ class ExcelIO:
         sheet: str,
         row: int,
         column: str | int,
-        value: any,
+        value: Any,
     ) -> bool:
         """
         Write value to cell.
@@ -104,7 +104,7 @@ class ExcelIO:
         sheet: str,
         row: int,
         column: str | int,
-    ) -> any:
+    ) -> Any:
         """
         Read cell value.
 

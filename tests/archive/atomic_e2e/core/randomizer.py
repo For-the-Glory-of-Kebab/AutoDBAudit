@@ -114,7 +114,7 @@ class ConstrainedRandomizer:
         
     def _log_seed(self):
         """Log seed for reproducibility."""
-        logger.info(f"[RANDOMIZER] Seed={self.seed} - save this to reproduce!")
+        logger.info("[RANDOMIZER] Seed=%s - save this to reproduce!", self.seed)
         
     # === COUNT GENERATORS ===
     
@@ -306,7 +306,7 @@ class ConstrainedRandomizer:
         errors = self.tracker.validate()
         if errors:
             raise AssertionError(
-                f"Coverage validation failed:\n" + "\n".join(f"  - {e}" for e in errors)
+                "Coverage validation failed:\n" + "\n".join("  - %s" % e for e in errors)
             )
 
 

@@ -4,7 +4,7 @@
 
 **Source Code**: `src/autodbaudit/interface/cli.py` (prepare command implementation)
 
-**Status**: Currently **BROKEN** - Random failures, incomplete setup, missing credentials handling. Requires complete rewrite based on Microsoft best practices.
+**Status**: Currently **IN DEVELOPMENT** - Implementing comprehensive PS remoting setup with server consolidation, 5-layer strategy, and manual override fallbacks. See `docs/cli/reference.md` for updated command specifications.
 
 ## Vision and Requirements
 

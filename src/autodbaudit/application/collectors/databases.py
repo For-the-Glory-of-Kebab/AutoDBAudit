@@ -7,6 +7,7 @@ from __future__ import annotations
 import logging
 from autodbaudit.application.collectors.base import BaseCollector
 from autodbaudit.application.common.constants import SYSTEM_DBS
+from autodbaudit.infrastructure.sqlite.schema import save_database, save_db_user
 
 logger = logging.getLogger(__name__)
 
@@ -57,10 +58,6 @@ class DatabaseCollector(BaseCollector):
                 # Persist to SQLite (optional)
                 if self.ctx.db_conn and self.ctx.instance_id:
                     try:
-                        from autodbaudit.infrastructure.sqlite.schema import (
-                            save_database,
-                        )
-
                         save_database(
                             connection=self.ctx.db_conn,
                             instance_id=self.ctx.instance_id,
@@ -92,7 +89,7 @@ class DatabaseCollector(BaseCollector):
             logger.warning("Databases failed: %s", e)
             return [], []
 
-    def _collect_db_users(self, user_dbs: list[dict]) -> int:
+    def _collect_db_users(self, user_dbs: list[dict]) -> int:  # pylint: disable=too-many-locals
         """Collect database users from all user databases."""
         count = 0
         orphan_count = 0
@@ -131,10 +128,6 @@ class DatabaseCollector(BaseCollector):
                     # Persist to SQLite (optional)
                     if self.ctx.db_conn and self.ctx.instance_id:
                         try:
-                            from autodbaudit.infrastructure.sqlite.schema import (
-                                save_db_user,
-                            )
-
                             save_db_user(
                                 connection=self.ctx.db_conn,
                                 instance_id=self.ctx.instance_id,
@@ -197,11 +190,11 @@ class DatabaseCollector(BaseCollector):
 
         return count
 
-    def _collect_db_roles(self, user_dbs: list[dict]) -> int:
+    def _collect_db_roles(self, user_dbs: list[dict]) -> int:  # pylint: disable=too-many-locals
         """Collect database role memberships."""
         count = 0
         seen_memberships: set[tuple[str, str, str]] = set()
-        
+
         # Sensitive database roles that should be reviewed
         sensitive_roles = {"db_owner", "db_securityadmin", "db_accessadmin", "db_backupoperator"}
 
@@ -236,21 +229,30 @@ class DatabaseCollector(BaseCollector):
                             member_type=member_type,
                         )
                         count += 1
-                        
+
                         # Build entity_key: server|instance|database|role|member
-                        entity_key = f"{self.ctx.server_name}|{self.ctx.instance_name}|{db_name}|{role_name}|{member_name}".lower()
-                        
+                        entity_key = (
+                            f"{self.ctx.server_name}|{self.ctx.instance_name}|"
+                            f"{db_name}|{role_name}|{member_name}".lower()
+                        )
+
                         # Sensitive role members are findings
                         is_sensitive = role_name.lower() in sensitive_roles
                         finding_status = "WARN" if is_sensitive else "PASS"
-                        
+
                         self.save_finding(
                             finding_type="db_role",
                             entity_name=f"{db_name}|{role_name}|{member_name}",
                             status=finding_status,
                             risk_level="medium" if is_sensitive else None,
-                            description=f"'{member_name}' is member of '{role_name}' in '{db_name}'",
-                            recommendation="Review database role membership" if is_sensitive else None,
+                            description=(
+                                f"'{member_name}' is member of '{role_name}' "
+                                f"in '{db_name}'"
+                            ),
+                            recommendation=(
+                                "Review database role membership"
+                                if is_sensitive else None
+                            ),
                             entity_key=entity_key,
                         )
 
@@ -285,7 +287,7 @@ class DatabaseCollector(BaseCollector):
                 trigger_name = t.get("TriggerName", "")
                 event_type = t.get("EventType", "")
                 is_enabled = not bool(t.get("IsDisabled"))
-                
+
                 self.writer.add_trigger(
                     server_name=self.ctx.server_name,
                     instance_name=self.ctx.instance_name,
@@ -295,7 +297,7 @@ class DatabaseCollector(BaseCollector):
                     level="SERVER",
                     database_name=None,  # Server triggers have no database
                 )
-                
+
                 # SERVER triggers need review - save as findings
                 # Entity key format: server|instance|scope|database|trigger_name|event
                 entity_key = "|".join([
@@ -306,7 +308,7 @@ class DatabaseCollector(BaseCollector):
                     trigger_name.lower(),
                     event_type.lower(),
                 ])
-                
+
                 self.save_finding(
                     finding_type="trigger",
                     entity_name=trigger_name,
@@ -346,10 +348,10 @@ class DatabaseCollector(BaseCollector):
                 pass
         return count
 
-    def _collect_permissions(self, user_dbs: list[dict]) -> int:
+    def _collect_permissions(self, user_dbs: list[dict]) -> int:  # pylint: disable=too-many-locals
         """Collect database and server permissions."""
         count = 0
-        
+
         # High-risk permissions that need review
         sensitive_permissions = {
             "CONTROL SERVER", "ALTER ANY LOGIN", "ALTER ANY LINKED SERVER",
@@ -363,7 +365,7 @@ class DatabaseCollector(BaseCollector):
                 grantee = p.get("GranteeName", "")
                 perm_name = p.get("PermissionName", "")
                 entity_name = p.get("EntityName", "")
-                
+
                 self.writer.add_permission(
                     server_name=self.ctx.server_name,
                     instance_name=self.ctx.instance_name,
@@ -376,13 +378,16 @@ class DatabaseCollector(BaseCollector):
                     class_desc=p.get("PermissionClass", ""),
                 )
                 count += 1
-                
+
                 # Build entity_key matching SHEET_ANNOTATION_CONFIG
-                entity_key = f"{self.ctx.server_name}|{self.ctx.instance_name}|SERVER|(Server)|{grantee}|{perm_name}|{entity_name}".lower()
-                
+                entity_key = (
+                    f"{self.ctx.server_name}|{self.ctx.instance_name}|SERVER|"
+                    f"(Server)|{grantee}|{perm_name}|{entity_name}".lower()
+                )
+
                 is_sensitive = perm_name.upper() in sensitive_permissions
                 finding_status = "WARN" if is_sensitive else "PASS"
-                
+
                 self.save_finding(
                     finding_type="permission",
                     entity_name=f"{grantee}|{perm_name}",
@@ -408,7 +413,7 @@ class DatabaseCollector(BaseCollector):
                     grantee = p.get("GranteeName", "")
                     perm_name = p.get("PermissionName", "")
                     entity_name = p.get("EntityName", "")
-                    
+
                     self.writer.add_permission(
                         server_name=self.ctx.server_name,
                         instance_name=self.ctx.instance_name,
@@ -421,20 +426,29 @@ class DatabaseCollector(BaseCollector):
                         class_desc=p.get("PermissionClass", ""),
                     )
                     count += 1
-                    
+
                     # Build entity_key matching SHEET_ANNOTATION_CONFIG
-                    entity_key = f"{self.ctx.server_name}|{self.ctx.instance_name}|DATABASE|{db_name}|{grantee}|{perm_name}|{entity_name}".lower()
-                    
+                    entity_key = (
+                        f"{self.ctx.server_name}|{self.ctx.instance_name}|DATABASE|"
+                        f"{db_name}|{grantee}|{perm_name}|{entity_name}".lower()
+                    )
+
                     is_sensitive = perm_name.upper() in sensitive_permissions
                     finding_status = "WARN" if is_sensitive else "PASS"
-                    
+
                     self.save_finding(
                         finding_type="permission",
                         entity_name=f"{db_name}|{grantee}|{perm_name}",
                         status=finding_status,
                         risk_level="high" if is_sensitive else None,
-                        description=f"Database permission '{perm_name}' granted to '{grantee}' in '{db_name}'",
-                        recommendation="Review database-level permission grant" if is_sensitive else None,
+                        description=(
+                            f"Database permission '{perm_name}' granted to "
+                            f"'{grantee}' in '{db_name}'"
+                        ),
+                        recommendation=(
+                            "Review database-level permission grant"
+                            if is_sensitive else None
+                        ),
                         entity_key=entity_key,
                     )
             except Exception:

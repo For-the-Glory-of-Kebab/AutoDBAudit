@@ -107,6 +107,27 @@ Supporting information and resources.
 * **Machine-readable**: Structured for automated processing
 * **Complete Coverage**: Nothing left to imagination
 
+### 🤖 For AI Agents
+
+#### 🚨 CRITICAL: Session Continuity Protocol
+
+If you are an AI agent working on this project, **always check `AgentStuff/memory.md` first** before making any changes. This file contains:
+
+* **Complete Working Copy of Agent Brain**: Current status, thought history, implementation plans
+* **Session Resume Instructions**: Step-by-step protocol for seamless continuation
+* **Architectural Decisions**: All key decisions and constraints
+* **Current Implementation State**: What's complete, what's in progress, what's missing
+* **Quality Gates**: Code standards, testing requirements, linting rules
+
+**Memory Sync Rule**: The `AgentStuff/memory.md` file is kept synchronized with the current session state. If this file exists, it takes precedence over any assumptions about project status.
+
+**Before Starting Work**:
+
+1. Read `AgentStuff/memory.md` completely
+2. Check `AgentStuff/sessions/` for recent activity
+3. Review `AgentStuff/decisions/` for architectural decisions
+4. Update memory file after any significant changes
+
 ---
 
 ## 🔍 Quick Navigation

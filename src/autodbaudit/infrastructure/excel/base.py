@@ -477,9 +477,9 @@ class BaseSheetMixin:
     # Subclasses must define these
     wb: Workbook
     _row_counters: dict[str, int]
-    _issue_count: int
-    _pass_count: int
-    _warn_count: int
+    _issue_count: int = 0
+    _pass_count: int = 0
+    _warn_count: int = 0
 
     def _ensure_sheet(self, config: SheetConfig) -> Worksheet:
         """

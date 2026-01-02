@@ -20,7 +20,6 @@ from typing import Any, Protocol
 
 from autodbaudit.domain.change_types import (
     ChangeType,
-    ActionStatus,
     DetectedChange,
 )
 
@@ -37,7 +36,7 @@ class ActionStore(Protocol):
 
     def get_actions_for_run(self, initial_run_id: int) -> list[dict[str, Any]]:
         """Get all actions for an audit run."""
-        ...
+        raise NotImplementedError("Implementations must provide get_actions_for_run")
 
     def upsert_action(
         self,
@@ -53,7 +52,7 @@ class ActionStore(Protocol):
         user_date_override: str | None = None,
     ) -> int:
         """Insert or update an action. Returns action ID."""
-        ...
+        raise NotImplementedError("Implementations must provide upsert_action")
 
 
 # =============================================================================
@@ -257,7 +256,7 @@ class ActionRecorder:
         """
         # Note: This requires the store to have an update method
         # For now, this is handled by upsert_action with the same entity_key
-        logger.debug("User edit update for action %d", action_id)
+        logger.debug("User edit update for action %d (date=%s, notes=%s)", action_id, user_date, notes)
         return True
 
     def get_formatted_actions(
@@ -351,7 +350,6 @@ class ActionRecorder:
 
             # Determine display status - show descriptive type, not just Closed/Open
             status_db = action.get("status", "open").lower()
-            action_type = action.get("action_type", "")
 
             # Map to user-friendly display
             if status_db == "fixed":

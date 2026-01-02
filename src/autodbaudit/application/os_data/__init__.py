@@ -1,12 +1,11 @@
 """
-OS Data Module.
+OS Data Module - Ultra-Granular Architecture.
 
-Pulls OS-level data via PSRemote with fallback chain:
-1. Manual user input (highest priority)
-2. PSRemote live data (if can_pull_os_data = true)
-3. Cached data (if PSRemote unavailable)
+Modern facade over micro-components for OS data collection.
+Railway-oriented with priority fallback chain.
 """
 
+from autodbaudit.application.os_data.orchestrator import OsDataOrchestrator
 from autodbaudit.application.os_data.puller import OsDataPuller, OsDataResult
 
-__all__ = ["OsDataPuller", "OsDataResult"]
+__all__ = ["OsDataOrchestrator", "OsDataPuller", "OsDataResult"]

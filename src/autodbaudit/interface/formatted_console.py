@@ -174,19 +174,23 @@ class ConsoleRenderer:
         if has_baseline_changes:
             if fixed_baseline > 0:
                 print(
-                    f"  {Icons.CHECK} Fixed:              {c(colors.GREEN)}{fixed_baseline:>5}{c(colors.RESET)}"
+                    f"  {Icons.CHECK} Fixed:              "
+                    f"{c(colors.GREEN)}{fixed_baseline:>5}{c(colors.RESET)}"
                 )
             if regressions_baseline > 0:
                 print(
-                    f"  {Icons.CROSS} Regressions:        {c(colors.BG_RED)}{c(colors.WHITE)} {regressions_baseline:>3} {c(colors.RESET)}"
+                    f"  {Icons.CROSS} Regressions:        "
+                    f"{c(colors.BG_RED)}{c(colors.WHITE)} {regressions_baseline:>3} {c(colors.RESET)}"
                 )
             if new_issues_baseline > 0:
                 print(
-                    f"  {Icons.WARN} New Issues:         {c(colors.YELLOW)}{new_issues_baseline:>5}{c(colors.RESET)}"
+                    f"  {Icons.WARN} New Issues:         "
+                    f"{c(colors.YELLOW)}{new_issues_baseline:>5}{c(colors.RESET)}"
                 )
             if exc_added_baseline > 0:
                 print(
-                    f"  {Icons.DOC} Exceptions Added:   {c(colors.CYAN)}{exc_added_baseline:>5}{c(colors.RESET)}"
+                    f"  {Icons.DOC} Exceptions Added:   "
+                    f"{c(colors.CYAN)}{exc_added_baseline:>5}{c(colors.RESET)}"
                 )
         else:
             print(f"  {c(colors.DIM)}No changes from baseline{c(colors.RESET)}")
@@ -207,27 +211,33 @@ class ConsoleRenderer:
         if has_last_changes:
             if fixed_last > 0:
                 print(
-                    f"  {Icons.CHECK} Fixed:              {c(colors.GREEN)}{fixed_last:>5}{c(colors.RESET)}"
+                    f"  {Icons.CHECK} Fixed:              "
+                    f"{c(colors.GREEN)}{fixed_last:>5}{c(colors.RESET)}"
                 )
             if regressions_last > 0:
                 print(
-                    f"  {Icons.CROSS} Regressions:        {c(colors.BG_RED)}{c(colors.WHITE)} {regressions_last:>3} {c(colors.RESET)}"
+                    f"  {Icons.CROSS} Regressions:        "
+                    f"{c(colors.BG_RED)}{c(colors.WHITE)} {regressions_last:>3} {c(colors.RESET)}"
                 )
             if new_issues_last > 0:
                 print(
-                    f"  {Icons.WARN} New Issues:         {c(colors.YELLOW)}{new_issues_last:>5}{c(colors.RESET)}"
+                    f"  {Icons.WARN} New Issues:         "
+                    f"{c(colors.YELLOW)}{new_issues_last:>5}{c(colors.RESET)}"
                 )
             if exc_added_last > 0:
                 print(
-                    f"  + Exceptions Added:   {c(colors.CYAN)}{exc_added_last:>5}{c(colors.RESET)}"
+                    f"  + Exceptions Added:   "
+                    f"{c(colors.CYAN)}{exc_added_last:>5}{c(colors.RESET)}"
                 )
             if exc_removed_last > 0:
                 print(
-                    f"  - Exceptions Removed: {c(colors.MAGENTA)}{exc_removed_last:>5}{c(colors.RESET)}"
+                    f"  - Exceptions Removed: "
+                    f"{c(colors.MAGENTA)}{exc_removed_last:>5}{c(colors.RESET)}"
                 )
             if exc_updated_last > 0:
                 print(
-                    f"  ~ Exceptions Updated: {c(colors.YELLOW)}{exc_updated_last:>5}{c(colors.RESET)}"
+                    f"  ~ Exceptions Updated: "
+                    f"{c(colors.YELLOW)}{exc_updated_last:>5}{c(colors.RESET)}"
                 )
         else:
             print(f"  {c(colors.DIM)}No changes since last sync{c(colors.RESET)}")

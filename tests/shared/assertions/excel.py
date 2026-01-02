@@ -8,7 +8,7 @@ caring about specific content (that's for the test cases).
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from openpyxl.workbook import Workbook
@@ -102,7 +102,7 @@ class ExcelAssertions:
         return row
 
     @staticmethod
-    def get_cell_value(ws: Worksheet, row: int, header: str) -> any:
+    def get_cell_value(ws: Worksheet, row: int, header: str) -> Any:
         """
         Get cell value by row and header name.
 
@@ -122,7 +122,7 @@ class ExcelAssertions:
             return None
 
     @staticmethod
-    def assert_cell_value(ws: Worksheet, row: int, header: str, expected: any) -> None:
+    def assert_cell_value(ws: Worksheet, row: int, header: str, expected: Any) -> None:
         """Assert cell value matches expected."""
         actual = ExcelAssertions.get_cell_value(ws, row, header)
         assert (

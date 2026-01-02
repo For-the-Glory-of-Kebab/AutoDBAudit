@@ -90,7 +90,6 @@ class ColoredFormatter(logging.Formatter):
 
 class PlainFormatter(logging.Formatter):
     """Non-colored formatter for file output."""
-    pass
 
 
 def _enable_windows_ansi():

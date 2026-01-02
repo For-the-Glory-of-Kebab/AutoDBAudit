@@ -11,6 +11,5 @@ from autodbaudit.application.remediation.service import RemediationService
 
 __all__ = [
     "AuditService",
-    "HistoryService",
     "RemediationService",
 ]

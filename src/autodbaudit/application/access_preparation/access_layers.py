@@ -15,8 +15,11 @@ Implements 8 fallback layers for enabling PSRemoting on restricted environments:
 from __future__ import annotations
 
 import logging
+import platform
+import socket
 import subprocess
 import shutil
+import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
@@ -54,12 +57,10 @@ class AccessLayer(ABC):
     @abstractmethod
     def test_access(self) -> bool:
         """Test if this layer can reach the target."""
-        pass
 
     @abstractmethod
     def enable_winrm(self) -> LayerResult:
         """Enable WinRM using this layer's method."""
-        pass
 
     def _run_cmd(
         self, cmd: str | list, timeout: int | None = None
@@ -73,10 +74,15 @@ class AccessLayer(ABC):
                     capture_output=True,
                     text=True,
                     timeout=timeout or self.timeout,
+                    check=False,
                 )
             else:
                 result = subprocess.run(
-                    cmd, capture_output=True, text=True, timeout=timeout or self.timeout
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout or self.timeout,
+                    check=False,
                 )
             return result.returncode, result.stdout, result.stderr
         except subprocess.TimeoutExpired:
@@ -88,23 +94,23 @@ class AccessLayer(ABC):
         """Classify error and provide remediation hint."""
         error_lower = error.lower()
 
-        if "access is denied" in error_lower or "access denied" in error_lower:
-            return "auth", "Verify credentials have local admin rights on target"
+        # Define error patterns and their classifications
+        error_patterns = [
+            ("access is denied", "auth", "Verify credentials have local admin rights on target"),
+            ("access denied", "auth", "Verify credentials have local admin rights on target"),
+            ("network path", "network", "Check network connectivity and DNS resolution"),
+            ("not found", "network", "Check network connectivity and DNS resolution"),
+            ("rpc server", "network", "Target may be offline or RPC blocked"),
+            ("unavailable", "network", "Target may be offline or RPC blocked"),
+            ("gpo", "gpo", "Group Policy may be blocking changes"),
+            ("policy", "gpo", "Group Policy may be blocking changes"),
+            ("timeout", "timeout", "Increase timeout or check network latency"),
+            ("firewall", "firewall", "Firewall may be blocking required ports"),
+        ]
 
-        if "network path" in error_lower or "not found" in error_lower:
-            return "network", "Check network connectivity and DNS resolution"
-
-        if "rpc server" in error_lower or "unavailable" in error_lower:
-            return "network", "Target may be offline or RPC blocked"
-
-        if "gpo" in error_lower or "policy" in error_lower:
-            return "gpo", "Group Policy may be blocking changes"
-
-        if "timeout" in error_lower:
-            return "timeout", "Increase timeout or check network latency"
-
-        if "firewall" in error_lower:
-            return "firewall", "Firewall may be blocking required ports"
+        for pattern, error_type, hint in error_patterns:
+            if pattern in error_lower:
+                return error_type, hint
 
         return "unknown", "Check logs for details"
 
@@ -117,9 +123,6 @@ class Layer0_LocalDirect(AccessLayer):
 
     def _is_local(self) -> bool:
         """Check if target is current machine."""
-        import platform
-        import socket
-
         normalized = self.hostname.lower()
         if normalized in ("localhost", "127.0.0.1", ".", "::1"):
             return True
@@ -166,14 +169,18 @@ class Layer0_LocalDirect(AccessLayer):
             "Set-Service WinRM -StartupType Automatic; "
             "Start-Service WinRM; "
             # C. Registry: Allow Loopback (Required for using credentials against localhost)
-            "New-ItemProperty -Path HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa -Name DisableLoopbackCheck -Value 1 -PropertyType DWord -Force; "
+            "New-ItemProperty -Path HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa "
+            "-Name DisableLoopbackCheck -Value 1 -PropertyType DWord -Force; "
             # D. Registry: Local Account Token Filter (Allows admin shares with local accounts)
-            "New-ItemProperty -Path HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System -Name LocalAccountTokenFilterPolicy -Value 1 -PropertyType DWord -Force; "
+            "New-ItemProperty -Path HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System "
+            "-Name LocalAccountTokenFilterPolicy -Value 1 -PropertyType DWord -Force; "
             # E. Trusted Hosts (Bypass auth restrictions for localhost)
             "Set-Item WSMan:\\localhost\\Client\\TrustedHosts -Value * -Force; "
             "Restart-Service WinRM; "
             # F. Firewall (Ensure port 5985 is open)
-            "New-NetFirewallRule -Name 'AutoDBAudit_WinRM' -DisplayName 'AutoDBAudit WinRM' -Enabled True -Direction Inbound -Protocol TCP -Action Allow -LocalPort 5985 -ErrorAction SilentlyContinue; "
+            "New-NetFirewallRule -Name 'AutoDBAudit_WinRM' -DisplayName 'AutoDBAudit WinRM' "
+            "-Enabled True -Direction Inbound -Protocol TCP -Action Allow -LocalPort 5985 "
+            "-ErrorAction SilentlyContinue; "
             '"'
         )
 
@@ -190,7 +197,8 @@ class Layer0_LocalDirect(AccessLayer):
                     layer=self.name,
                     success=False,
                     error_type="auth",
-                    error_message=f"Access Denied during setup. Run As Admin required.\nDetails: {stderr}",
+                    error_message="Access Denied during setup. Run As Admin required.\n"
+                                 f"Details: {stderr}",
                     remediation_hint="Right-click -> Run as Administrator",
                 )
 
@@ -221,15 +229,14 @@ class Layer0_LocalDirect(AccessLayer):
                 success=True,
                 changes_made=[{"action": "local_direct_enable_verified"}],
             )
-        else:
-            # Setup seemed to work, but connection still fails
-            return LayerResult(
-                layer=self.name,
-                success=False,
-                error_type="verification_failed",
-                error_message=f"Setup commands ran, but verification connection failed.\nVerify Error: {v_stderr} {v_stdout}",
-                remediation_hint="Check if port 5985 is blocked by 3rd party antivirus or firewall.",
-            )
+        # Setup seemed to work, but connection still fails
+        return LayerResult(
+            layer=self.name,
+            success=False,
+            error_type="verification_failed",
+            error_message=f"Setup commands ran, but verification connection failed.\nVerify Error: {v_stderr} {v_stdout}",
+            remediation_hint="Check if port 5985 is blocked by 3rd party antivirus or firewall.",
+        )
 
 
 class Layer1_WinRM(AccessLayer):
@@ -252,7 +259,7 @@ class Layer1_WinRM(AccessLayer):
             "if ($s) { Remove-PSSession $s; exit 0 } else { exit 1 }"
             '"'
         )
-        code, stdout, stderr = self._run_cmd(cmd)
+        code, _stdout, _stderr = self._run_cmd(cmd)
         return code == 0
 
     def enable_winrm(self) -> LayerResult:
@@ -282,7 +289,7 @@ class Layer2_WMI(AccessLayer):
         """Test if WMI works."""
         creds = self._build_creds()
         cmd = f'wmic /node:"{self.hostname}" {creds} os get caption /format:value'
-        code, stdout, stderr = self._run_cmd(cmd, timeout=30)
+        code, stdout, _stderr = self._run_cmd(cmd, timeout=30)
         return code == 0 and "Caption" in stdout
 
     def enable_winrm(self) -> LayerResult:
@@ -299,7 +306,7 @@ class Layer2_WMI(AccessLayer):
 
         # Start WinRM service
         cmd = f'wmic /node:"{self.hostname}" {creds} service where name="WinRM" call StartService'
-        code, stdout, stderr = self._run_cmd(cmd)
+        code, _stdout, stderr = self._run_cmd(cmd)
 
         if code != 0:
             error_type, hint = self._classify_error(stderr)
@@ -323,12 +330,12 @@ class Layer2_WMI(AccessLayer):
             f"New-ItemProperty -Path HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System -Name LocalAccountTokenFilterPolicy -Value 1 -PropertyType DWord -Force; "
             f'New-ItemProperty -Path HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa -Name DisableLoopbackCheck -Value 1 -PropertyType DWord -Force\\""'
         )
-        code, stdout, stderr = self._run_cmd(cmd)
+        code, _stdout, _stderr = self._run_cmd(cmd)
 
         return LayerResult(
             layer=self.name,
             success=code == 0,
-            error_message=stderr if code != 0 else None,
+            error_message=_stderr if code != 0 else None,
             changes_made=[{"action": "wmi_winrm_enable"}],
         )
 
@@ -361,12 +368,13 @@ class Layer3_PsExec(AccessLayer):
         cmd = f"net use \\\\{self.hostname}\\admin$ /delete /y 2>nul & net use \\\\{self.hostname}\\admin$"
         if self.username and self.password:
             cmd += f" /user:{self.username} {self.password}"
-        code, stdout, stderr = self._run_cmd(cmd, timeout=30)
+        code, _stdout, _stderr = self._run_cmd(cmd, timeout=30)
         # Clean up
         subprocess.run(
             f"net use \\\\{self.hostname}\\admin$ /delete /y",
             shell=True,
             capture_output=True,
+            check=False,
         )
         return code == 0
 
@@ -396,15 +404,15 @@ class Layer3_PsExec(AccessLayer):
             f"New-ItemProperty -Path HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa -Name DisableLoopbackCheck -Value 1 -PropertyType DWord -Force"
             f'"'
         )
-        code, stdout, stderr = self._run_cmd(cmd)
+        code, _stdout, _stderr = self._run_cmd(cmd)
 
         if code != 0:
-            error_type, hint = self._classify_error(stderr)
+            error_type, hint = self._classify_error(_stderr)
             return LayerResult(
                 layer=self.name,
                 success=False,
                 error_type=error_type,
-                error_message=stderr,
+                error_message=_stderr,
                 remediation_hint=hint,
             )
 
@@ -426,7 +434,7 @@ class Layer4_ScheduledTask(AccessLayer):
         cmd = f"schtasks /query /s {self.hostname} /fo csv"
         if self.username and self.password:
             cmd += f" /u {self.username} /p {self.password}"
-        code, stdout, stderr = self._run_cmd(cmd, timeout=30)
+        code, _stdout, _stderr = self._run_cmd(cmd, timeout=30)
         return code == 0
 
     def enable_winrm(self) -> LayerResult:
@@ -456,11 +464,9 @@ class Layer4_ScheduledTask(AccessLayer):
 
         # Run task immediately
         cmd = f'schtasks /run /s {self.hostname} {creds} /tn "{task_name}"'
-        code, stdout, stderr = self._run_cmd(cmd)
+        code, _stdout, _stderr = self._run_cmd(cmd)
 
         # Wait for task to complete
-        import time
-
         time.sleep(5)
 
         # Delete task
@@ -483,14 +489,14 @@ class Layer5_ServiceControl(AccessLayer):
     def test_access(self) -> bool:
         """Test if SC can reach target."""
         cmd = f"sc \\\\{self.hostname} query WinRM"
-        code, stdout, stderr = self._run_cmd(cmd, timeout=20)
+        code, _stdout, _stderr = self._run_cmd(cmd, timeout=20)
         return code == 0
 
     def enable_winrm(self) -> LayerResult:
         """Start WinRM service via SC.exe."""
         # Set to auto-start
         cmd = f"sc \\\\{self.hostname} config WinRM start= auto"
-        code, stdout, stderr = self._run_cmd(cmd)
+        code, _stdout, stderr = self._run_cmd(cmd)
 
         if code != 0:
             error_type, hint = self._classify_error(stderr)
@@ -504,7 +510,7 @@ class Layer5_ServiceControl(AccessLayer):
 
         # Start service
         cmd = f"sc \\\\{self.hostname} start WinRM"
-        code, stdout, stderr = self._run_cmd(cmd)
+        code, _stdout, _stderr = self._run_cmd(cmd)
 
         # SC returns 0 even if service already running
         return LayerResult(
@@ -521,7 +527,7 @@ class Layer6_RemoteRegistry(AccessLayer):
     def test_access(self) -> bool:
         """Test if remote registry accessible."""
         cmd = f"reg query \\\\{self.hostname}\\HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion /v ProgramFilesDir"
-        code, stdout, stderr = self._run_cmd(cmd, timeout=20)
+        code, _stdout, _stderr = self._run_cmd(cmd, timeout=20)
         return code == 0
 
     def enable_winrm(self) -> LayerResult:
@@ -532,15 +538,15 @@ class Layer6_RemoteRegistry(AccessLayer):
             f"reg add \\\\{self.hostname}\\HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WinRM\\Service "
             f"/v AllowAutoConfig /t REG_DWORD /d 1 /f"
         )
-        code, stdout, stderr = self._run_cmd(cmd)
+        code, _stdout, _stderr = self._run_cmd(cmd)
 
         if code != 0:
-            error_type, hint = self._classify_error(stderr)
+            error_type, hint = self._classify_error(_stderr)
             return LayerResult(
                 layer=self.name,
                 success=False,
                 error_type=error_type,
-                error_message=stderr,
+                error_message=_stderr,
                 remediation_hint=hint,
             )
 
@@ -563,7 +569,7 @@ class Layer7_PowerShellDirect(AccessLayer):
         """Test if target is a Hyper-V VM we can access."""
         # This only works if target is a VM on a Hyper-V host we can access
         cmd = f'powershell -NoProfile -Command "Get-VM -Name {self.hostname} -ErrorAction Stop"'
-        code, stdout, stderr = self._run_cmd(cmd, timeout=20)
+        code, _stdout, _stderr = self._run_cmd(cmd, timeout=20)
         return code == 0
 
     def enable_winrm(self) -> LayerResult:
@@ -581,12 +587,12 @@ class Layer7_PowerShellDirect(AccessLayer):
             f"Invoke-Command -VMName {self.hostname} -ScriptBlock {{ Enable-PSRemoting -Force }}"
             f'"'
         )
-        code, stdout, stderr = self._run_cmd(cmd)
+        code, _stdout, _stderr = self._run_cmd(cmd)
 
         return LayerResult(
             layer=self.name,
             success=code == 0,
-            error_message=stderr if code != 0 else None,
+            error_message=_stderr if code != 0 else None,
             changes_made=[{"action": "psdirect_winrm_enable"}] if code == 0 else None,
         )
 
@@ -638,15 +644,13 @@ class AccessLayerOrchestrator:
                             "Layer %s succeeded for %s", layer.name, self.hostname
                         )
                         return True, results
-                    else:
-                        logger.warning(
-                            "Layer %s completed but WinRM still not accessible",
-                            layer.name,
-                        )
-                else:
-                    logger.debug(
-                        "Layer %s failed: %s", layer.name, result.error_message
+                    logger.warning(
+                        "Layer %s completed but WinRM still not accessible",
+                        layer.name,
                     )
+                logger.debug(
+                    "Layer %s failed: %s", layer.name, result.error_message
+                )
 
             except Exception as e:
                 logger.warning("Layer %s exception: %s", layer.name, e)

@@ -40,7 +40,7 @@ class FindingsProvider(Protocol):
 
     def get_findings(self, run_id: int) -> list[dict[str, Any]]:
         """Get findings for a specific run."""
-        ...
+        raise NotImplementedError("Subclasses must implement get_findings")
 
 
 class AnnotationsProvider(Protocol):
@@ -48,7 +48,7 @@ class AnnotationsProvider(Protocol):
 
     def get_all_annotations(self) -> dict[str, dict[str, Any]]:
         """Get all annotations keyed by entity_key."""
-        ...
+        raise NotImplementedError("Implementations must provide get_all_annotations")
 
 
 class InstanceValidator(Protocol):
@@ -56,14 +56,14 @@ class InstanceValidator(Protocol):
 
     def get_scanned_instance_keys(self, run_id: int) -> set[str]:
         """Get set of 'Server|Instance' keys that were scanned."""
-        ...
+        raise NotImplementedError("Implementations must provide get_scanned_instance_keys")
 
 
 # =============================================================================
 # Helper Classes
 # =============================================================================
 
-from collections import defaultdict, Counter
+from collections import defaultdict
 from dataclasses import field
 
 

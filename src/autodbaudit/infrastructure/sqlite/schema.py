@@ -17,6 +17,7 @@ Schema Version: 2
 from __future__ import annotations
 
 import logging
+import sqlite3
 from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
@@ -441,25 +442,96 @@ CREATE INDEX IF NOT EXISTS idx_action_log_initial ON action_log(initial_run_id);
 CREATE INDEX IF NOT EXISTS idx_action_log_entity ON action_log(entity_key);
 
 -- ============================================================================
--- Permissions (Grant/Deny)
+-- PS Remoting Indexes
 -- ============================================================================
 
-CREATE TABLE IF NOT EXISTS permissions (
+CREATE INDEX IF NOT EXISTS idx_psremoting_profiles_server ON psremoting_profiles(server_name);
+CREATE INDEX IF NOT EXISTS idx_psremoting_profiles_success ON psremoting_profiles(successful, last_successful_attempt);
+CREATE INDEX IF NOT EXISTS idx_psremoting_attempts_profile ON psremoting_attempts(profile_id);
+CREATE INDEX IF NOT EXISTS idx_psremoting_attempts_timestamp ON psremoting_attempts(attempt_timestamp);
+CREATE INDEX IF NOT EXISTS idx_psremoting_attempts_layer ON psremoting_attempts(layer, success);
+CREATE INDEX IF NOT EXISTS idx_psremoting_server_state_profile ON psremoting_server_state(profile_id, state_type);
+
+-- ============================================================================
+-- PS Remoting Connection Profiles
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS psremoting_profiles (
     id INTEGER PRIMARY KEY,
-    instance_id INTEGER NOT NULL REFERENCES instances(id) ON DELETE CASCADE,
-    audit_run_id INTEGER NOT NULL REFERENCES audit_runs(id) ON DELETE CASCADE,
-    scope TEXT NOT NULL,          -- 'SERVER' or 'DATABASE'
-    database_name TEXT NOT NULL,  -- Empty string for SERVER permissions
-    entity_name TEXT NOT NULL,    -- Object/Schema/Key name
-    grantee_name TEXT NOT NULL,
-    permission_name TEXT NOT NULL,
-    state TEXT NOT NULL,          -- 'GRANT', 'DENY', 'GRANT_WITH_GRANT_OPTION'
-    class_desc TEXT,              -- 'OBJECT', 'SCHEMA', 'SERVER', etc.
-    collected_at TEXT NOT NULL,
-    UNIQUE(instance_id, audit_run_id, scope, database_name, grantee_name, permission_name, entity_name)
+    server_name TEXT NOT NULL,
+    connection_method TEXT NOT NULL,        -- 'powershell_remoting', 'wmi', 'psexec', etc.
+    auth_method TEXT,                       -- 'kerberos', 'ntlm', 'negotiate', 'basic', 'credssp'
+    successful INTEGER NOT NULL DEFAULT 0,  -- 1 if connection was successful
+    last_successful_attempt TEXT,           -- ISO timestamp of last successful connection
+    last_attempt TEXT,                      -- ISO timestamp of last attempt (success or failure)
+    attempt_count INTEGER DEFAULT 0,        -- Total number of connection attempts
+    sql_targets TEXT,                       -- JSON array of associated SQL target names
+    baseline_state TEXT,                    -- JSON snapshot of server state before changes
+    current_state TEXT,                     -- JSON snapshot of server state after changes
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE(server_name)
 );
 
-CREATE INDEX IF NOT EXISTS idx_permissions_instance ON permissions(instance_id, audit_run_id);
+-- ============================================================================
+-- PS Remoting Connection Attempts (History)
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS psremoting_attempts (
+    id INTEGER PRIMARY KEY,
+    profile_id INTEGER NOT NULL REFERENCES psremoting_profiles(id) ON DELETE CASCADE,
+    attempt_timestamp TEXT NOT NULL,
+    layer TEXT NOT NULL,                    -- 'direct', 'client_config', 'target_config', 'fallback', 'manual'
+    connection_method TEXT NOT NULL,
+    auth_method TEXT,
+    success INTEGER NOT NULL DEFAULT 0,
+    error_message TEXT,
+    duration_ms INTEGER,                    -- How long the attempt took
+    config_changes TEXT,                    -- JSON of configuration changes made
+    rollback_actions TEXT,                  -- JSON of actions needed to rollback changes
+    manual_script_path TEXT,                -- Path to generated manual override script
+    created_at TEXT NOT NULL
+);
+
+-- ============================================================================
+-- PS Remoting Server State (Baseline and Current)
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS psremoting_server_state (
+    id INTEGER PRIMARY KEY,
+    profile_id INTEGER NOT NULL REFERENCES psremoting_profiles(id) ON DELETE CASCADE,
+    state_type TEXT NOT NULL,               -- 'baseline', 'current'
+    collected_at TEXT NOT NULL,
+    -- WinRM Service
+    winrm_service_status TEXT,
+    winrm_service_startup TEXT,
+    winrm_service_account TEXT,
+    -- Firewall Rules
+    winrm_firewall_enabled INTEGER,
+    winrm_firewall_ports TEXT,              -- JSON array of open ports
+    -- TrustedHosts
+    trusted_hosts TEXT,                     -- Current TrustedHosts list
+    -- Network Settings
+    network_category TEXT,                  -- 'Public', 'Private', 'Domain'
+    -- Registry Settings
+    local_account_token_filter INTEGER,     -- DisableLoopbackCheck equivalent
+    allow_unencrypted INTEGER,
+    auth_basic INTEGER,
+    auth_kerberos INTEGER,
+    auth_negotiate INTEGER,
+    auth_certificate INTEGER,
+    auth_credssp INTEGER,
+    auth_digest INTEGER,
+    -- PowerShell Execution Policy
+    execution_policy TEXT,
+    -- UAC Settings
+    enable_lua INTEGER,                     -- UAC enabled
+    -- Remote Management
+    remote_management_enabled INTEGER,
+    -- Collected Data
+    full_state_json TEXT,                   -- Complete JSON snapshot
+    UNIQUE(profile_id, state_type)
+);
 """
 
 
@@ -675,66 +747,65 @@ def set_annotation(
         connection.commit()
         return existing["id"]
 
-    else:
-        # Insert new
-        # Use try/except IntegrityError to handle race conditions or unique constraint violations
-        # where the row didn't exist in SELECT but exists now.
-        try:
-            cursor = connection.execute(
+    # Insert new
+    # Use try/except IntegrityError to handle race conditions or unique constraint violations
+    # where the row didn't exist in SELECT but exists now.
+    try:
+        cursor = connection.execute(
+            """
+            INSERT INTO annotations 
+            (entity_type, entity_key, field_name, field_value, status_override, created_at, modified_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+            (
+                entity_type,
+                entity_key,
+                field_name,
+                field_value,
+                status_override,
+                now,
+                modified_by,
+            ),
+        )
+        connection.commit()
+        return cursor.lastrowid
+    except sqlite3.IntegrityError:
+        # Fallback: Does it exist now?
+        existing_retry = connection.execute(
+            """
+            SELECT id FROM annotations
+            WHERE entity_type = ? AND entity_key = ? AND field_name = ?
+        """,
+            (entity_type, entity_key, field_name),
+        ).fetchone()
+
+        if existing_retry:
+            # Update it
+            connection.execute(
                 """
-                INSERT INTO annotations 
-                (entity_type, entity_key, field_name, field_value, status_override, created_at, modified_by)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                UPDATE annotations
+                SET field_value = ?, status_override = ?, modified_at = ?, modified_by = ?
+                WHERE id = ?
             """,
                 (
-                    entity_type,
-                    entity_key,
-                    field_name,
                     field_value,
                     status_override,
                     now,
                     modified_by,
+                    existing_retry["id"],
                 ),
             )
             connection.commit()
-            return cursor.lastrowid
-        except sqlite3.IntegrityError:
-            # Fallback: Does it exist now?
-            existing_retry = connection.execute(
-                """
-                SELECT id FROM annotations
-                WHERE entity_type = ? AND entity_key = ? AND field_name = ?
-            """,
-                (entity_type, entity_key, field_name),
-            ).fetchone()
-
-            if existing_retry:
-                # Update it
-                connection.execute(
-                    """
-                    UPDATE annotations
-                    SET field_value = ?, status_override = ?, modified_at = ?, modified_by = ?
-                    WHERE id = ?
-                """,
-                    (
-                        field_value,
-                        status_override,
-                        now,
-                        modified_by,
-                        existing_retry["id"],
-                    ),
-                )
-                connection.commit()
-                return existing_retry["id"]
-            else:
-                # Genuine valid constraint failure (shouldn't happen with these keys)
-                logger.error(
-                    "IntegrityError in set_annotation for %s|%s|%s",
-                    entity_type,
-                    entity_key,
-                    field_name,
-                )
-                raise
+            return existing_retry["id"]
+        else:
+            # Genuine valid constraint failure (shouldn't happen with these keys)
+            logger.error(
+                "IntegrityError in set_annotation for %s|%s|%s",
+                entity_type,
+                entity_key,
+                field_name,
+            )
+            raise
 
 
 def build_entity_key(*parts: str) -> str:

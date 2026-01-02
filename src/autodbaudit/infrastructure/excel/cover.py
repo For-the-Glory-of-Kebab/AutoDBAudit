@@ -469,4 +469,3 @@ class CoverSheetMixin(BaseSheetMixin):
         except Exception as e:
             # Log warning if image fails, but don't crash the report
             logger.warning("Failed to load cover image: %s", e)
-            pass

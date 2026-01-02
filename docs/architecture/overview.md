@@ -25,6 +25,16 @@ The application follows a **Domain-Driven Design (DDD)** inspired layered archit
 *   **Purpose**: Adapters for external systems. "How the application talks to the world".
 *   **Dependencies**: Application (interfaces), Domain.
 *   **Key Components**:
+    *   `psremoting/`: **PowerShell Remoting** infrastructure - single source of truth for all PS remoting operations
+        *   `models.py`: Domain models for connections, authentication, sessions
+        *   `repository.py`: Database persistence for connection profiles and attempts
+        *   `connection_manager.py`: 5-layer connection strategy implementation
+        *   `credentials.py`: Credential handling and validation
+        *   `elevation.py`: Shell privilege detection
+        *   `executor/`: Script execution components (formerly separate psremote package)
+            *   `connection_client.py`: pywinrm wrapper for direct connections
+            *   `script_executor.py`: PowerShell script runner with JSON parsing
+            *   `os_data_invoker.py`: Railway-oriented OS data collection invoker
     *   `excel/`: **OpenPyXL** implementation for reading/writing reports.
     *   `sqlite/`: **SQLite3** implementation for persistence (`audit_history.db`).
     *   `system/`: Filesystem interactions.

@@ -21,6 +21,11 @@ if TYPE_CHECKING:
     from autodbaudit.infrastructure.sql.connector import SqlServerInfo
 
 from autodbaudit.domain.models import AuditRun, Server, Instance
+from autodbaudit.infrastructure.sqlite.schema import (
+    get_annotations_for_entity,
+    get_findings_for_run,
+    upsert_annotation,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -796,8 +801,6 @@ class HistoryStore:
         Returns:
             The action ID (for tracking in Excel)
         """
-        from datetime import datetime, timezone
-
         conn = self._get_connection()
         now_iso = datetime.now(timezone.utc).isoformat()
 
@@ -847,34 +850,33 @@ class HistoryStore:
             )
             conn.commit()
             return existing["id"]
-        else:
-            # Insert new
-            final_date = user_date_override if user_date_override else action_date
-            cursor = conn.execute(
-                """
-                INSERT INTO action_log (
-                    initial_run_id, entity_key, finding_type, action_type, status,
-                    action_date, description, notes, sync_run_id, captured_at,
-                    server_name, instance_name
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    initial_run_id,
-                    entity_key,
-                    finding_type,
-                    action_type,
-                    status,
-                    final_date,
-                    description,
-                    notes,
-                    sync_run_id,
-                    now_iso,
-                    server_name,
-                    instance_name,
-                ),
-            )
-            conn.commit()
-            return cursor.lastrowid
+        # Insert new
+        final_date = user_date_override if user_date_override else action_date
+        cursor = conn.execute(
+            """
+            INSERT INTO action_log (
+                initial_run_id, entity_key, finding_type, action_type, status,
+                action_date, description, notes, sync_run_id, captured_at,
+                server_name, instance_name
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                initial_run_id,
+                entity_key,
+                finding_type,
+                action_type,
+                status,
+                final_date,
+                description,
+                notes,
+                sync_run_id,
+                now_iso,
+                server_name,
+                instance_name,
+            ),
+        )
+        conn.commit()
+        return cursor.lastrowid
 
     def get_last_successful_sync_run(self, current_run_id: int) -> int | None:
         """
@@ -896,8 +898,6 @@ class HistoryStore:
 
     def get_findings(self, run_id: int) -> list[dict]:
         """Get all findings for a specific run."""
-        from autodbaudit.infrastructure.sqlite.schema import get_findings_for_run
-
         return get_findings_for_run(self._get_connection(), run_id)
 
     def update_finding_status(self, run_id: int, entity_key: str, status: str) -> None:
@@ -911,9 +911,11 @@ class HistoryStore:
             """,
             (status, run_id, entity_key),
         )
-        count = conn.total_changes
         logger.warning(
-            f"DEBUG: update_finding_status Run={run_id} Key='{entity_key}' Status='{status}' - Executed"
+            "DEBUG: update_finding_status Run=%d Key='%s' Status='%s' - Executed",
+            run_id,
+            entity_key,
+            status,
         )
         conn.commit()
 
@@ -934,8 +936,6 @@ class HistoryStore:
         """
         Upsert an annotation.
         """
-        from autodbaudit.infrastructure.sqlite.schema import upsert_annotation
-
         conn = self._get_connection()
         upsert_annotation(
             connection=conn,
@@ -954,8 +954,6 @@ class HistoryStore:
 
     def get_annotations_for_entity(self, entity_key: str) -> dict:
         """Get annotations for a specific entity."""
-        from autodbaudit.infrastructure.sqlite.schema import get_annotations_for_entity
-
         return get_annotations_for_entity(self._get_connection(), entity_key)
 
     def get_all_annotations(self, only_overrides: bool = False) -> list[dict]:
