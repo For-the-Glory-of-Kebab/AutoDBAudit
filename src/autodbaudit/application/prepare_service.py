@@ -6,6 +6,7 @@ modern Python patterns and dependency injection.
 """
 
 import logging
+from pathlib import Path
 from typing import Any, List, Optional
 from datetime import datetime
 
@@ -13,17 +14,21 @@ from autodbaudit.domain.config import (
     ConnectionMethod,
     PrepareResult,
     ServerConnectionInfo,
-    SqlTarget
+    SqlTarget,
+    OSType
 )
 from autodbaudit.domain.config.audit_settings import AuditSettings
 from autodbaudit.domain.config.prepare_server import PrepareServerResult, ServerConnectionProfile
 
 from ..infrastructure.config.manager import ConfigManager
+from ..infrastructure.psremoting.connection_manager import PSRemotingConnectionManager
+from ..infrastructure.psremoting.models import PSRemotingResult
 from ..infrastructure.sqlite.store import HistoryStore
 from .prepare.cache.cache_manager import ConnectionCacheManager
 from .prepare.connection.connection_tester import ConnectionTestingService
 from .prepare.detection.os_detector import OSDetectionService
 from .prepare.method.method_selector import ConnectionMethodSelector
+from .prepare.status_service import PrepareStatusService
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +50,7 @@ class PrepareService:
         cache_manager: Optional[ConnectionCacheManager] = None,
         audit_settings: Optional[AuditSettings] = None,
         history_store: Optional[HistoryStore] = None,
+        connection_manager: Optional[PSRemotingConnectionManager] = None,
     ) -> None:
         """
         Initialize the prepare service with dependency injection.
@@ -57,6 +63,7 @@ class PrepareService:
             cache_manager: Cache management service (created if None)
             audit_settings: Dynamic audit settings for timeouts
             history_store: History store for DB persistence (created if None)
+            connection_manager: PS remoting connection manager for full setup
         """
         self.config_manager = config_manager
         self.audit_settings = audit_settings or AuditSettings()
@@ -67,11 +74,22 @@ class PrepareService:
         self.method_selector = method_selector or ConnectionMethodSelector()
         self.cache_manager = cache_manager or ConnectionCacheManager()
         self.history_store = history_store  # Will be set later if None
+        self.connection_manager = connection_manager or PSRemotingConnectionManager()
+        self.status_service = PrepareStatusService(
+            self.cache_manager,
+            self.connection_manager.repository,
+            self.connection_manager
+        )
 
         # Apply dynamic timeouts
         self._configure_timeouts()
 
         logger.info("PrepareService initialized with ultra-granular components")
+
+    @staticmethod
+    def _get_timestamp() -> str:
+        """Timestamp helper to align with connection manager expectations."""
+        return datetime.utcnow().isoformat()
 
     def _configure_timeouts(self) -> None:
         """Configure dynamic timeouts in all services."""
@@ -92,7 +110,7 @@ class PrepareService:
         logger.info("Preparing target: %s (%s)", target.name, target.server)
 
         # Check cache first
-        cached_info = self.cache_manager.get(target.name)
+        cached_info = self.cache_manager.get(target.server)
         if cached_info is not None:
             logger.info("Using cached connection info for target: %s", target.name)
             return PrepareResult.success_result(target, cached_info)
@@ -105,46 +123,45 @@ class PrepareService:
             os_type = self.os_detector.detect_os(target.server)
             logs.append(f"Detected OS type: {os_type.value}")
 
-            # Step 2: Check available connection methods
-            available_methods = self.connection_tester.get_available_methods(target.server)
-            logs.append(f"Available connection methods: {[m.value for m in available_methods]}")
-
-            # Step 3: Select preferred method
-            preferred_method = self.method_selector.select_preferred_method(
-                available_methods, os_type
+            # Step 2: Perform full PS remoting preparation/connection attempt
+            ps_result: PSRemotingResult = self.connection_manager.connect_to_server(
+                target.server,
+                {"os_auth": target.os_auth, "credentials_ref": target.credentials_ref},
+                allow_config=True,
             )
-            method_name = preferred_method.value if preferred_method else "None"
-            logs.append(f"Selected preferred method: {method_name}")
 
-            # Step 4: Test connection
-            is_available = (
-                self.connection_tester.test_connection(target.server, preferred_method)
-                if preferred_method else False
-            )
-            logs.append(f"Connection test result: {'SUCCESS' if is_available else 'FAILED'}")
+            available_methods: List[ConnectionMethod] = []
+            for attempt in ps_result.attempts_made:
+                if attempt.success and attempt.connection_method:
+                    available_methods.append(self._map_method(attempt.connection_method))
+            if ps_result.is_success() and ConnectionMethod.POWERSHELL_REMOTING not in available_methods:
+                available_methods.append(ConnectionMethod.POWERSHELL_REMOTING)
+            preferred_method = available_methods[0] if available_methods else None
 
-            # Step 5: Create connection info
+            # Step 3: Create connection info snapshot
             connection_info = ServerConnectionInfo(
                 server_name=target.server,
                 os_type=os_type,
                 available_methods=available_methods,
                 preferred_method=preferred_method,
-                is_available=is_available,
+                is_available=ps_result.is_success(),
                 last_checked=self._get_timestamp(),
-                connection_details=self._get_connection_details(target, preferred_method)
+                connection_details={
+                    "ps_success": ps_result.is_success(),
+                    "ps_error": ps_result.error_message,
+                    "attempts": [a.model_dump() for a in ps_result.attempts_made],
+                }
             )
 
             # Cache successful results
-            if is_available:
-                self.cache_manager.put(target.name, connection_info)
-                # Persist to DB for audit state
+            if ps_result.is_success():
+                self.cache_manager.put(target.server, connection_info)
                 self._persist_server_state(target, connection_info)
-                logs.append("Preparation completed successfully")
+                logs.append("PS remoting preparation completed successfully")
                 return PrepareResult.success_result(target, connection_info, logs)
-            else:
-                error_msg = f"Target {target.name} is not available via any connection method"
-                logs.append(error_msg)
-                return PrepareResult.failure_result(target, error_msg, logs)
+            error_msg = f"PS remoting preparation failed: {ps_result.error_message}"
+            logs.append(error_msg)
+            return PrepareResult.failure_result(target, error_msg, logs)
 
         except Exception as e:
             error_msg = f"Preparation failed for target {target.name}: {e}"
@@ -170,8 +187,7 @@ class PrepareService:
 
         if self.audit_settings.enable_parallel_processing:
             return self._prepare_targets_parallel(targets)
-        else:
-            return self._prepare_targets_sequential(targets)
+        return self._prepare_targets_sequential(targets)
 
     def _prepare_targets_sequential(self, targets: List[SqlTarget]) -> List[PrepareResult]:
         """Prepare targets sequentially."""
@@ -227,7 +243,11 @@ class PrepareService:
                     results.append(failure_result)
 
         successful = sum(1 for r in results if r.success)
-        logger.info("Parallel preparation completed: %d/%d targets successful", successful, len(results))
+        logger.info(
+            "Parallel preparation completed: %d/%d targets successful",
+            successful,
+            len(results)
+        )
 
         return results
 
@@ -292,7 +312,11 @@ class PrepareService:
 
         return details
 
-    def _persist_server_state(self, target: SqlTarget, connection_info: ServerConnectionInfo) -> None:
+    def _persist_server_state(
+        self,
+        target: SqlTarget,
+        connection_info: ServerConnectionInfo
+    ) -> None:
         """
         Persist server state to database for audit operations.
         
@@ -302,13 +326,12 @@ class PrepareService:
         """
         if self.history_store is None:
             return  # DB persistence not available
-            
         try:
             # Upsert server
             server = self.history_store.upsert_server(target.server)
-            
+
             # Upsert instance
-            instance = self.history_store.upsert_instance(
+            self.history_store.upsert_instance(
                 server=server,
                 instance_name="",  # Default instance
                 port=target.port or 1433,
@@ -317,7 +340,7 @@ class PrepareService:
                 edition=None,
                 product_level=None
             )
-            
+
             logger.debug("Persisted server state for target: %s", target.name)
         except Exception as e:
             logger.warning("Failed to persist server state: %s", e)
@@ -348,59 +371,70 @@ class PrepareService:
         Returns:
             PrepareServerResult with success/failure status and connection details
         """
-        logger.info("Preparing server '%s' for PS remoting (covers %d SQL targets)", server_name, len(sql_targets))
+        logger.info(
+            "Preparing server '%s' for PS remoting (covers %d SQL targets)",
+            server_name,
+            len(sql_targets)
+        )
 
-        # Get OS credentials from the first SQL target (they should all be the same for same server)
-        os_credentials = None
-        if sql_targets and hasattr(sql_targets[0], 'os_credential_file'):
-            try:
-                # Use the os_credential_file from the first target
-                os_cred_file = sql_targets[0].os_credential_file
-                if os_cred_file:
-                    os_credentials = self.config_manager.get_credential(os_cred_file)
-                    logger.debug("Using OS credentials from %s for server %s", os_cred_file, server_name)
-            except Exception as e:
-                logger.warning("Could not load OS credentials for server %s: %s", server_name, e)
-
-        # For now, implement basic connection testing
-        # TODO: Implement full 5-layer PS remoting strategy
         logs = [f"Starting PS remoting preparation for server: {server_name}"]
 
+        os_type = self.os_detector.detect_os(server_name)
+        logs.append(f"Detected OS type: {os_type.value}")
+        if os_type != OSType.WINDOWS:
+            error_msg = (
+                f"PS remoting setup skipped: server {server_name} appears to be {os_type.value}. "
+                "Use T-SQL-only/SSH workflows instead."
+            )
+            logs.append(error_msg)
+            return PrepareServerResult.failure_result(server_name, error_msg, logs)
+
+        credentials_payload = self._build_credentials_payload(sql_targets, credentials_file)
+        allow_config = not dry_run
+
         try:
-            # Check if this is localhost (special handling)
-            is_localhost = server_name.lower() in ['localhost', '127.0.0.1', '::1']
+            result: PSRemotingResult = self.connection_manager.connect_to_server(
+                server_name=server_name,
+                credentials=credentials_payload,
+                allow_config=allow_config
+            )
 
-            if is_localhost:
-                logs.append("Detected localhost - applying special localhost configuration")
-                # TODO: Implement localhost-specific setup (DisableLoopbackCheck, etc.)
+            logs.append(f"Connection attempts: {len(result.attempts_made)}")
 
-            # Layer 1: Direct connection attempts
-            logs.append("Layer 1: Attempting direct PS remoting connections")
-            connection_success = self._try_direct_connection(server_name, os_credentials, timeout, dry_run)
-            logs.append(f"Direct connection result: {'SUCCESS' if connection_success else 'FAILED'}")
-
-            if connection_success:
-                # Store successful connection profile
+            if result.is_success() and result.session:
+                session_profile = result.session.connection_profile
                 profile = ServerConnectionProfile(
-                    server_name=server_name,
+                    server_name=session_profile.server_name,
                     connection_method=ConnectionMethod.POWERSHELL_REMOTING,
-                    auth_method="negotiate",  # TODO: detect actual method used
+                    auth_method=str(session_profile.auth_method),
                     successful=True,
                     last_successful=datetime.utcnow(),
-                    sql_targets=[t.name for t in sql_targets]
+                    sql_targets=[t.name for t in sql_targets],
+                    port=session_profile.port
                 )
                 self._persist_connection_profile(profile)
-                logs.append("Successfully established PS remoting connection")
+                logs.append("PS remoting connection established and persisted")
                 return PrepareServerResult.success_result(server_name, profile, logs)
-            else:
-                # Generate manual override script
-                manual_script = self._generate_manual_override_script(server_name, sql_targets, os_credentials)
-                logs.append("Generated manual override script for failed connection")
-                logs.append(f"Manual script saved to: {manual_script}")
 
-                error_msg = f"PS remoting setup failed for server {server_name}. Manual script generated."
-                logs.append(error_msg)
-                return PrepareServerResult.failure_result(server_name, error_msg, logs, manual_script)
+            manual_script_path = None
+            if result.manual_setup_scripts:
+                manual_script_path = self._save_manual_script(
+                    server_name,
+                    result.manual_setup_scripts
+                )
+                logs.append(
+                    f"Manual setup script generated at {manual_script_path}"
+                )
+            if result.troubleshooting_report:
+                logs.append("Troubleshooting report generated for failed connection")
+
+            error_msg = result.error_message or "PS remoting setup failed"
+            return PrepareServerResult.failure_result(
+                server_name,
+                error_msg,
+                logs,
+                manual_script_path
+            )
 
         except Exception as e:
             error_msg = f"PS remoting preparation failed for server {server_name}: {e}"
@@ -408,63 +442,129 @@ class PrepareService:
             logger.error("Server preparation failed: %s", e)
             return PrepareServerResult.failure_result(server_name, error_msg, logs)
 
-    def _try_direct_connection(
+    def revert_server(
         self,
         server_name: str,
-        os_credentials: Optional[Any],
-        timeout: int,
-        dry_run: bool
-    ) -> bool:
+        sql_targets: Optional[List[SqlTarget]] = None,
+        credentials_file: Optional[str] = None,
+        dry_run: bool = False
+    ) -> PSRemotingResult:
         """
-        Try direct PS remoting connection using current implementation.
-
-        This is a placeholder for the full 5-layer strategy.
-        Currently uses the existing connection testing logic.
+        Revert PS remoting configuration on a server.
         """
-        if dry_run:
-            logger.info("DRY RUN: Would attempt PS remoting connection to %s", server_name)
-            return True  # Simulate success for dry run
-
-        try:
-            # Use existing connection testing logic
-            available_methods = self.connection_tester.get_available_methods(server_name)
-            if ConnectionMethod.POWERSHELL_REMOTING in available_methods:
-                success = self.connection_tester.test_connection(
-                    server_name, ConnectionMethod.POWERSHELL_REMOTING
-                )
-                return success
-            return False
-        except Exception as e:
-            logger.warning("Direct connection attempt failed for %s: %s", server_name, e)
-            return False
+        credentials_payload = self._build_credentials_payload(sql_targets or [], credentials_file)
+        return self.connection_manager.revert_server(
+            server_name=server_name,
+            credentials=credentials_payload,
+            dry_run=dry_run
+        )
 
     def _persist_connection_profile(self, profile: ServerConnectionProfile) -> None:
         """
         Persist successful connection profile to database.
 
-        TODO: Implement database persistence for connection profiles.
         """
-        logger.info("TODO: Persist connection profile for server %s", profile.server_name)
-        # For now, just log - full implementation needs DB schema
+        try:
+            repository = self.connection_manager.repository
+            repository.save_connection_profile(
+                self._map_profile_to_connection_profile(profile)
+            )
+            logger.info("Persisted connection profile for server %s", profile.server_name)
+        except Exception as exc:
+            logger.warning(
+                "Failed to persist connection profile for %s: %s",
+                profile.server_name,
+                exc
+            )
 
-    def _generate_manual_override_script(
+    def _build_credentials_payload(
         self,
-        server_name: str,
         sql_targets: List[SqlTarget],
-        os_credentials: Optional[Any]
-    ) -> str:
-        """
-        Generate manual override PowerShell script for failed connections.
+        credentials_ref: Optional[str]
+    ) -> dict:
+        """Convert configured credentials to PS remoting credential payload."""
+        credential = None
 
-        TODO: Implement comprehensive manual script generation with:
-        - WinRM service enablement
-        - Firewall rule creation
-        - TrustedHosts management
-        - Registry modifications
-        - Step-by-step instructions
-        """
-        script_path = f"output/manual_psremoting_setup_{server_name}.ps1"
-        logger.info("TODO: Generate manual override script at %s", script_path)
-        # For now, just return placeholder path
-        return script_path
+        # Prefer explicit override
+        chosen_ref = credentials_ref
 
+        # Then per-target OS credential reference
+        if not chosen_ref:
+            for target in sql_targets:
+                if target.os_credentials_ref:
+                    chosen_ref = target.os_credentials_ref
+                    break
+
+        # Finally audit config OS credentials
+        if not chosen_ref:
+            try:
+                audit_config = self.config_manager.load_audit_config()
+                chosen_ref = audit_config.os_credentials_ref
+            except Exception:
+                chosen_ref = None
+
+        if chosen_ref:
+            ref_name = str(Path(chosen_ref).stem)
+            try:
+                credential = self.config_manager.get_credential(ref_name)
+            except Exception as exc:
+                logger.warning("Unable to load credential '%s': %s", ref_name, exc)
+
+        if credential:
+            return {
+                "windows_credentials": {
+                    "domain_admin": {
+                        "username": credential.username,
+                        "password": credential.get_password()
+                    }
+                }
+            }
+
+        return {"windows_credentials": {}}
+
+    def _save_manual_script(self, server_name: str, scripts: List[str]) -> str:
+        """Persist manual setup script to disk and return path."""
+        output_dir = Path("output")
+        output_dir.mkdir(parents=True, exist_ok=True)
+        script_path = output_dir / f"manual_psremoting_setup_{server_name}.ps1"
+        combined = "\n\n".join(scripts)
+        script_path.write_text(combined, encoding="utf-8")
+        return str(script_path)
+
+    @staticmethod
+    def _map_profile_to_connection_profile(profile: ServerConnectionProfile):
+        """Map domain profile to persistence model."""
+        from autodbaudit.infrastructure.psremoting.models import (
+            ConnectionProfile,
+            ConnectionMethod as InfraConnectionMethod
+        )
+
+        return ConnectionProfile(
+            id=None,
+            server_name=profile.server_name,
+            connection_method=InfraConnectionMethod.POWERSHELL_REMOTING,
+            auth_method=profile.auth_method,
+            protocol="http",
+            port=profile.port,
+            credential_type=None,
+            successful=profile.successful,
+            last_successful_attempt=profile.last_successful.isoformat(),
+            last_attempt=profile.last_successful.isoformat(),
+            attempt_count=1,
+            sql_targets=profile.sql_targets,
+            baseline_state=None,
+            current_state=None,
+            created_at=datetime.utcnow().isoformat(),
+            updated_at=datetime.utcnow().isoformat()
+        )
+
+    @staticmethod
+    def _map_method(method) -> ConnectionMethod:
+        """Map infra ConnectionMethod to domain enum."""
+        try:
+            return ConnectionMethod(method.value)  # type: ignore[attr-defined]
+        except Exception:  # pragma: no cover
+            try:
+                return ConnectionMethod(str(method))
+            except Exception:
+                return ConnectionMethod.POWERSHELL_REMOTING

@@ -165,7 +165,7 @@ Identical to `audit`, but with a focus on **User Actions**:
 ## 5. `prepare`
 **Purpose**: Manage remote access (PSRemote/WMI) for targets. **Prerequisite for full audits.**
 
-**Status**: Currently **IN DEVELOPMENT** - Server consolidation implemented, comprehensive PS remoting strategy in progress.
+**Status**: Implemented with server consolidation, 5-layer PS remoting with automated setup + manual fallbacks, and revert support.
 
 | Subcommand | Purpose | Arguments |
 | :--- | :--- | :--- |
@@ -187,6 +187,10 @@ Identical to `audit`, but with a focus on **User Actions**:
 | `--dry-run` | Flag | Show what would be done without executing |
 
 **Server Consolidation**: Multiple SQL instances on same server = 1 PS remoting operation.
+
+**Behavior**: Uses the 5-layer strategy in `PSRemotingConnectionManager` (direct attempts → client config → target config → fallbacks → manual override). Successful profiles are persisted to `psremoting_profiles`; manual scripts and troubleshooting reports are emitted when automated setup fails.
+
+**Localhost**: When target is localhost/127.0.0.1, the CLI enables WinRM/firewall/registry settings locally before attempting remoting for easy dev verification.
 
 **Examples**:
 
@@ -214,6 +218,8 @@ autodbaudit prepare apply --dry-run
 | `--timeout` | Int | Timeout in seconds per server (default: 300) |
 | `--dry-run` | Flag | Show what would be reverted without executing |
 | `--force` | Flag | Skip confirmation prompts |
+
+**Behavior**: Generates and executes revert scripts that stop/disable WinRM, remove WinRM firewall rules, and clean TrustedHosts entries for each server. Dry-run returns the scripts without executing.
 
 **Examples**:
 

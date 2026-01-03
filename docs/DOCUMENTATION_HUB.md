@@ -6,6 +6,11 @@ This documentation is structured to be the **Single Source of Truth** for all fu
 > **Navigation**: Use the breadcrumbs at the top of each page and cross-references throughout.
 > **For AI/Developers**: Each document includes prerequisites, related docs, and implementation standards.
 > **Version**: This documentation is for AutoDBAudit v1.0.0
+> **Offline-first**: AutoDBAudit must run fully offline on Windows hosts. Avoid external network calls (e.g., public IP probes) in tooling and scripts.
+
+## 🔒 Prepare & Remoting API
+- The Prepare service exposes a status API (see `application/prepare/status_service.py`) to query or trigger PS remoting readiness, returning `ServerConnectionInfo` snapshots (OS type, available methods, attempts, cache/persistence-backed).
+- PS remoting persistence lives in infra `psremoting/repository.py`; cache layer in `application/prepare/cache/cache_manager.py`. Other layers (audit/remediate/sync) should consume this API rather than re-running prep logic.
 
 ---
 

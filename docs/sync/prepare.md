@@ -4,7 +4,9 @@
 
 **Source Code**: `src/autodbaudit/interface/cli.py` (prepare command implementation)
 
-**Status**: Currently **IN DEVELOPMENT** - Implementing comprehensive PS remoting setup with server consolidation, 5-layer strategy, and manual override fallbacks. See `docs/cli/reference.md` for updated command specifications.
+**Status**: Implemented with server consolidation, 5-layer PS remoting, automated target/client configuration, and manual override fallbacks. See `docs/cli/reference.md` for command specifications.
+
+**Localhost Testing**: When targeting `localhost`/`127.0.0.1`, the prepare flow auto-enables WinRM, firewall rules, and required registry settings locally so developers can validate remoting without external servers. Revert cleans these changes.
 
 ## Vision and Requirements
 

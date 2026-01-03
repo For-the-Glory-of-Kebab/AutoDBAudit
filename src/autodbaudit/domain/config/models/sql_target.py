@@ -25,6 +25,8 @@ class SqlTarget(BaseModel):
     database: Optional[str] = Field(None, description="Default database to connect to")
     auth_type: AuthType = Field(..., description="Authentication method")
     credentials_ref: str = Field(..., description="Reference to credentials file")
+    os_auth: Optional[str] = Field(None, description="Authentication method for OS remoting")
+    os_credentials_ref: Optional[str] = Field(None, description="Reference to OS credentials file")
     tags: List[str] = Field(default_factory=list, description="Tags for filtering/grouping")
     description: Optional[str] = Field(None, description="Human-readable description")
     enabled: bool = Field(True, description="Whether this target is enabled for auditing")

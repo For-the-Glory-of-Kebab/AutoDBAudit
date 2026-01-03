@@ -64,11 +64,13 @@ class ConnectionProfile(BaseModel):
     repeated discovery attempts.
     """
 
+    id: Optional[int] = Field(None, description="Primary key in persistence store")
     server_name: str = Field(..., description="Target server hostname or IP")
     connection_method: ConnectionMethod = Field(..., description="Connection method that worked")
     auth_method: Optional[str] = Field(None, description="Authentication method that worked")
     protocol: Optional[str] = Field(None, description="Protocol that worked (http/https)")
     port: Optional[int] = Field(None, description="Port that worked")
+    credential_type: Optional[str] = Field(None, description="Credential type used for this profile")
     successful: bool = Field(default=False, description="Whether connection was successful")
     last_successful_attempt: Optional[str] = Field(None, description="Timestamp of last successful connection")
     last_attempt: Optional[str] = Field(None, description="Timestamp of last attempt")
@@ -91,10 +93,15 @@ class ConnectionAttempt(BaseModel):
     to provide insights into what works and what doesn't.
     """
 
-    profile_id: int = Field(..., description="Reference to connection profile")
-    attempt_timestamp: str = Field(..., description="When the attempt was made")
-    layer: str = Field(..., description="Layer where attempt was made (direct, client_config, target_config, fallback, manual)")
-    connection_method: ConnectionMethod = Field(..., description="Connection method attempted")
+    profile_id: Optional[int] = Field(None, description="Reference to connection profile")
+    server_name: Optional[str] = Field(None, description="Target server hostname or IP")
+    protocol: Optional[str] = Field(None, description="Protocol attempted (http/https)")
+    port: Optional[int] = Field(None, description="Port attempted")
+    credential_type: Optional[str] = Field(None, description="Credential type used")
+    attempted_at: Optional[str] = Field(None, description="Timestamp of attempt")
+    attempt_timestamp: Optional[str] = Field(None, description="When the attempt was made")
+    layer: Optional[str] = Field(None, description="Layer where attempt was made (direct, client_config, target_config, fallback, manual)")
+    connection_method: Optional[ConnectionMethod] = Field(None, description="Connection method attempted")
     auth_method: Optional[str] = Field(None, description="Authentication method tried")
     success: bool = Field(default=False, description="Whether attempt succeeded")
     error_message: Optional[str] = Field(None, description="Error message if failed")
@@ -102,7 +109,7 @@ class ConnectionAttempt(BaseModel):
     config_changes: Optional[Dict[str, Any]] = Field(None, description="JSON of configuration changes made")
     rollback_actions: Optional[Dict[str, Any]] = Field(None, description="JSON of actions needed to rollback changes")
     manual_script_path: Optional[str] = Field(None, description="Path to generated manual override script")
-    created_at: str = Field(..., description="When attempt was recorded")
+    created_at: Optional[str] = Field(None, description="When attempt was recorded")
 
     class Config:
         use_enum_values = True

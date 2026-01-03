@@ -162,8 +162,7 @@ class PSRemotingRepository:
 
             profile_id = cursor.lastrowid
             conn.commit()
-            return profile_id
-
+            return int(profile_id or 0)
     def get_connection_profile(
         self,
         server_name: str
@@ -198,8 +197,12 @@ class PSRemotingRepository:
             current_state = json.loads(row['current_state']) if row['current_state'] else None
 
             return ConnectionProfile(
+                id=row['id'],
                 server_name=row['server_name'],
                 connection_method=ConnectionMethod(row['connection_method']),
+                protocol=row['protocol'],
+                port=row['port'],
+                credential_type=row['credential_type'],
                 auth_method=row['auth_method'],
                 successful=bool(row['successful']),
                 last_successful_attempt=row['last_successful_attempt'],
@@ -211,6 +214,32 @@ class PSRemotingRepository:
                 created_at=row['created_at'],
                 updated_at=row['updated_at']
             )
+
+    def ensure_profile(self, server_name: str) -> int:
+        """Ensure a profile row exists for a server and return its id."""
+        existing = self.get_connection_profile(server_name)
+        if existing and existing.id:
+            return existing.id
+
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            now = datetime.now(timezone.utc).isoformat()
+            cursor.execute("""
+                INSERT OR IGNORE INTO psremoting_profiles
+                (server_name, connection_method, auth_method, successful,
+                 last_successful_attempt, last_attempt, attempt_count,
+                 sql_targets, baseline_state, current_state, created_at,
+                 updated_at)
+                VALUES (?, ?, ?, 0, NULL, NULL, 0, NULL, NULL, NULL, ?, ?)
+            """, (server_name, ConnectionMethod.POWERSHELL_REMOTING.value, None, now, now))
+            conn.commit()
+
+            cursor.execute(
+                "SELECT id FROM psremoting_profiles WHERE server_name = ?",
+                (server_name,)
+            )
+            row = cursor.fetchone()
+            return int(row['id']) if row and row['id'] is not None else 0
 
     def update_connection_profile_success(
         self,
@@ -271,6 +300,7 @@ class PSRemotingRepository:
             # Convert complex fields to JSON
             config_changes_json = json.dumps(attempt.config_changes) if attempt.config_changes else None
             rollback_actions_json = json.dumps(attempt.rollback_actions) if attempt.rollback_actions else None
+            now = datetime.now(timezone.utc).isoformat()
 
             cursor.execute("""
                 INSERT INTO psremoting_attempts
@@ -281,9 +311,9 @@ class PSRemotingRepository:
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 attempt.profile_id,
-                attempt.attempt_timestamp,
-                attempt.layer,
-                attempt.connection_method.value,
+                attempt.attempt_timestamp or now,
+                attempt.layer or "",
+                attempt.connection_method.value if attempt.connection_method else "",
                 attempt.auth_method,
                 1 if attempt.success else 0,
                 attempt.error_message,
@@ -291,12 +321,69 @@ class PSRemotingRepository:
                 config_changes_json,
                 rollback_actions_json,
                 attempt.manual_script_path,
-                attempt.created_at
+                attempt.created_at or now
             ))
 
             attempt_id = cursor.lastrowid
             conn.commit()
-            return attempt_id
+            return int(attempt_id or 0)
+
+    def update_profile_after_attempt(
+        self,
+        server_name: str,
+        success: bool,
+        auth_method: Optional[str] = None,
+        connection_method: Optional[ConnectionMethod] = None,
+        last_attempt: Optional[str] = None
+    ) -> None:
+        """Update profile metadata after an attempt."""
+        now = last_attempt or datetime.now(timezone.utc).isoformat()
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE psremoting_profiles
+                SET attempt_count = attempt_count + 1,
+                    last_attempt = ?,
+                    updated_at = ?,
+                    successful = CASE WHEN ? THEN 1 ELSE successful END,
+                    last_successful_attempt = CASE WHEN ? THEN ? ELSE last_successful_attempt END,
+                    auth_method = CASE WHEN ? THEN ? ELSE auth_method END,
+                    connection_method = CASE WHEN ? THEN ? ELSE connection_method END
+                WHERE server_name = ?
+                """,
+                (
+                    now,
+                    now,
+                    1 if success else 0,
+                    1 if success else 0,
+                    now,
+                    1 if auth_method else 0,
+                    auth_method,
+                    1 if connection_method else 0,
+                    connection_method.value if connection_method else None,
+                    server_name,
+                ),
+            )
+            conn.commit()
+
+    def log_attempts(self, attempts: List[ConnectionAttempt], profile_id: Optional[int] = None) -> None:
+        """Persist a batch of attempts when a profile id is available."""
+        if profile_id is None:
+            return
+        for attempt in attempts:
+            attempt.profile_id = profile_id
+            try:
+                self.log_connection_attempt(attempt)
+                self.update_profile_after_attempt(
+                    server_name=attempt.server_name or "",
+                    success=attempt.success,
+                    auth_method=attempt.auth_method,
+                    connection_method=attempt.connection_method,
+                    last_attempt=attempt.attempt_timestamp or attempt.created_at,
+                )
+            except Exception:
+                continue
 
     def get_recent_attempts(
         self,
@@ -335,7 +422,12 @@ class PSRemotingRepository:
 
                 attempts.append(ConnectionAttempt(
                     profile_id=row['profile_id'],
+                    server_name=row['server_name'],
+                    protocol=row['protocol'],
+                    port=row['port'],
+                    credential_type=row['credential_type'],
                     attempt_timestamp=row['attempt_timestamp'],
+                    attempted_at=row['attempt_timestamp'],
                     layer=row['layer'],
                     connection_method=ConnectionMethod(row['connection_method']),
                     auth_method=row['auth_method'],
@@ -378,6 +470,7 @@ class PSRemotingRepository:
             cursor = conn.cursor()
             cursor.execute("""
                 SELECT id, server_name, connection_method, auth_method, successful,
+                       protocol, port, credential_type,
                        last_successful_attempt, last_attempt, attempt_count,
                        sql_targets, baseline_state, current_state, created_at,
                        updated_at
@@ -393,9 +486,13 @@ class PSRemotingRepository:
                 current_state = json.loads(row['current_state']) if row['current_state'] else None
 
                 profiles.append(ConnectionProfile(
+                    id=row['id'],
                     server_name=row['server_name'],
                     connection_method=ConnectionMethod(row['connection_method']),
                     auth_method=row['auth_method'],
+                    protocol=row['protocol'],
+                    port=row['port'],
+                    credential_type=row['credential_type'],
                     successful=bool(row['successful']),
                     last_successful_attempt=row['last_successful_attempt'],
                     last_attempt=row['last_attempt'],
@@ -464,7 +561,7 @@ class PSRemotingRepository:
 
             state_id = cursor.lastrowid
             conn.commit()
-            return state_id
+            return int(state_id or 0)
 
     def get_server_state(self, profile_id: int, state_type: str) -> Optional[ServerState]:
         """

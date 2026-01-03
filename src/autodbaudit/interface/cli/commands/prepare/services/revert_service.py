@@ -5,6 +5,7 @@ Manages reverting audit preparation changes on targets.
 """
 
 from typing import List, Optional
+from collections import defaultdict
 
 from autodbaudit.infrastructure.config.manager import ConfigManager
 from autodbaudit.application.prepare_service import PrepareService
@@ -41,29 +42,42 @@ class RevertService:
             Success message or error message
         """
         try:
+            _ = (config_file, parallel, timeout)
             # Get SQL targets for the specified target names
             if targets is None:
                 # Use all enabled targets from config
                 all_targets = self.config_manager.get_enabled_targets()
                 selected_targets = all_targets
-                target_names = [t.name for t in selected_targets]
             else:
                 # Use specified targets
                 all_targets = self.config_manager.get_enabled_targets()
                 selected_targets = [t for t in all_targets if t.name in targets]
-                target_names = targets
 
             if not selected_targets:
                 if targets is None:
                     return "No enabled targets found in sql_targets.json"
-                else:
-                    return f"No matching targets found for: {targets}"
+                return f"No matching targets found for: {targets}"
 
-            # For now, simulate revert by clearing cache
-            # In a full implementation, this would undo audit infrastructure
-            self.prepare_service.clear_cache()
+            # Group by server and invoke revert
+            server_groups = defaultdict(list)
+            for target in selected_targets:
+                server_groups[target.server].append(target)
 
-            return f"Successfully reverted preparation for {len(selected_targets)} targets"
+            failures = []
+            for server_name in server_groups:
+                result = self.prepare_service.revert_server(
+                    server_name=server_name,
+                    sql_targets=server_groups[server_name],
+                    credentials_file=credentials_file,
+                    dry_run=dry_run
+                )
+                if not result.success:
+                    failures.append(server_name)
+
+            if failures:
+                return f"Failed to revert servers: {failures}"
+            server_list = ", ".join(server_groups.keys())
+            return f"Successfully reverted preparation for servers: {server_list}"
         except Exception as e:
             return f"Failed to revert targets: {str(e)}"
 

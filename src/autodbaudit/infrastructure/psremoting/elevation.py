@@ -23,6 +23,10 @@ class ShellElevationService:
     def __init__(self):
         self._is_windows = platform.system() == "Windows"
 
+    def is_shell_elevated(self) -> bool:
+        """Convenience helper to check elevation without metadata."""
+        return self.check_elevation().is_elevated
+
     def check_elevation(self) -> ElevationStatus:
         """
         Check current elevation status.
@@ -35,7 +39,8 @@ class ShellElevationService:
             return ElevationStatus(
                 is_elevated=True,
                 elevation_required=False,
-                can_elevate=True
+                can_elevate=True,
+                elevation_method=None
             )
 
         is_elevated = self._is_admin_windows()

@@ -89,6 +89,17 @@ class CredentialHandler:
         else:
             return CredentialType.WINDOWS_INTEGRATED
 
+    def create_pscredential_from_parts(self, username: str, password: str) -> Optional[str]:
+        """
+        Create a PSCredential script fragment from explicit username/password parts.
+
+        Used when trying credential permutations (domain\\user, user@domain, user-only).
+        """
+        if not self._is_windows or not username or not password:
+            return None
+        creds = {"username": username, "password": password}
+        return self._create_pscredential_from_explicit(creds)
+
     def validate_credentials(self, bundle: CredentialBundle) -> bool:
         """
         Validate that credentials are properly formatted.

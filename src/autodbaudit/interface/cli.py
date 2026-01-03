@@ -575,86 +575,36 @@ def handle_definalize_command(args) -> int:
 
 
 def handle_prepare_command(args) -> int:
-    """Handler for 'prepare' subcommand - Access Preparation."""
-    from autodbaudit.infrastructure.sqlite.store import HistoryStore
-    from autodbaudit.application.access_preparation import AccessPreparationService
+    """Handler for 'prepare' subcommand - uses the new PrepareService."""
+    from autodbaudit.infrastructure.config.manager import ConfigManager
+    from autodbaudit.application.prepare_service import PrepareService
 
-    db_path = DEFAULT_OUTPUT_DIR / "audit_history.db"
-    store = HistoryStore(db_path)
-    store.initialize_schema()
-
-    service = AccessPreparationService(store)
-
-    # Status only
-    if args.status:
-        statuses = service.get_all_status()
-        if not statuses:
-            print("No access preparation data found. Run 'prepare' first.")
-            return 0
-
-        print("\n📡 ACCESS STATUS")
-        print("=" * 80)
-        print(f"{'Target':<20} {'Host':<20} {'OS':<8} {'Method':<10} {'Status':<10}")
-        print("-" * 80)
-        for s in statuses:
-            print(
-                f"{s.target_id:<20} {s.hostname:<20} {s.os_type:<8} "
-                f"{s.access_method:<10} {s.access_status:<10}"
-            )
-        print()
-        store.close()
-        return 0
-
-    # Revert changes
-    if args.revert:
-        if not args.yes:
-            confirm = input("Revert all access changes? [y/N]: ")
-            if confirm.lower() != "y":
-                print("Aborted.")
-                store.close()
-                return 0
-
-        count = service.revert_all()
-        print(f"✅ Reverted {count} targets to original state")
-        store.close()
-        return 0
-
-    # Manual mark
-    if args.mark_accessible:
-        service.mark_accessible(args.mark_accessible, "Manual override by user")
-        print(f"✅ Marked {args.mark_accessible} as accessible")
-        store.close()
-        return 0
-
-    # Default: Prepare all targets
-    loader = ConfigLoader()
-    targets = loader.load_sql_targets(args.targets)
+    config_manager = ConfigManager()
+    targets = config_manager.load_sql_targets()
     enabled = [t for t in targets if t.enabled]
 
     if not enabled:
         print("No enabled targets found in config.")
-        store.close()
         return 1
 
-    print(f"\n🔧 Preparing access for {len(enabled)} targets...")
+    prepare_service = PrepareService(config_manager)
+
+    print(f"\n🔧 Preparing {len(enabled)} targets...")
     print("=" * 60)
 
-    results = service.prepare_all(enabled)
+    results = []
+    for target in enabled:
+        result = prepare_service.prepare_target(target)
+        results.append(result)
+        icon = "✅" if result.success else "❌"
+        msg = result.error_message or "Prepared"
+        print(f"{icon} {target.name} ({target.server}) -> {msg}")
 
-    # Summary
-    ready = sum(1 for r in results if r.access_status == "ready")
-    failed = sum(1 for r in results if r.access_status == "failed")
-
+    failures = [r for r in results if not r.success]
     print()
-    print(f"✅ Ready: {ready}")
-    print(f"❌ Failed: {failed}")
-
-    if failed > 0:
-        print("\nUse 'prepare --status' to see details.")
-        print("Use 'prepare --mark-accessible TARGET_ID' to override.")
-
-    store.close()
-    return 0 if failed == 0 else 1
+    print(f"✅ Ready: {len(results) - len(failures)}")
+    print(f"❌ Failed: {len(failures)}")
+    return 0 if not failures else 1
 
 
 def run_audit(args: argparse.Namespace) -> int:

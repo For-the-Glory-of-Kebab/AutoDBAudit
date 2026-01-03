@@ -175,7 +175,7 @@ class PSRemoteClient:
                 # Add message_encryption='auto' to support NTLM/Kerberos properly
                 session = winrm.Session(
                     target=endpoint,
-                    auth=(self.config.username, self.config.password),
+                    auth=(self.config.username or "", self.config.password or ""),
                     transport=auth.value,
                     server_cert_validation="validate" if verify_ssl else "ignore",
                     message_encryption="auto",  # Crucial for some NTLM setups
@@ -235,6 +235,8 @@ class PSRemoteClient:
                     success=False,
                     error="Failed to establish connection",
                 )
+        if self._session is None:
+            return PSRemoteResult(success=False, error="No active session")
 
         try:
             result = self._session.run_ps(script)
@@ -278,6 +280,8 @@ class PSRemoteClient:
                     success=False,
                     error="Failed to establish connection",
                 )
+        if self._session is None:
+            return PSRemoteResult(success=False, error="No active session")
 
         try:
             result = self._session.run_cmd(command, args or [])

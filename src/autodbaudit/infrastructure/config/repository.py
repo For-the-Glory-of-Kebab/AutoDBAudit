@@ -188,18 +188,24 @@ class ConfigRepository:
 
         # Migrate 'credential_file' to 'credentials_ref'
         if 'credential_file' in migrated and 'credentials_ref' not in migrated:
-            # Extract just the filename without path for credentials_ref
             cred_file = migrated.pop('credential_file')
             if cred_file:
-                # Remove 'credentials/' prefix if present
                 cred_ref = cred_file.replace('credentials/', '').replace('.json', '')
                 migrated['credentials_ref'] = cred_ref
 
-        # Set default database if not present
+        # Migrate OS credential fields
+        if 'os_credential_file' in migrated and 'os_credentials_ref' not in migrated:
+            os_cred_file = migrated.pop('os_credential_file')
+            if os_cred_file:
+                os_cred_ref = os_cred_file.replace('credentials/', '').replace('.json', '')
+                migrated['os_credentials_ref'] = os_cred_ref
+
+        if 'os_auth' in migrated and migrated['os_auth'] is None:
+            migrated.pop('os_auth')
+
         if 'database' not in migrated:
             migrated['database'] = None
 
-        # Set default description if not present
         if 'description' not in migrated:
             migrated['description'] = None
 
