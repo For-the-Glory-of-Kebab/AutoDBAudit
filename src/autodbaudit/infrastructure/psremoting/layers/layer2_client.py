@@ -6,10 +6,10 @@ import logging
 import subprocess
 from typing import List, Callable
 
-from .models import ConnectionAttempt, PSRemotingResult
+from ..models import ConnectionAttempt, PSRemotingResult
 from .direct_runner import DirectAttemptRunner
-from .client_config import ClientConfigurator
-from .gpo_enforcer import apply_winrm_policy, build_revert_script
+from ..config.client_config import ClientConfigurator
+from ..config.gpo_enforcer import apply_winrm_policy, build_revert_script
 
 logger = logging.getLogger(__name__)
 

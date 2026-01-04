@@ -14,21 +14,22 @@ from typing import List, Optional, Dict, Any
 import platform
 import ipaddress
 
-from .client_config import ClientConfigurator
-from .target_config import TargetConfigurator
-from .direct_runner import DirectAttemptRunner
-from .layer2_client import ClientLayerRunner
-from .layer3_target import TargetLayerRunner
-from .revert_tracker import RevertTracker
+from .config.client_config import ClientConfigurator
+from .config.target_config import TargetConfigurator
+from .layers.direct_runner import DirectAttemptRunner
+from .layers.layer2_client import ClientLayerRunner
+from .layers.layer3_target import TargetLayerRunner
+from .layers.revert_tracker import RevertTracker
 
 from .models import (
     ConnectionProfile,
     ConnectionAttempt,
     PSRemotingResult,
-    CredentialBundle
+    CredentialBundle,
+    ConnectionMethod,
 )
 from .credentials import CredentialHandler
-from .fallbacks import (
+from .layers.fallbacks import (
     try_psexec_connection,
     try_rpc_connection,
     try_ssh_powershell,
@@ -36,11 +37,11 @@ from .fallbacks import (
 )
 from .repository import PSRemotingRepository
 from .elevation import ShellElevationService
-from .manual_layer import run_manual_layer
-from .localhost_prep import LocalhostPreparer
+from .layers.manual_layer import run_manual_layer
+from .layers.localhost_prep import LocalhostPreparer
 
 logger = logging.getLogger(__name__)
-# pylint: disable=too-many-instance-attributes,too-many-branches,too-many-return-statements,line-too-long
+# pylint: disable=too-many-instance-attributes,too-many-branches,too-many-return-statements,line-too-long,too-many-statements
 
 class PSRemotingConnectionManager:
     """
@@ -119,16 +120,11 @@ class PSRemotingConnectionManager:
         attempts: List[ConnectionAttempt] = []
         self.revert_tracker.reset()
 
-        if self._is_windows and allow_config and not self._elevation_service.is_shell_elevated():
-            return PSRemotingResult(
-                success=False,
-                session=None,
-                error_message="Elevation required. Please run shell as Administrator.",
-                attempts_made=attempts,
-                duration_ms=int((time.time() - start_time) * 1000),
-                troubleshooting_report=None,
-                manual_setup_scripts=None,
-                revert_scripts=[]
+        is_elevated = not self._is_windows or self._elevation_service.is_shell_elevated()
+        allow_config_effective = allow_config and is_elevated
+        if allow_config and not is_elevated:
+            logger.warning(
+                "Elevation required for configuration steps; proceeding with connection-only attempts."
             )
 
         # Prepare credentials
@@ -165,8 +161,22 @@ class PSRemotingConnectionManager:
             result.duration_ms = int((time.time() - start_time) * 1000)
             return result
 
+        # Reverse DNS retry for IP targets
+        if self._is_ip_address(server_name):
+            alt_host = self.direct_runner.reverse_dns(server_name)
+            if alt_host and alt_host.lower() != server_name.lower():
+                logger.info("Reverse DNS resolved %s -> %s. Retrying direct attempts.", server_name, alt_host)
+                result = self._layer1_direct_attempts(alt_host, credential_bundle, attempts, profile_id)
+                if result.is_success():
+                    session = result.get_session()
+                    if session:
+                        saved_id = self._save_successful_profile(session.connection_profile)
+                        self.repository.log_attempts(attempts, profile_id=saved_id)
+                    result.duration_ms = int((time.time() - start_time) * 1000)
+                    return result
+
         # Layer 2: Client-side configuration (if allowed)
-        if allow_config:
+        if allow_config_effective:
             result = self._layer2_client_config(server_name, credential_bundle, attempts, profile_id)
             if result.is_success():
                 session = result.get_session()
@@ -177,7 +187,7 @@ class PSRemotingConnectionManager:
                 return result
 
         # Layer 3: Target configuration (if allowed)
-        if allow_config:
+        if allow_config_effective:
             result = self._layer3_target_config(server_name, credential_bundle, attempts, profile_id)
             if result.is_success():
                 session = result.get_session()
@@ -188,12 +198,16 @@ class PSRemotingConnectionManager:
                 return result
 
         # Layer 4: Advanced fallbacks
-        if allow_config:
+        if allow_config_effective:
             result = self._layer4_advanced_fallbacks(server_name, credential_bundle, attempts, profile_id)
             if result.is_success():
                 session = result.get_session()
                 if session:
                     saved_id = self._save_successful_profile(session.connection_profile)
+                    self.repository.log_attempts(attempts, profile_id=saved_id)
+                else:
+                    # Persist fallback success details even without a PSSession
+                    saved_id = self._save_profile_from_attempt(attempts[-1], profile_id, server_name)
                     self.repository.log_attempts(attempts, profile_id=saved_id)
                 result.duration_ms = int((time.time() - start_time) * 1000)
                 return result
@@ -321,7 +335,6 @@ class PSRemotingConnectionManager:
         - Direct SMB/CIFS access
         """
         logger.info("Layer 4: Trying advanced fallbacks for %s", server_name)
-        del profile_id  # Profile id not used for fallbacks yet
 
         # Try SSH-based PowerShell
         result = try_ssh_powershell(
@@ -332,6 +345,7 @@ class PSRemotingConnectionManager:
             self._get_timestamp
         )
         if result.is_success():
+            self.repository.log_attempts(attempts, profile_id=profile_id)
             return result
 
         # Try WMI connections
@@ -343,6 +357,7 @@ class PSRemotingConnectionManager:
             self._get_timestamp
         )
         if result.is_success():
+            self.repository.log_attempts(attempts, profile_id=profile_id)
             return result
 
         # Try psexec fallback
@@ -354,6 +369,7 @@ class PSRemotingConnectionManager:
             self._get_timestamp
         )
         if result.is_success():
+            self.repository.log_attempts(attempts, profile_id=profile_id)
             return result
 
         # Try RPC connections
@@ -365,9 +381,10 @@ class PSRemotingConnectionManager:
             self._get_timestamp
         )
         if result.is_success():
+            self.repository.log_attempts(attempts, profile_id=profile_id)
             return result
 
-        return PSRemotingResult(
+        final_result = PSRemotingResult(
             success=False,
             session=None,
             error_message="Layer 4: All advanced fallbacks failed",
@@ -377,6 +394,8 @@ class PSRemotingConnectionManager:
             manual_setup_scripts=None,
             revert_scripts=self.revert_tracker.scripts
         )
+        self.repository.log_attempts(attempts, profile_id=profile_id)
+        return final_result
 
     def _save_successful_profile(self, profile: ConnectionProfile):
         """Save successful connection profile."""
@@ -391,6 +410,34 @@ class PSRemotingConnectionManager:
         )
         profile_id = self.repository.save_connection_profile(updated_profile)
         return profile_id
+
+    def _save_profile_from_attempt(
+        self,
+        attempt: ConnectionAttempt,
+        profile_id: Optional[int],
+        server_name: str,
+    ) -> int:
+        """Persist a connection profile derived from a successful attempt (e.g., fallback)."""
+        timestamp = self._get_timestamp()
+        profile = ConnectionProfile(
+            id=profile_id,
+            server_name=server_name,
+            connection_method=attempt.connection_method or ConnectionMethod.POWERSHELL_REMOTING,
+            auth_method=attempt.auth_method,
+            protocol=attempt.protocol,
+            port=attempt.port,
+            credential_type=attempt.credential_type,
+            successful=True,
+            last_successful_attempt=timestamp,
+            last_attempt=timestamp,
+            attempt_count=1,
+            sql_targets=[],
+            baseline_state=None,
+            current_state=None,
+            created_at=timestamp,
+            updated_at=timestamp,
+        )
+        return self.repository.save_connection_profile(profile)
 
     def _get_timestamp(self) -> str:
         """Get current timestamp in ISO format."""

@@ -148,6 +148,18 @@ class PrepareStatusService:
             "ps_success": ps_result.is_success(),
             "ps_error": ps_result.error_message,
             "attempts": [a.model_dump() for a in ps_result.attempts_made],
+            "successful_permutations": ps_result.successful_permutations
+            or [
+                {
+                    "auth_method": a.auth_method,
+                    "protocol": a.protocol,
+                    "port": a.port,
+                    "credential_type": a.credential_type,
+                    "layer": a.layer,
+                }
+                for a in ps_result.attempts_made
+                if a.success
+            ],
         }
         session = ps_result.get_session()
         if session:

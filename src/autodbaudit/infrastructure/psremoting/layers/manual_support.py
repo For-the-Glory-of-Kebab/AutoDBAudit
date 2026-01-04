@@ -4,7 +4,7 @@ Helpers for manual PS remoting troubleshooting artifacts.
 
 from typing import Callable, List
 
-from .models import ConnectionAttempt
+from ..models import ConnectionAttempt
 
 TimestampProvider = Callable[[], str]
 

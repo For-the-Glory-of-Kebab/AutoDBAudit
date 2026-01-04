@@ -247,6 +247,20 @@ Invoke-Command -ComputerName '{server_name}' -ScriptBlock {{
             )
         return success, revert
 
+    def trigger_gpupdate(
+        self,
+        server_name: str,
+        runner: Callable[[str], object],
+    ) -> bool:
+        """Force a gpupdate on the target to apply policy changes immediately."""
+        script = f"Invoke-Command -ComputerName '{server_name}' -ScriptBlock {{ gpupdate /target:computer /force | Out-Null }}"
+        try:
+            result = runner(script)
+            return getattr(result, "returncode", 1) == 0
+        except Exception as exc:  # pylint: disable=broad-except
+            logger.warning("Failed to trigger gpupdate on %s: %s", server_name, exc)
+            return False
+
     def _run_with_logging(self, action: str, server_name: str, script: str, runner: Callable[[str], object]) -> bool:
         """Execute a script via runner and log result."""
         try:

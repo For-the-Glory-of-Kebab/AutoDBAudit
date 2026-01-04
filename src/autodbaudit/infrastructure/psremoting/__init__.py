@@ -14,19 +14,18 @@ from .models import (
     ConnectionProfile,
     ConnectionAttempt,
     PSSession,
+    CommandResult,
     ElevationStatus,
     CredentialBundle,
-    PSRemotingResult
+    PSRemotingResult,
+    ServerState,
+    ConnectionMethod,
 )
 from .elevation import ShellElevationService
 from .credentials import CredentialHandler
 from .repository import PSRemotingRepository
 from .connection_manager import PSRemotingConnectionManager
-
-# Executor components (formerly psremote)
-from .executor.connection_client import PSRemoteClient, ConnectionConfig, PSRemoteResult
-from .executor.script_executor import ScriptExecutor, ExecutionResult
-from .executor.os_data_invoker import PsRemoteOsDataInvoker
+from .facade import PSRemotingFacade
 
 __all__ = [
     # Models
@@ -37,21 +36,17 @@ __all__ = [
     "ConnectionProfile",
     "ConnectionAttempt",
     "PSSession",
+    "CommandResult",
     "ElevationStatus",
     "CredentialBundle",
     "PSRemotingResult",
+    "ServerState",
+    "ConnectionMethod",
 
     # Services
     "ShellElevationService",
     "CredentialHandler",
     "PSRemotingRepository",
     "PSRemotingConnectionManager",
-
-    # Executor components (formerly psremote)
-    "PSRemoteClient",
-    "ConnectionConfig",
-    "PSRemoteResult",
-    "ScriptExecutor",
-    "ExecutionResult",
-    "PsRemoteOsDataInvoker"
+    "PSRemotingFacade",
 ]

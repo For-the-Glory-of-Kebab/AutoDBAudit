@@ -137,6 +137,19 @@ class PrepareService:
             if ps_result.is_success() and ConnectionMethod.POWERSHELL_REMOTING not in available_methods:
                 available_methods.append(ConnectionMethod.POWERSHELL_REMOTING)
             preferred_method = available_methods[0] if available_methods else None
+            successful_permutations = [
+                {
+                    "auth_method": a.auth_method,
+                    "protocol": a.protocol,
+                    "port": a.port,
+                    "credential_type": a.credential_type,
+                    "layer": a.layer,
+                }
+                for a in ps_result.attempts_made
+                if a.success
+            ]
+            if ps_result.successful_permutations:
+                successful_permutations.extend(ps_result.successful_permutations)
 
             # Step 3: Create connection info snapshot
             connection_info = ServerConnectionInfo(
@@ -150,6 +163,7 @@ class PrepareService:
                     "ps_success": ps_result.is_success(),
                     "ps_error": ps_result.error_message,
                     "attempts": [a.model_dump() for a in ps_result.attempts_made],
+                    "successful_permutations": successful_permutations,
                 }
             )
 
@@ -171,13 +185,15 @@ class PrepareService:
 
     def prepare_targets(
         self,
-        targets: Optional[List[SqlTarget]] = None
+        targets: Optional[List[SqlTarget]] = None,
+        rerun_failed_once: bool = True,
     ) -> List[PrepareResult]:
         """
         Prepare multiple targets using ultra-granular services.
 
         Args:
             targets: List of targets to prepare (default: all enabled targets)
+            rerun_failed_once: Whether to rerun failed servers once to detect manual fixes
 
         Returns:
             List of PrepareResult objects
@@ -186,8 +202,27 @@ class PrepareService:
             targets = self.config_manager.get_enabled_targets()
 
         if self.audit_settings.enable_parallel_processing:
-            return self._prepare_targets_parallel(targets)
-        return self._prepare_targets_sequential(targets)
+            results = self._prepare_targets_parallel(targets)
+        else:
+            results = self._prepare_targets_sequential(targets)
+
+        if rerun_failed_once:
+            failed = [res.target for res in results if not res.success]  # type: ignore[attr-defined]
+            if failed:
+                logger.info("Retrying %d failed targets to detect manual fixes...", len(failed))
+                retry_results = (
+                    self._prepare_targets_parallel(failed)
+                    if self.audit_settings.enable_parallel_processing
+                    else self._prepare_targets_sequential(failed)
+                )
+                # Replace old results with retry results for those targets
+                retry_map = {res.target.name: res for res in retry_results}  # type: ignore[attr-defined]
+                results = [
+                    retry_map.get(res.target.name, res)  # type: ignore[attr-defined]
+                    for res in results
+                ]
+
+        return results
 
     def _prepare_targets_sequential(self, targets: List[SqlTarget]) -> List[PrepareResult]:
         """Prepare targets sequentially."""

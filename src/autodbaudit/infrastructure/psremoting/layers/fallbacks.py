@@ -8,8 +8,8 @@ from typing import Callable, List, Tuple
 import subprocess
 import time
 
-from .credentials import CredentialHandler
-from .models import (
+from ..credentials import CredentialHandler
+from ..models import (
     AuthMethod,
     Protocol,
     ConnectionAttempt,
@@ -54,11 +54,17 @@ def try_ssh_powershell(
     )
 
     start = time.time()
-    attempt.error_message = "SSH PowerShell not yet implemented"
-    attempt.success = False
+    cred_variants = _credential_variants(bundle, credential_handler)
+    for username, password, _ in cred_variants:
+        error = _test_ssh(server_name, username, password)
+        if error is None:
+            attempt.success = True
+            attempt.error_message = None
+            break
+        attempt.error_message = error
+
     attempt.duration_ms = int((time.time() - start) * 1000)
     attempts.append(attempt)
-
     return _result_from_attempt(attempts, attempt)
 
 
@@ -213,6 +219,15 @@ def _result_from_attempt(attempts: List[ConnectionAttempt], attempt: ConnectionA
         troubleshooting_report=None,
         manual_setup_scripts=None,
         revert_scripts=None,
+        successful_permutations=[
+            {
+                "auth_method": attempt.auth_method,
+                "protocol": attempt.protocol,
+                "port": attempt.port,
+                "credential_type": attempt.credential_type,
+                "layer": attempt.layer,
+            }
+        ] if attempt.success else [],
     )
 
 
@@ -310,6 +325,42 @@ def _test_rpc(server_name: str) -> str | None:
     if result.returncode == 0:
         return None
     return result.stderr.strip() or "RPC reachability failed"
+
+
+def _test_ssh(server_name: str, username: str | None, password: str | None) -> str | None:
+    """Attempt SSH connectivity and simple command execution."""
+    ssh_cmd = ["ssh", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null"]
+    if username:
+        target = f"{username}@{server_name}"
+    else:
+        target = server_name
+    ssh_cmd.extend([target, "echo OK"])
+
+    try:
+        if password:
+            proc = subprocess.run(
+                ssh_cmd,
+                input=password,
+                text=True,
+                capture_output=True,
+                timeout=20,
+                check=False,
+            )
+        else:
+            proc = subprocess.run(
+                ssh_cmd,
+                capture_output=True,
+                text=True,
+                timeout=20,
+                check=False,
+            )
+        if proc.returncode == 0 and "OK" in (proc.stdout or ""):
+            return None
+        return proc.stderr.strip() or proc.stdout.strip() or "SSH command failed"
+    except FileNotFoundError:
+        return "ssh client not found"
+    except subprocess.SubprocessError as exc:  # pylint: disable=broad-except
+        return str(exc)
 
 
 def _cred_to_str(value) -> str | None:

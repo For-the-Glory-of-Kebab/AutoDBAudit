@@ -4,7 +4,7 @@ Layer 5 manual override handling for PS remoting.
 
 from typing import List, Callable
 
-from .models import ConnectionAttempt, PSRemotingResult
+from ..models import ConnectionAttempt, PSRemotingResult
 from .manual_support import (
     generate_manual_setup_scripts,
     generate_revert_scripts,

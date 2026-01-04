@@ -13,7 +13,7 @@ from .manual_support import (
     generate_manual_setup_scripts,
     generate_troubleshooting_report,
 )
-from .models import ConnectionAttempt, CredentialBundle, PSRemotingResult
+from ..models import ConnectionAttempt, CredentialBundle, PSRemotingResult
 
 class LocalhostPreparer:
     """Enables WinRM locally and retries direct connection attempts."""

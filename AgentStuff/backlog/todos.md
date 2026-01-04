@@ -19,7 +19,11 @@
   - [ ] Implement Layer 5: Manual override and detailed logging
   - [ ] Add SSH-based PowerShell support
   - [ ] Build WMI/RPC and psexec fallback strategies
+  - [ ] Make management surface coverage exhaustive (GPO/registry/firewall/WinRM client+service/listeners/services/TrustedHosts) with gpupdate/no-reboot application and reversible changes (partially done: WinRM policy + CredSSP + client auth baselines)
+  - [ ] Add PSRemotingFacade with structured API (get_status/ensure_prepared/run_command/run_script/revert) for downstream modules
   - [ ] Create connection health monitoring and rediscovery
+  - [ ] Add parallel runner with prefixed, per-server logging and structured output
+  - [ ] Handle mixed-host scenarios on same IP (e.g., Windows + non-Windows SQL on Docker Desktop at different ports) via initial T-SQL or other detection to choose PS remoting vs. alt path
 
 - [ ] **Phase 4: Integration & Testing**
   - [ ] Update prepare command to use new PS remoting engine
@@ -35,6 +39,9 @@
 - [ ] Create remediate command with script generation
 - [ ] Add finalize/definalize commands
 - [ ] Implement util command with diagnostics
+- [ ] Ensure PS remoting command construction passes explicit creds without interactive prompts across auth methods (re-test elevated)
+- [ ] Capture successful auth/protocol permutations into persistence and expose via status API for downstream consumers
+- [ ] Review latest attempt export at `AgentStuff/logs/psremoting_attempts_latest.txt` (from `audit_history.db`) and fix credential/command construction errors
 
 ## Low Priority
 
@@ -55,5 +62,5 @@
 - [x] Design 5-layer resilient connection strategy
 - [x] Start implementation of core PS remoting infrastructure
 
-Last Updated: 2025-12-31
+Last Updated: 2026-01-05
 

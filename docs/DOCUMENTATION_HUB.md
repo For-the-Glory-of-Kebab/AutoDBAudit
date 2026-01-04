@@ -10,7 +10,10 @@ This documentation is structured to be the **Single Source of Truth** for all fu
 
 ## 🔒 Prepare & Remoting API
 - The Prepare service exposes a status API (see `application/prepare/status_service.py`) to query or trigger PS remoting readiness, returning `ServerConnectionInfo` snapshots (OS type, available methods, attempts, cache/persistence-backed).
-- PS remoting persistence lives in infra `psremoting/repository.py`; cache layer in `application/prepare/cache/cache_manager.py`. Other layers (audit/remediate/sync) should consume this API rather than re-running prep logic.
+- PS remoting persistence lives in infra `psremoting/repository.py`; cache layer in `application/prepare/cache/cache_manager.py`. Other layers (audit/remediate/sync/hotfix) should consume this API rather than re-running prep logic.
+- Facade implemented: `psremoting/facade.py` provides `get_status`, `ensure_prepared`, `run_command`, `run_script`, and `revert`, returning structured `CommandResult`/`PSRemotingResult` data (auth/protocol/port/credential_type used, stdout/stderr/exit_code, revert scripts, troubleshooting). It reuses persisted profiles/successful permutations and targets admin-level sessions; consumers must not parse ad-hoc strings.
+- Automation is non-interactive: all PS remoting attempts must supply explicit credentials; credential-less/`Get-Credential` prompts are forbidden. If no usable creds are configured, the engine fails fast with a clear error.
+- Current status: localhost prep still failing pending elevated re-test; past failures show PowerShell credential construction issues (ConvertTo-SecureString autoload). Run prepare in an elevated shell to allow client/target config layers.
 
 ---
 

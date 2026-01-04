@@ -1,11 +1,13 @@
 from typing import List, Optional, Dict
 from pathlib import Path
 import logging
+from datetime import datetime
 
 from autodbaudit.infrastructure.config.manager import ConfigManager
 from autodbaudit.infrastructure.config.credential_manager import CredentialManager
 from autodbaudit.application.prepare_service import PrepareService
 from autodbaudit.domain.config import SqlTarget
+from autodbaudit.infrastructure.psremoting.facade import ParallelRunner
 
 logger = logging.getLogger(__name__)
 
@@ -84,16 +86,35 @@ class ApplyService:
 
             # Apply preparation using the prepare service (server-based, not target-based)
             results = []
-            for server_name, server_targets in server_groups.items():
-                server_result = self.prepare_service.prepare_server(
-                    server_name=server_name,
-                    sql_targets=server_targets,
-                    config_file=config_file,
-                    credentials_file=credentials_file,
-                    timeout=timeout,
-                    dry_run=dry_run
-                )
-                results.append(server_result)
+            if parallel:
+                runner = ParallelRunner(log_dir="output/prepare_logs")
+
+                def _make_work(name: str, targets_on_server: List[SqlTarget]):
+                    return (
+                        name,
+                        lambda facade: self._prepare_single(
+                            name,
+                            targets_on_server,
+                            config_file,
+                            credentials_file,
+                            timeout,
+                            dry_run,
+                        ),
+                    )
+
+                work_items = [_make_work(server_name, targets) for server_name, targets in server_groups.items()]
+                results = runner.run(work_items)
+            else:
+                for server_name, server_targets in server_groups.items():
+                    server_result = self._prepare_single(
+                        server_name,
+                        server_targets,
+                        config_file,
+                        credentials_file,
+                        timeout,
+                        dry_run,
+                    )
+                    results.append(server_result)
 
             successful = sum(1 for r in results if r.success)
             total = len(results)
@@ -101,11 +122,53 @@ class ApplyService:
             if successful == total:
                 return f"Successfully prepared {successful}/{total} servers"
             else:
-                failed_servers = [r.server_name for r in results if not r.success]
+                failed_servers = [f"{r.server_name}: {r.error_message}" for r in results if not r.success]
                 return f"Prepared {successful}/{total} servers. Failed: {failed_servers}"
 
         except Exception as e:
             return f"Unexpected error during apply: {str(e)}"
+
+    def _emit_result_log(self, result) -> None:
+        """
+        Write per-server log file for prepare run and log error details to console.
+        """
+        timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+        log_dir = Path("output") / "prepare_logs"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        logfile = log_dir / f"{result.server_name}_{timestamp}.log"
+        lines = result.logs if hasattr(result, "logs") else []
+        try:
+            with open(logfile, "w", encoding="utf-8") as handle:
+                handle.write("\n".join(lines))
+                if not result.success and result.error_message:
+                    handle.write(f"\nERROR: {result.error_message}\n")
+        except OSError as exc:
+            logger.warning("Failed to write log for %s: %s", result.server_name, exc)
+
+        if not result.success and result.error_message:
+            logger.error("Prepare failed for %s: %s", result.server_name, result.error_message)
+        elif result.success:
+            logger.info("Prepare succeeded for %s", result.server_name)
+
+    def _prepare_single(
+        self,
+        server_name: str,
+        sql_targets: List[SqlTarget],
+        config_file: Optional[str],
+        credentials_file: Optional[str],
+        timeout: int,
+        dry_run: bool,
+    ):
+        result = self.prepare_service.prepare_server(
+            server_name=server_name,
+            sql_targets=sql_targets,
+            config_file=config_file,
+            credentials_file=credentials_file,
+            timeout=timeout,
+            dry_run=dry_run,
+        )
+        self._emit_result_log(result)
+        return result
 
     def _group_targets_by_server(self, targets: List[SqlTarget]) -> Dict[str, List[SqlTarget]]:
         """

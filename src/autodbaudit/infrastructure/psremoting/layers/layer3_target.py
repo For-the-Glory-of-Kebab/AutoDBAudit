@@ -5,11 +5,11 @@ Layer 3 target-side configuration runner for PS remoting.
 import logging
 from typing import List, Callable
 
-from .models import ConnectionAttempt, PSRemotingResult, CredentialBundle
+from ..models import ConnectionAttempt, PSRemotingResult, CredentialBundle
 from .direct_runner import DirectAttemptRunner
-from .target_config import TargetConfigurator
+from ..config.target_config import TargetConfigurator
 from .revert_tracker import RevertTracker
-from .gpo_enforcer import apply_winrm_policy, build_revert_script
+from ..config.gpo_enforcer import apply_winrm_policy, build_revert_script
 
 logger = logging.getLogger(__name__)
 # pylint: disable=line-too-long,too-many-arguments,too-many-positional-arguments
@@ -61,6 +61,7 @@ class TargetLayerRunner:
             self._configure_gpo_settings(server_name, bundle)
             self._ensure_winrm_listeners(server_name, bundle)
             self._configure_target_trustedhosts(server_name, bundle)
+            self._trigger_gpupdate(server_name, bundle)
 
             return self.direct_runner.layer1_direct_attempts(
                 server_name, bundle, attempts, profile_id
@@ -136,8 +137,16 @@ class TargetLayerRunner:
             if revert:
                 self.revert_tracker.add_revert_script(revert)
 
+    def _trigger_gpupdate(self, server_name: str, bundle: CredentialBundle) -> None:
+        """Force policy application to avoid reboot requirements."""
+        gp_success = self.target_config.trigger_gpupdate(
+            server_name, lambda script: self._exec_with_creds(script, bundle)
+        )
+        if gp_success:
+            self.revert_tracker.track_change("gpupdate", server_name, "forced")
+
     def _get_client_ip(self) -> str:
         """Obtain client IP using the client configurator helper."""
-        from .client_config import ClientConfigurator  # pylint: disable=import-outside-toplevel
+        from ..config.client_config import ClientConfigurator  # pylint: disable=import-outside-toplevel
 
         return ClientConfigurator().detect_client_ip()

@@ -7,7 +7,7 @@ from __future__ import annotations
 import logging
 import json
 from autodbaudit.application.collectors.base import BaseCollector
-from autodbaudit.infrastructure.psremoting.executor.script_executor import ScriptExecutor
+from autodbaudit.infrastructure.psremoting.facade import PSRemotingFacade
 from autodbaudit.utils.resources import get_base_path
 
 logger = logging.getLogger(__name__)
@@ -140,13 +140,12 @@ class InfrastructureCollector(BaseCollector):
 
         return username, password
 
-    def _create_executor(
+    def _create_facade(
         self, target_host: str, username: str | None, password: str | None
-    ) -> ScriptExecutor:
-        """Create and return a ScriptExecutor for the target host."""
-        return ScriptExecutor.from_config(
-            hostname=target_host, username=username, password=password
-        )
+    ) -> PSRemotingFacade:
+        """Create PS remoting facade for the target host (with supplied credentials)."""
+        # For now we instantiate fresh; consider DI if reused broadly.
+        return PSRemotingFacade()
 
     def _determine_service_type(self, svc_name: str, instance: str) -> tuple[str, str]:
         """Determine service type and instance based on service name."""
@@ -215,18 +214,24 @@ class InfrastructureCollector(BaseCollector):
                 if self.ctx.server_name.lower() in ("localhost", ".", "(local)")
                 else self.ctx.server_name
             )
-            executor = self._create_executor(target_host, username, password)
-
-            # Get services
-            instance = self.ctx.instance_name or "MSSQLSERVER"
-            result = executor.get_os_data(instance_name=instance)
-            executor.close()
-
-            if not result.success:
-                logger.error("PowerShell service collection failed: %s", result.error)
+            facade = self._create_facade(target_host, username, password)
+            # Use facade to run a data-collection script (placeholder; replace with real script)
+            script = "Get-Service | Select-Object Name, DisplayName, Status, StartType, StartName | ConvertTo-Json -Compress"
+            command_result = facade.run_command(
+                target_host,
+                script,
+                {"windows_credentials": {"domain_admin": {"username": username, "password": password}}},
+                prefer_method=None,
+            )
+            if not command_result.success:
+                logger.error("PowerShell service collection failed: %s", command_result.stderr)
                 return 0
 
-            ps_services = (result.data or {}).get("services", [])
+            try:
+                ps_services = json.loads(command_result.stdout) if command_result.stdout else []
+            except Exception as e:  # pylint: disable=broad-except
+                logger.error("Failed to parse service data: %s", e)
+                return 0
             if not ps_services:
                 logger.warning(
                     "PowerShell executed but returned no services. "

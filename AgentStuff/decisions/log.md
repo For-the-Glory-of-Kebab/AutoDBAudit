@@ -64,5 +64,27 @@
 - **Rationale**: Maximizes compatibility with diverse server configurations and security policies.
 - **Consequences**: Broad compatibility but requires multiple implementation approaches.
 
-Last Updated: 2025-12-31
+## Decision: Exhaustive Windows Management Coverage & Admin-Level Remoting
+
+- **Date**: 2026-01-04
+- **Context**: Prepare must succeed in offline Windows/AD environments with domain-admin credentials.
+- **Decision**: Prepare will exhaust all relevant Windows management surfaces (GPO, registry, firewall, WinRM client/service/listeners, services, TrustedHosts, gpupdate) to enable PS remoting, and will ensure remoting sessions end with admin privileges. All changes must be captured with baselines and reversible without reboot where possible.
+- **Rationale**: Domain-admin context allows aggressive but reversible configuration to make PS remoting virtually guaranteed; downstream modules need reliable admin sessions.
+- **Consequences**: Requires comprehensive state capture, gpupdate triggers, and revert automation; increases implementation surface but improves reliability.
+
+## Decision: Ultra-Granular File/Folder Structure & Tooling Standards
+
+- **Date**: 2026-01-04
+- **Context**: Past regressions and unreadable blobs in PS remoting and other modules.
+- **Decision**: Enforce ultra-granular files (<100 lines when feasible) with feature-based folder cascades (e.g., `models/`, `config/`, `layers/`, `facade/`, `repo/`). No shims/legacy co-existence; breaking imports should surface so refactors complete. Use Python 3.14+/modern patterns, Pydantic v2 for runtime validation, and keep code “god-tier” readable/robust. Always run/align with pyright+pylint (config in repo), type hints everywhere.
+- **Consequences**: More files but far clearer structure; easier agent handoffs; lint/type hygiene maintained by default. Legacy callers must be rewired, not papered over.
+
+## Decision: No Interactive Prompts for Credentials
+
+- **Date**: 2026-01-05
+- **Context**: PS remoting attempts were triggering PowerShell credential prompts, breaking automation and IDEs.
+- **Decision**: All PS remoting paths must supply explicit credentials programmatically; credential-less attempts are disallowed. If no usable credentials are present, fail fast with a clear error. Never invoke `Get-Credential` or allow PowerShell to prompt.
+- **Consequences**: Removes accidental interactive loops; requires explicit credential configuration for targets; improves reproducibility and offline automation.
+
+Last Updated: 2026-01-05
 

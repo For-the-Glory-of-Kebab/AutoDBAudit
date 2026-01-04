@@ -8,11 +8,14 @@ and attempt logs for PowerShell remoting.
 
 import sqlite3
 import json
+import logging
 from datetime import datetime, timezone
 from typing import List, Optional
 from contextlib import contextmanager
 
 from .models import ConnectionProfile, ConnectionAttempt, ServerState, ConnectionMethod
+
+logger = logging.getLogger(__name__)
 
 class PSRemotingRepository:
     """
@@ -152,6 +155,13 @@ class PSRemotingRepository:
         if "credential_type" not in attempt_cols:
             cursor.execute("ALTER TABLE psremoting_attempts ADD COLUMN credential_type TEXT")
 
+    @staticmethod
+    def _cm_value(method: Optional[ConnectionMethod]) -> Optional[str]:
+        """Normalize connection_method to string."""
+        if method is None:
+            return None
+        return method.value if hasattr(method, "value") else str(method)
+
     def save_connection_profile(self, profile: ConnectionProfile) -> int:
         """
         Save or update a connection profile.
@@ -179,7 +189,7 @@ class PSRemotingRepository:
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 profile.server_name,
-                profile.connection_method.value,
+                self._cm_value(profile.connection_method),
                 profile.protocol,
                 profile.port,
                 profile.credential_type,
@@ -350,7 +360,7 @@ class PSRemotingRepository:
                 attempt.server_name,
                 attempt.attempt_timestamp or now,
                 attempt.layer or "",
-                attempt.connection_method.value if attempt.connection_method else "",
+                self._cm_value(attempt.connection_method) or "",
                 attempt.protocol,
                 attempt.port,
                 attempt.credential_type,
@@ -401,7 +411,7 @@ class PSRemotingRepository:
                     1 if auth_method else 0,
                     auth_method,
                     1 if connection_method else 0,
-                    connection_method.value if connection_method else None,
+                    self._cm_value(connection_method),
                     server_name,
                 ),
             )
@@ -422,8 +432,8 @@ class PSRemotingRepository:
                     connection_method=attempt.connection_method,
                     last_attempt=attempt.attempt_timestamp or attempt.created_at,
                 )
-            except Exception:
-                continue
+            except Exception as exc:  # pylint: disable=broad-except
+                logger.error("Failed to log attempt for %s: %s", attempt.server_name, exc)
 
     def get_recent_attempts(
         self,

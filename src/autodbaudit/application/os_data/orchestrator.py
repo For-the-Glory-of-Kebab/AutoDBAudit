@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 from autodbaudit.domain.targets.parser import TargetParser
 from autodbaudit.infrastructure.cache.os_data_manager import OsDataCacheManager
 from autodbaudit.infrastructure.credentials.repository import CredentialRepository
-from autodbaudit.infrastructure.psremoting.executor.os_data_invoker import PsRemoteOsDataInvoker
+from autodbaudit.infrastructure.psremoting.facade import PSRemotingFacade
 from autodbaudit.infrastructure.remediation.results import Result, Success, Failure
 
 if TYPE_CHECKING:
@@ -87,20 +87,21 @@ class OsDataOrchestrator:
                 return password_result
 
             # Invoke PSRemote collection
-            invoker = PsRemoteOsDataInvoker()
-            invoke_result = invoker.invoke_collection(
-                hostname=parsed_target.hostname,
-                instance_name=parsed_target.instance_name,
-                username=username_result.value,
-                password=password_result.value
+            facade = PSRemotingFacade()
+            script = "Get-ComputerInfo | ConvertTo-Json -Compress"
+            invoke_result = facade.run_command(
+                parsed_target.hostname,
+                script,
+                {"windows_credentials": {"domain_admin": {"username": username_result.value, "password": password_result.value}}},
+                prefer_method=None,
             )
 
-            if isinstance(invoke_result, Success):
+            if invoke_result.success:
                 # Cache successful result
                 cache_manager = OsDataCacheManager()
-                cache_manager.store(target_id, invoke_result.value)
+                cache_manager.store(target_id, {"raw": invoke_result.stdout})
 
-            return invoke_result
+            return Success({"raw": invoke_result.stdout}) if invoke_result.success else Failure(invoke_result.stderr or "OS data collection failed")
 
         except Exception as e:
             logger.warning("PSRemote collection failed for %s: %s", target_id, e)

@@ -46,22 +46,28 @@ class ClientConfigurator:
         """
         Apply client WinRM settings and return revert scripts.
 
+        Enables all auth types, AllowUnencrypted, CredSSP client role, and wildcard TrustedHosts.
+        Captures prior values for full revert.
+
         Returns:
             (all_success, revert_scripts)
         """
         revert_scripts: list[str] = []
         prev_allow_unencrypted = self._read_value("WSMan:\\localhost\\Client\\AllowUnencrypted")
         prev_trusted = self._read_value("WSMan:\\localhost\\Client\\TrustedHosts")
+        prev_auth_basic = self._read_value("WSMan:\\localhost\\Client\\Auth\\Basic")
+        prev_auth_kerb = self._read_value("WSMan:\\localhost\\Client\\Auth\\Kerberos")
+        prev_auth_neg = self._read_value("WSMan:\\localhost\\Client\\Auth\\Negotiate")
+        prev_auth_credssp = self._read_value("WSMan:\\localhost\\Client\\Auth\\CredSSP")
 
         commands = [
-            (
-                "Set-Item -Path WSMan:\\localhost\\Client\\AllowUnencrypted "
-                "-Value true -Force"
-            ),
-            (
-                "Set-Item -Path WSMan:\\localhost\\Client\\TrustedHosts "
-                "-Value * -Concatenate -Force"
-            ),
+            "Set-Item -Path WSMan:\\localhost\\Client\\AllowUnencrypted -Value true -Force",
+            "Set-Item -Path WSMan:\\localhost\\Client\\TrustedHosts -Value * -Concatenate -Force",
+            "Set-Item -Path WSMan:\\localhost\\Client\\Auth\\Basic -Value true -Force",
+            "Set-Item -Path WSMan:\\localhost\\Client\\Auth\\Kerberos -Value true -Force",
+            "Set-Item -Path WSMan:\\localhost\\Client\\Auth\\Negotiate -Value true -Force",
+            "Set-Item -Path WSMan:\\localhost\\Client\\Auth\\CredSSP -Value true -Force",
+            "Enable-WSManCredSSP -Role Client -DelegateComputer * -Force -ErrorAction SilentlyContinue",
         ]
         results = [self._run_command(cmd) for cmd in commands]
 
@@ -72,6 +78,27 @@ class ClientConfigurator:
             )
         if prev_trusted is not None:
             revert_scripts.append(self._build_trustedhosts_revert(prev_trusted))
+        if prev_auth_basic is not None:
+            revert_scripts.append(
+                "Set-Item -Path WSMan:\\localhost\\Client\\Auth\\Basic "
+                f"-Value {prev_auth_basic} -Force"
+            )
+        if prev_auth_kerb is not None:
+            revert_scripts.append(
+                "Set-Item -Path WSMan:\\localhost\\Client\\Auth\\Kerberos "
+                f"-Value {prev_auth_kerb} -Force"
+            )
+        if prev_auth_neg is not None:
+            revert_scripts.append(
+                "Set-Item -Path WSMan:\\localhost\\Client\\Auth\\Negotiate "
+                f"-Value {prev_auth_neg} -Force"
+            )
+        if prev_auth_credssp is not None:
+            revert_scripts.append(
+                "Set-Item -Path WSMan:\\localhost\\Client\\Auth\\CredSSP "
+                f"-Value {prev_auth_credssp} -Force"
+            )
+        revert_scripts.append("Disable-WSManCredSSP -Role Client -ErrorAction SilentlyContinue")
 
         return all(results), revert_scripts
 
