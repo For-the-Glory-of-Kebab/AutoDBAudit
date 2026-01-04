@@ -116,7 +116,7 @@ Supporting information and resources.
 
 #### 🚨 CRITICAL: Session Continuity Protocol
 
-If you are an AI agent working on this project, **always check `AgentStuff/memory.md` first** before making any changes. This file contains:
+If you are an AI agent working on this project, start at `AgentStuff/AGENT_HUB.md` (navigation + SOP), then read `AgentStuff/memory.md` before making changes. These files contain:
 
 * **Complete Working Copy of Agent Brain**: Current status, thought history, implementation plans
 * **Session Resume Instructions**: Step-by-step protocol for seamless continuation
@@ -128,10 +128,11 @@ If you are an AI agent working on this project, **always check `AgentStuff/memor
 
 **Before Starting Work**:
 
-1. Read `AgentStuff/memory.md` completely
-2. Check `AgentStuff/sessions/` for recent activity
-3. Review `AgentStuff/decisions/` for architectural decisions
-4. Update memory file after any significant changes
+1. Open `AgentStuff/AGENT_HUB.md` and follow its read order.
+2. Read `AgentStuff/memory.md` completely.
+3. Check `AgentStuff/sessions/` for recent activity.
+4. Review `AgentStuff/decisions/` for architectural decisions.
+5. Update memory + session log after any significant changes.
 
 ---
 

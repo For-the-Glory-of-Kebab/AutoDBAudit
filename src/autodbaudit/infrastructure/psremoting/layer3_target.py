@@ -79,53 +79,31 @@ class TargetLayerRunner:
             )
 
     def _ensure_winrm_service_running(self, server_name: str, bundle: CredentialBundle) -> None:
-        success = self.target_config.ensure_winrm_service_running(
+        success, revert = self.target_config.ensure_winrm_service_running(
             server_name, lambda script: self._exec_with_creds(script, bundle)
         )
         if success:
             self.revert_tracker.track_change("winrm_service", server_name, "started_automatic")
-            self.revert_tracker.add_revert_script(
-                f"""
-# Revert WinRM service changes on {server_name}
-Invoke-Command -ComputerName '{server_name}' -ScriptBlock {{
-    Stop-Service -Name WinRM -ErrorAction SilentlyContinue
-    Set-Service -Name WinRM -StartupType Manual -ErrorAction SilentlyContinue
-}}
-"""
-            )
+            if revert:
+                self.revert_tracker.add_revert_script(revert)
 
     def _configure_firewall_rules(self, server_name: str, bundle: CredentialBundle) -> None:
-        success = self.target_config.configure_firewall_rules(
+        success, revert = self.target_config.configure_firewall_rules(
             server_name, lambda script: self._exec_with_creds(script, bundle)
         )
         if success:
             self.revert_tracker.track_change("firewall_rules", server_name, "winrm_enabled")
-            self.revert_tracker.add_revert_script(
-                f"""
-# Revert firewall rules on {server_name}
-Invoke-Command -ComputerName '{server_name}' -ScriptBlock {{
-    Disable-NetFirewallRule -DisplayGroup "Windows Remote Management" -ErrorAction SilentlyContinue
-    Remove-NetFirewallRule -Name "WINRM-HTTP-In-TCP" -ErrorAction SilentlyContinue
-    Remove-NetFirewallRule -Name "WINRM-HTTPS-In-TCP" -ErrorAction SilentlyContinue
-}}
-"""
-            )
+            if revert:
+                self.revert_tracker.add_revert_script(revert)
 
     def _configure_registry_settings(self, server_name: str, bundle: CredentialBundle) -> None:
-        success = self.target_config.configure_registry_settings(
+        success, revert = self.target_config.configure_registry_settings(
             server_name, lambda script: self._exec_with_creds(script, bundle)
         )
         if success:
             self.revert_tracker.track_change("registry_settings", server_name, "remoting_enabled")
-            self.revert_tracker.add_revert_script(
-                f"""
-# Revert registry settings on {server_name}
-Invoke-Command -ComputerName '{server_name}' -ScriptBlock {{
-    Remove-ItemProperty -Path "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System" -Name "LocalAccountTokenFilterPolicy" -ErrorAction SilentlyContinue
-    Remove-ItemProperty -Path "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa" -Name "DisableLoopbackCheck" -ErrorAction SilentlyContinue
-}}
-"""
-            )
+            if revert:
+                self.revert_tracker.add_revert_script(revert)
 
     def _configure_gpo_settings(self, server_name: str, bundle: CredentialBundle) -> None:
         """Enable WinRM auth/unencrypted policy and track revert."""
@@ -137,34 +115,26 @@ Invoke-Command -ComputerName '{server_name}' -ScriptBlock {{
             self.revert_tracker.add_revert_script(build_revert_script(server_name, previous))
 
     def _ensure_winrm_listeners(self, server_name: str, bundle: CredentialBundle) -> None:
-        success = self.target_config.ensure_winrm_listeners(
+        success, revert = self.target_config.ensure_winrm_listeners(
             server_name, lambda script: self._exec_with_creds(script, bundle)
         )
         if success:
             self.revert_tracker.track_change("winrm_listeners", server_name, "verified")
+            if revert:
+                self.revert_tracker.add_revert_script(revert)
 
     def _configure_target_trustedhosts(self, server_name: str, bundle: CredentialBundle) -> None:
         if not self._is_ip_address(server_name):
             return
 
         client_ip = self._get_client_ip()
-        success = self.target_config.configure_target_trustedhosts(
+        success, revert = self.target_config.configure_target_trustedhosts(
             server_name, client_ip, lambda script: self._exec_with_creds(script, bundle)
         )
         if success:
             self.revert_tracker.track_change("target_trustedhosts", server_name, f"added_{client_ip}")
-            self.revert_tracker.add_revert_script(
-                f"""
-# Revert TrustedHosts on {server_name}
-Invoke-Command -ComputerName '{server_name}' -ScriptBlock {{
-    $currentHosts = (Get-Item WSMan:\\localhost\\Client\\TrustedHosts).Value
-    $newHosts = ($currentHosts -split ',') |
-        Where-Object {{ $_ -ne '{client_ip}' }} |
-        Where-Object {{ $_ -ne '' }}
-    Set-Item WSMan:\\localhost\\Client\\TrustedHosts -Value ($newHosts -join ',') -Force
-}}
-"""
-            )
+            if revert:
+                self.revert_tracker.add_revert_script(revert)
 
     def _get_client_ip(self) -> str:
         """Obtain client IP using the client configurator helper."""

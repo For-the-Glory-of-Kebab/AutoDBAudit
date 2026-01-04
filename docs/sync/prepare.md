@@ -132,16 +132,19 @@ Use domain admin credentials to modify target machines:
    - Start WinRM service
    - Set startup type to Automatic
    - Enable WinRM through firewall
+   - Capture previous status/startup and emit revert script
 
 2. **Firewall Configuration**:
    - Add WinRM HTTP/HTTPS rules
    - Handle different network profiles (Public/Private/Domain)
    - Configure custom ports if needed
+   - Capture prior existence/enabled state and emit targeted revert script
 
 3. **WinRM Listener Setup**:
    - Create HTTP and HTTPS listeners
    - Configure authentication methods
    - Set up SSL certificates for HTTPS
+   - Capture whether listeners existed and emit revert script
 
 4. **Security Policy Adjustments**:
    - Modify local security policies for remote access

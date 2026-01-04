@@ -50,7 +50,10 @@ class ClientLayerRunner:
             )
 
         # Add to TrustedHosts, then retry direct attempts
-        if self.client_config.add_to_trusted_hosts(server_name):
+        trusted_success, trusted_revert = self.client_config.add_to_trusted_hosts(server_name)
+        if trusted_revert:
+            self._record_revert(trusted_revert)
+        if trusted_success:
             result = self.direct_runner.layer1_direct_attempts(
                 server_name, bundle, attempts, profile_id
             )
@@ -58,13 +61,26 @@ class ClientLayerRunner:
                 return result
 
         # Configure WinRM client settings and policy, then retry direct attempts
-        self.client_config.configure_winrm_client()
+        client_success, client_reverts = self.client_config.configure_winrm_client()
+        for revert_script in client_reverts:
+            self._record_revert(revert_script)
         policy_success, previous = apply_winrm_policy("localhost", self._run_local_ps)
         if policy_success:
             self._record_revert(build_revert_script("localhost", previous))
 
-        return self.direct_runner.layer1_direct_attempts(
-            server_name, bundle, attempts, profile_id
+        if client_success:
+            return self.direct_runner.layer1_direct_attempts(
+                server_name, bundle, attempts, profile_id
+            )
+        return PSRemotingResult(
+            success=False,
+            session=None,
+            error_message="Layer 2: Client configuration failed",
+            attempts_made=attempts,
+            duration_ms=0,
+            troubleshooting_report=None,
+            manual_setup_scripts=None,
+            revert_scripts=None,
         )
 
     @staticmethod
