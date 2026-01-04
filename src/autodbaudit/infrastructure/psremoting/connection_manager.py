@@ -40,7 +40,7 @@ from .manual_layer import run_manual_layer
 from .localhost_prep import LocalhostPreparer
 
 logger = logging.getLogger(__name__)
-
+# pylint: disable=too-many-instance-attributes,too-many-branches,too-many-return-statements,line-too-long
 
 class PSRemotingConnectionManager:
     """
@@ -227,6 +227,7 @@ class PSRemotingConnectionManager:
             rollback_actions=None,
             manual_script_path=None
         )
+        attempt.profile_id = profile_id
 
         try:
             session = self.direct_runner.connect_with_profile(profile, bundle)
@@ -320,6 +321,7 @@ class PSRemotingConnectionManager:
         - Direct SMB/CIFS access
         """
         logger.info("Layer 4: Trying advanced fallbacks for %s", server_name)
+        del profile_id  # Profile id not used for fallbacks yet
 
         # Try SSH-based PowerShell
         result = try_ssh_powershell(

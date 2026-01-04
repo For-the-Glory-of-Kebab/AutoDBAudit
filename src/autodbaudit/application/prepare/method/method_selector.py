@@ -129,8 +129,8 @@ class ConnectionMethodSelector:
         Returns:
             True if method is suitable
         """
-        # All methods are potentially suitable, but some are preferred
-        return True
+        preferences = self._os_preferences.get(os_type, self._os_preferences[OSType.UNKNOWN])
+        return method in preferences
 
     def get_fallback_methods(
         self,
@@ -151,4 +151,3 @@ class ConnectionMethodSelector:
         """
         remaining_methods = [m for m in available_methods if m != failed_method]
         return self.rank_methods(remaining_methods, os_type)
-    

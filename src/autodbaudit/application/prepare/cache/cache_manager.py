@@ -190,7 +190,11 @@ class ConnectionCacheManager:
             "is_expired": entry.is_expired(),
             "server_name": entry.data.server_name,
             "os_type": entry.data.os_type.value,
-            "preferred_method": entry.data.preferred_method.value if entry.data.preferred_method else None,
+            "preferred_method": (
+                entry.data.preferred_method.value
+                if entry.data.preferred_method
+                else None
+            ),
             "is_available": entry.data.is_available,
         }
 

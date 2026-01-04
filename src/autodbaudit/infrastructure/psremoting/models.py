@@ -1,3 +1,5 @@
+# pyright: reportMissingImports=false
+# pylint: disable=import-error,line-too-long
 """
 PS Remoting Domain Models
 
@@ -18,7 +20,7 @@ class AuthMethod(Enum):
     NTLM = "NTLM"
     NEGOTIATE = "Negotiate"
     BASIC = "Basic"
-    CREDSsp = "CredSSP"
+    CREDSSP = "CredSSP"
 
 
 class Protocol(Enum):
@@ -82,6 +84,7 @@ class ConnectionProfile(BaseModel):
     updated_at: str = Field(..., description="When this profile was last updated")
 
     class Config:
+        """Pydantic configuration."""
         use_enum_values = True
 
 
@@ -112,6 +115,7 @@ class ConnectionAttempt(BaseModel):
     created_at: Optional[str] = Field(None, description="When attempt was recorded")
 
     class Config:
+        """Pydantic configuration."""
         use_enum_values = True
 
 
@@ -165,6 +169,7 @@ class ServerState(BaseModel):
     full_state_json: Optional[Dict[str, Any]] = Field(None, description="Complete JSON snapshot")
 
     class Config:
+        """Pydantic configuration."""
         use_enum_values = True
 
 
@@ -183,6 +188,7 @@ class PSSession(BaseModel):
     created_at: str = Field(..., description="When session was established")
 
     class Config:
+        """Pydantic configuration."""
         use_enum_values = True
 
 

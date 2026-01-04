@@ -1,3 +1,4 @@
+# pylint: disable=line-too-long,too-many-arguments,too-many-positional-arguments
 """
 Localhost preparation helper for PS remoting.
 
@@ -13,7 +14,6 @@ from .manual_support import (
     generate_troubleshooting_report,
 )
 from .models import ConnectionAttempt, CredentialBundle, PSRemotingResult
-
 
 class LocalhostPreparer:
     """Enables WinRM locally and retries direct connection attempts."""
@@ -36,7 +36,7 @@ class LocalhostPreparer:
         self,
         server_name: str,
         bundle: CredentialBundle,
-        start_time: float,
+        _start_time: float,
         profile_id: int,
     ) -> PSRemotingResult:
         """Enable localhost remoting and attempt connection."""

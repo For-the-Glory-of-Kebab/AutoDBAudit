@@ -4,6 +4,7 @@ Local policy/GPO tweaks for WinRM enablement.
 Applies minimal WinRM auth/unencrypted allowances and captures prior values so
 revert scripts can restore them.
 """
+# pylint: disable=line-too-long
 
 import json
 import logging

@@ -1,3 +1,4 @@
+# pylint: disable=line-too-long,duplicate-code,R0801
 """
 Target-side WinRM configuration helpers.
 
@@ -10,7 +11,6 @@ import logging
 from typing import Callable
 
 logger = logging.getLogger(__name__)
-
 
 class TargetConfigurator:
     """Apply WinRM-related settings on a target host."""

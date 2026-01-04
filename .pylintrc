@@ -3,8 +3,7 @@ init-hook='import sys; sys.path.append("./src")'
 
 [MESSAGES CONTROL]
 disable=
-    C0111, ; missing-docstring
     C0103, ; invalid-name (we use snake_case mostly but some UPPER_CASE constants might trigger)
     R0903, ; too-few-public-methods (common in data classes/collectors)
     W0718, ; broad-exception-caught (sometimes necessary in top-level handlers)
-    W0511, ; todo/fixme warnings
+    R0801, ; duplicate-code (shared helper patterns across layers)

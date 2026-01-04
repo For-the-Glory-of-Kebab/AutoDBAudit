@@ -25,6 +25,7 @@ from .models import (
 from .credentials import CredentialHandler
 
 logger = logging.getLogger(__name__)
+# pylint: disable=too-many-locals,too-many-arguments,too-many-positional-arguments,line-too-long
 
 
 @dataclass(frozen=True)
@@ -64,7 +65,7 @@ class DirectAttemptRunner:
             AuthMethod.NTLM,
             AuthMethod.NEGOTIATE,
             AuthMethod.BASIC,
-            AuthMethod.CREDSsp,
+            AuthMethod.CREDSSP,
         ]
         protocols = [Protocol.HTTP, Protocol.HTTPS]
         ports = [5985, 5986]  # HTTP, HTTPS

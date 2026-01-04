@@ -19,6 +19,7 @@ from .models import (
 )
 
 TimestampProvider = Callable[[], str]
+# pylint: disable=line-too-long,too-many-arguments,too-many-positional-arguments,unused-argument
 
 
 def try_ssh_powershell(
@@ -277,7 +278,7 @@ def _test_wmi(server_name: str, username: str | None, password: str | None, ps_c
 
 
 def _test_psexec(server_name: str, username: str | None, password: str | None) -> str | None:
-    """Attempt a psexec noop using provided credentials if available."""
+    """Attempt a psexec noop using provided credentials if available."""  # pylint: disable=unused-argument
     if not _is_psexec_available():
         return "psexec not available"
 

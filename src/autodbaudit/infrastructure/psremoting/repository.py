@@ -1,3 +1,4 @@
+# pylint: disable=line-too-long,too-many-arguments,too-many-positional-arguments
 """
 PS Remoting Persistence Layer
 
@@ -12,7 +13,6 @@ from typing import List, Optional
 from contextlib import contextmanager
 
 from .models import ConnectionProfile, ConnectionAttempt, ServerState, ConnectionMethod
-
 
 class PSRemotingRepository:
     """
@@ -47,6 +47,9 @@ class PSRemotingRepository:
                     id INTEGER PRIMARY KEY,
                     server_name TEXT NOT NULL,
                     connection_method TEXT NOT NULL,
+                    protocol TEXT,
+                    port INTEGER,
+                    credential_type TEXT,
                     auth_method TEXT,
                     successful INTEGER NOT NULL DEFAULT 0,
                     last_successful_attempt TEXT,
@@ -66,9 +69,13 @@ class PSRemotingRepository:
                 CREATE TABLE IF NOT EXISTS psremoting_attempts (
                     id INTEGER PRIMARY KEY,
                     profile_id INTEGER NOT NULL REFERENCES psremoting_profiles(id) ON DELETE CASCADE,
+                    server_name TEXT,
                     attempt_timestamp TEXT NOT NULL,
                     layer TEXT NOT NULL,
                     connection_method TEXT NOT NULL,
+                    protocol TEXT,
+                    port INTEGER,
+                    credential_type TEXT,
                     auth_method TEXT,
                     success INTEGER NOT NULL DEFAULT 0,
                     error_message TEXT,
@@ -118,7 +125,32 @@ class PSRemotingRepository:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_psremoting_attempts_layer ON psremoting_attempts(layer, success)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_psremoting_server_state_profile ON psremoting_server_state(profile_id, state_type)")
 
+            self._ensure_columns(cursor)
             conn.commit()
+
+    def _ensure_columns(self, cursor: sqlite3.Cursor) -> None:
+        """
+        Add newly introduced columns to existing tables to avoid runtime KeyErrors.
+        """
+        cursor.execute("PRAGMA table_info(psremoting_profiles)")
+        profile_cols = {row["name"] for row in cursor.fetchall()}
+        if "protocol" not in profile_cols:
+            cursor.execute("ALTER TABLE psremoting_profiles ADD COLUMN protocol TEXT")
+        if "port" not in profile_cols:
+            cursor.execute("ALTER TABLE psremoting_profiles ADD COLUMN port INTEGER")
+        if "credential_type" not in profile_cols:
+            cursor.execute("ALTER TABLE psremoting_profiles ADD COLUMN credential_type TEXT")
+
+        cursor.execute("PRAGMA table_info(psremoting_attempts)")
+        attempt_cols = {row["name"] for row in cursor.fetchall()}
+        if "server_name" not in attempt_cols:
+            cursor.execute("ALTER TABLE psremoting_attempts ADD COLUMN server_name TEXT")
+        if "protocol" not in attempt_cols:
+            cursor.execute("ALTER TABLE psremoting_attempts ADD COLUMN protocol TEXT")
+        if "port" not in attempt_cols:
+            cursor.execute("ALTER TABLE psremoting_attempts ADD COLUMN port INTEGER")
+        if "credential_type" not in attempt_cols:
+            cursor.execute("ALTER TABLE psremoting_attempts ADD COLUMN credential_type TEXT")
 
     def save_connection_profile(self, profile: ConnectionProfile) -> int:
         """
@@ -140,14 +172,17 @@ class PSRemotingRepository:
 
             cursor.execute("""
                 INSERT OR REPLACE INTO psremoting_profiles
-                (server_name, connection_method, auth_method, successful,
-                 last_successful_attempt, last_attempt, attempt_count,
-                 sql_targets, baseline_state, current_state, created_at,
-                 updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (server_name, connection_method, protocol, port, credential_type,
+                 auth_method, successful, last_successful_attempt, last_attempt,
+                 attempt_count, sql_targets, baseline_state, current_state,
+                 created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 profile.server_name,
                 profile.connection_method.value,
+                profile.protocol,
+                profile.port,
+                profile.credential_type,
                 profile.auth_method,
                 1 if profile.successful else 0,
                 profile.last_successful_attempt,
@@ -179,7 +214,8 @@ class PSRemotingRepository:
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
-                SELECT id, server_name, connection_method, auth_method, successful,
+                SELECT id, server_name, connection_method, protocol, port,
+                       credential_type, auth_method, successful,
                        last_successful_attempt, last_attempt, attempt_count,
                        sql_targets, baseline_state, current_state, created_at,
                        updated_at
@@ -199,7 +235,7 @@ class PSRemotingRepository:
             return ConnectionProfile(
                 id=row['id'],
                 server_name=row['server_name'],
-                connection_method=ConnectionMethod(row['connection_method']),
+                connection_method=ConnectionMethod(row['connection_method']) if row['connection_method'] else ConnectionMethod.POWERSHELL_REMOTING,
                 protocol=row['protocol'],
                 port=row['port'],
                 credential_type=row['credential_type'],
@@ -226,11 +262,11 @@ class PSRemotingRepository:
             now = datetime.now(timezone.utc).isoformat()
             cursor.execute("""
                 INSERT OR IGNORE INTO psremoting_profiles
-                (server_name, connection_method, auth_method, successful,
-                 last_successful_attempt, last_attempt, attempt_count,
-                 sql_targets, baseline_state, current_state, created_at,
-                 updated_at)
-                VALUES (?, ?, ?, 0, NULL, NULL, 0, NULL, NULL, NULL, ?, ?)
+                (server_name, connection_method, protocol, port, credential_type,
+                 auth_method, successful, last_successful_attempt, last_attempt,
+                 attempt_count, sql_targets, baseline_state, current_state,
+                 created_at, updated_at)
+                VALUES (?, ?, NULL, NULL, NULL, ?, 0, NULL, NULL, 0, NULL, NULL, NULL, ?, ?)
             """, (server_name, ConnectionMethod.POWERSHELL_REMOTING.value, None, now, now))
             conn.commit()
 
@@ -304,16 +340,20 @@ class PSRemotingRepository:
 
             cursor.execute("""
                 INSERT INTO psremoting_attempts
-                (profile_id, attempt_timestamp, layer, connection_method,
-                 auth_method, success, error_message, duration_ms,
-                 config_changes, rollback_actions, manual_script_path,
+                (profile_id, server_name, attempt_timestamp, layer, connection_method,
+                 protocol, port, credential_type, auth_method, success, error_message,
+                 duration_ms, config_changes, rollback_actions, manual_script_path,
                  created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 attempt.profile_id,
+                attempt.server_name,
                 attempt.attempt_timestamp or now,
                 attempt.layer or "",
                 attempt.connection_method.value if attempt.connection_method else "",
+                attempt.protocol,
+                attempt.port,
+                attempt.credential_type,
                 attempt.auth_method,
                 1 if attempt.success else 0,
                 attempt.error_message,
@@ -404,7 +444,9 @@ class PSRemotingRepository:
             cursor = conn.cursor()
             cursor.execute("""
                 SELECT a.id, a.profile_id, a.attempt_timestamp, a.layer,
-                       a.connection_method, a.auth_method, a.success,
+                       a.connection_method, a.protocol, a.port, a.credential_type,
+                       a.server_name,
+                       a.auth_method, a.success,
                        a.error_message, a.duration_ms, a.config_changes,
                        a.rollback_actions, a.manual_script_path, a.created_at
                 FROM psremoting_attempts a
@@ -429,7 +471,7 @@ class PSRemotingRepository:
                     attempt_timestamp=row['attempt_timestamp'],
                     attempted_at=row['attempt_timestamp'],
                     layer=row['layer'],
-                    connection_method=ConnectionMethod(row['connection_method']),
+                    connection_method=ConnectionMethod(row['connection_method']) if row['connection_method'] else None,
                     auth_method=row['auth_method'],
                     success=bool(row['success']),
                     error_message=row['error_message'],
@@ -488,7 +530,7 @@ class PSRemotingRepository:
                 profiles.append(ConnectionProfile(
                     id=row['id'],
                     server_name=row['server_name'],
-                    connection_method=ConnectionMethod(row['connection_method']),
+                    connection_method=ConnectionMethod(row['connection_method']) if row['connection_method'] else ConnectionMethod.POWERSHELL_REMOTING,
                     auth_method=row['auth_method'],
                     protocol=row['protocol'],
                     port=row['port'],

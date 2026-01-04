@@ -11,7 +11,6 @@ import platform
 
 from .models import ElevationStatus
 
-
 class ShellElevationService:
     """
     Service for detecting shell elevation status and guiding users.
@@ -51,7 +50,7 @@ class ShellElevationService:
             elevation_method="UAC" if self._supports_uac() else "runas"
         )
 
-    def require_elevation(self, operation: str) -> ElevationStatus:
+    def require_elevation(self, _operation: str) -> ElevationStatus:
         """
         Check if elevation is required for an operation.
 
@@ -74,7 +73,7 @@ class ShellElevationService:
             elevation_method=current_status.elevation_method
         )
 
-    def guide_user_elevation(self, operation: str) -> str:
+    def guide_user_elevation(self, _operation: str) -> str:
         """
         Provide user guidance for elevation.
 
@@ -84,17 +83,17 @@ class ShellElevationService:
         Returns:
             str: User-friendly guidance message
         """
-        status = self.require_elevation(operation)
+        status = self.require_elevation(_operation)
 
         if status.is_elevated:
-            return f"✓ Administrative privileges confirmed for: {operation}"
+            return f"✓ Administrative privileges confirmed for: {_operation}"
 
         if not status.can_elevate:
-            return f"✗ Elevation not possible on this system. {operation} may fail."
+            return f"✗ Elevation not possible on this system. {_operation} may fail."
 
         method = status.elevation_method or "administrator"
         return "\n".join([
-            f"⚠️  Administrative privileges required for: {operation}",
+            f"⚠️  Administrative privileges required for: {_operation}",
             "",
             f"To proceed, restart this application as {method}:",
             "",
@@ -123,7 +122,7 @@ class ShellElevationService:
             # Fallback: check if we can access admin-only resources
             try:
                 # Try to open an admin-only registry key
-                import winreg
+                import winreg  # pylint: disable=import-outside-toplevel
                 winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE,
                              r"SOFTWARE\Microsoft\Windows\CurrentVersion",
                              0, winreg.KEY_READ)
@@ -139,7 +138,7 @@ class ShellElevationService:
             bool: True if UAC is supported
         """
         try:
-            import winreg
+            import winreg  # pylint: disable=import-outside-toplevel
             key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE,
                                r"SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System")
             value, _ = winreg.QueryValueEx(key, "EnableLUA")

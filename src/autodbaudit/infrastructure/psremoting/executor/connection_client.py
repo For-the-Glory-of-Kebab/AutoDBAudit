@@ -1,3 +1,4 @@
+# pyright: reportMissingImports=false
 """
 PSRemote Client - Ultra-Resilient pywinrm Wrapper.
 

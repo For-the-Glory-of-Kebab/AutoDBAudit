@@ -12,6 +12,7 @@ from .revert_tracker import RevertTracker
 from .gpo_enforcer import apply_winrm_policy, build_revert_script
 
 logger = logging.getLogger(__name__)
+# pylint: disable=line-too-long,too-many-arguments,too-many-positional-arguments
 
 
 class TargetLayerRunner:
@@ -167,6 +168,6 @@ Invoke-Command -ComputerName '{server_name}' -ScriptBlock {{
 
     def _get_client_ip(self) -> str:
         """Obtain client IP using the client configurator helper."""
-        from .client_config import ClientConfigurator  # local import to avoid cycle
+        from .client_config import ClientConfigurator  # pylint: disable=import-outside-toplevel
 
         return ClientConfigurator().detect_client_ip()

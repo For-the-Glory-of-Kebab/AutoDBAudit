@@ -89,7 +89,7 @@ class OSDetectionService:
                 result_lower = result.lower()
                 if "unix" in result_lower or "linux" in result_lower:
                     return OSType.LINUX
-                elif "win" in result_lower:
+                if "win" in result_lower:
                     return OSType.WINDOWS
         except Exception:
             pass

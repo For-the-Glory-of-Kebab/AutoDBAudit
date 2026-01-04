@@ -1,3 +1,4 @@
+# pylint: disable=line-too-long
 """
 Credential Handler for PS Remoting
 
@@ -6,7 +7,7 @@ Supports Windows integrated, explicit credentials, and PSCredential objects.
 """
 
 import base64
-from typing import Optional, Dict, Any, Union
+from typing import Optional, Dict, Any
 import platform
 
 from .models import CredentialType, CredentialBundle
@@ -67,9 +68,8 @@ class CredentialHandler:
 
         if bundle.windows_explicit:
             return self._create_pscredential_from_explicit(bundle.windows_explicit)
-        elif bundle.pscredential:
+        if bundle.pscredential:
             return bundle.pscredential
-
         return None
 
     def get_credential_type(self, bundle: CredentialBundle) -> CredentialType:
@@ -84,10 +84,9 @@ class CredentialHandler:
         """
         if bundle.windows_explicit:
             return CredentialType.WINDOWS_EXPLICIT
-        elif bundle.pscredential:
+        if bundle.pscredential:
             return CredentialType.PSCREDENTIAL
-        else:
-            return CredentialType.WINDOWS_INTEGRATED
+        return CredentialType.WINDOWS_INTEGRATED
 
     def create_pscredential_from_parts(self, username: str, password: str) -> Optional[str]:
         """

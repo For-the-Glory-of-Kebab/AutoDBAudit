@@ -9,7 +9,7 @@ import logging
 import socket
 import subprocess
 import time
-from typing import List, Optional
+from typing import List
 
 from autodbaudit.domain.config import ConnectionMethod
 
@@ -165,7 +165,7 @@ class ConnectionTestingService:
         except (subprocess.TimeoutExpired, subprocess.SubprocessError, FileNotFoundError):
             return False
 
-    def _test_winrm(self, server: str, timeout: float) -> bool:
+    def _test_winrm(self, _server: str, _timeout: float) -> bool:
         """Test WinRM connection."""
         # Placeholder - would need pywinrm or similar
         logger.debug("WinRM testing not yet implemented")

@@ -6,6 +6,7 @@ Provides a clean API for other layers (audit/remediation/sync) to:
 - Trigger preparation and return a structured ServerConnectionInfo snapshot
 """
 
+from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 
 from autodbaudit.domain.config import ServerConnectionInfo
@@ -64,26 +65,18 @@ class PrepareStatusService:
             allow_config=allow_config,
         )
 
-        available_methods: List[ConnectionMethod] = []
-        for attempt in ps_result.attempts_made:
-            if attempt.success and attempt.connection_method:
-                available_methods.append(self._map_method(attempt.connection_method))
-        # Always include PS remoting if a session was established
-        if ps_result.is_success() and ConnectionMethod.POWERSHELL_REMOTING not in available_methods:
-            available_methods.append(ConnectionMethod.POWERSHELL_REMOTING)
+        available_methods = self._collect_available_methods(ps_result)
+        preferred_method = self._choose_preferred_method(available_methods)
+        last_checked = datetime.now(timezone.utc).isoformat()
 
         info = ServerConnectionInfo(
             server_name=server,
             os_type=OSType.UNKNOWN,  # OS detector can fill this separately
             available_methods=available_methods,
-            preferred_method=available_methods[0] if available_methods else None,
+            preferred_method=preferred_method,
             is_available=ps_result.is_success(),
-            last_checked=self.connection_manager._get_timestamp(),  # noqa: SLF001
-            connection_details={
-                "ps_success": ps_result.is_success(),
-                "ps_error": ps_result.error_message,
-                "attempts": [a.model_dump() for a in ps_result.attempts_made],
-            },
+            last_checked=last_checked,
+            connection_details=self._build_connection_details(ps_result),
         )
 
         self.cache.put(server, info)
@@ -107,6 +100,7 @@ class PrepareStatusService:
                 "protocol": profile.protocol,
                 "port": profile.port,
                 "auth_method": profile.auth_method,
+                "credential_type": profile.credential_type,
             },
         )
 
@@ -120,3 +114,51 @@ class PrepareStatusService:
                 return ConnectionMethod(str(method))
             except Exception:
                 return ConnectionMethod.POWERSHELL_REMOTING
+
+    def _collect_available_methods(self, ps_result: PSRemotingResult) -> List[ConnectionMethod]:
+        """Gather unique available methods from attempts and success status."""
+        methods: List[ConnectionMethod] = []
+        for attempt in ps_result.attempts_made:
+            if attempt.success and attempt.connection_method:
+                mapped = self._map_method(attempt.connection_method)
+                if mapped not in methods:
+                    methods.append(mapped)
+        if ps_result.is_success() and ConnectionMethod.POWERSHELL_REMOTING not in methods:
+            methods.insert(0, ConnectionMethod.POWERSHELL_REMOTING)
+        return methods
+
+    @staticmethod
+    def _choose_preferred_method(methods: List[ConnectionMethod]) -> Optional[ConnectionMethod]:
+        """Pick a preferred method using a simple priority list."""
+        priority = [
+            ConnectionMethod.POWERSHELL_REMOTING,
+            ConnectionMethod.WINRM,
+            ConnectionMethod.SSH,
+            ConnectionMethod.DIRECT,
+        ]
+        for preferred in priority:
+            if preferred in methods:
+                return preferred
+        return methods[0] if methods else None
+
+    @staticmethod
+    def _build_connection_details(ps_result: PSRemotingResult) -> Dict[str, Any]:
+        """Promote key connection details for downstream consumers."""
+        details: Dict[str, Any] = {
+            "ps_success": ps_result.is_success(),
+            "ps_error": ps_result.error_message,
+            "attempts": [a.model_dump() for a in ps_result.attempts_made],
+        }
+        session = ps_result.get_session()
+        if session:
+            profile = session.connection_profile
+            details.update(
+                {
+                    "protocol": profile.protocol,
+                    "port": profile.port,
+                    "auth_method": profile.auth_method,
+                    "credential_type": profile.credential_type,
+                    "connection_method": profile.connection_method,
+                }
+            )
+        return details

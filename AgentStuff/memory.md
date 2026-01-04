@@ -1,45 +1,44 @@
 # 🤖 AI Agent Memory & State Snapshot
 
-**Last Updated**: 2026-01-03 (end of session)  
+**Last Updated**: 2026-01-04 (later in session)  
 **Agent Session**: PS Remoting Engine Implementation / Prepare API / Policy Exhaustion  
 **Project**: AutoDBAudit SQL Server Security Auditing Tool
 
 ---
 
-## 🎯 Mission Objective
-Transform AutoDBAudit into a production-ready, offline-first SQL Server security auditing/remediation platform with ultra-granular, resilient architecture. Focus areas this session: PS remoting robustness, prepare API, caching/persistence, and policy handling.
+> Start at `AGENT_HUB.md` → `AGENT_SOP.md` before using this snapshot.
 
-## 📋 Current Status Snapshot
-### ✅ Recent / Verified
-- **PS Remoting**: Modular (direct_runner, layer2_client, layer3_target, manual_layer, localhost_prep, gpo_enforcer, revert_tracker, client/target config). Pyright clean. Direct attempts iterate auth/protocol/port with credential permutations; attempts mark success; revert tracking centralized.
-- **Policy/GPO**: Client and target apply WinRM auth/AllowUnencrypted with gpupdate; prior values captured and revert scripts emitted (gpo_enforcer.py) to avoid lingering changes.
-- **Fallbacks**: Real WMI/psexec/RPC checks with credential permutations and duration; SSH stub logs attempt metadata. Available methods derived from successful attempts (mapped to domain enums).
-- **Prepare Service**: Uses psremoting connect_to_server; builds ServerConnectionInfo snapshots (attempts, success/error), caches by server, maps infra methods to domain enums, persists server state when successful.
-- **Status API**: PrepareStatusService provides a consumable API for other layers to query/trigger prep and return cached/persisted snapshots.
-- **CLI**: Prepare command wired to PrepareService (legacy access_preparation removed).
-- **Docs**: DOCUMENTATION_HUB includes Prepare/Remoting API entry and offline-first note.
+## 🎯 Current Mission
+Production-ready, offline-first PS remoting for the prepare command, with a clean status/persistence API consumed by audit/remediate/sync. Maintain ultra-granular modules (<100 lines when feasible) without duplicating implementations.
 
-### ❌ Remaining Gaps
-- **PS Remoting Exhaustiveness**: Add TrustedHosts handling for IP connections (client + target) with named revert entries; log which auth/protocol permutations succeed into available_methods (including CredSSP/Kerberos/NTLM/Basic); broaden client/target enforcement (registry/GPO/firewall/listeners) and ensure revert scripts restore captured values.
-- **Prepare Consumption**: Expose PrepareStatusService to audit/remediate/sync once reworked; consumers should query/trigger prep and reuse snapshots.
-- **Structure**: Group app modules by feature (audit/prepare/remediate/sync), prune remaining dead code; keep files small.
-- **Lint/Type**: Run pylint across src; pyright clean on psremoting/prepare.
-- **Docs**: Expand with exhaustive remoting flow, status API, persistence schema, revert policy handling; keep DOCUMENTATION_HUB linked.
+## ✅ Recent Changes (2026-01-04)
+- Persistence: `psremoting` repository now matches models (protocol/port/credential_type/server_name persisted); auto-ALTER for existing DBs; resilient parsing when connection_method is missing.
+- Auth: `AuthMethod.CREDSSP` casing fixed; direct runner permutations updated.
+- Status API: PrepareStatusService now returns richer snapshots (deduped available_methods, priority preferred_method, protocol/port/auth/credential_type surfaced) without relying on private timestamps.
+- Tooling: Line endings normalized; unused args cleaned. `pyright` clean and `pylint` 10/10 for prepare + psremoting. `.pylintrc` disables only C0103/R0903/W0718/R0801 (duplicate-code noise).
+- Fallbacks: WMI/psexec/RPC attempts logged with credential permutations; SSH still stubbed but records attempt metadata.
 
-## 🔍 Key Files (current focus)
-- `src/autodbaudit/infrastructure/psremoting/connection_manager.py` (orchestration)
-- `src/autodbaudit/infrastructure/psremoting/direct_runner.py` (layer1 permutations)
-- `src/autodbaudit/infrastructure/psremoting/layer2_client.py` (client policy/trusted hosts + revert)
-- `src/autodbaudit/infrastructure/psremoting/layer3_target.py` (target config + policy/revert)
-- `src/autodbaudit/infrastructure/psremoting/fallbacks.py` (WMI/psexec/RPC attempts)
-- `src/autodbaudit/infrastructure/psremoting/gpo_enforcer.py` (capture/apply/revert policy)
-- `src/autodbaudit/infrastructure/psremoting/credentials.py` (PSCredential permutations)
-- `src/autodbaudit/application/prepare_service.py` (Prepare orchestration)
-- `src/autodbaudit/application/prepare/status_service.py` (status/prep API)
-- `docs/DOCUMENTATION_HUB.md` (Prepare/Remoting API entry)
+## ❌ Open Gaps / Risks
+- TrustedHosts + Revert Fidelity: Add explicit client/target TrustedHosts handling (IP/hostname), capture baselines, and emit revert scripts; capture/restore registry/GPO/firewall/listener state and surface revert scripts in PSRemotingResult.
+- Attempt Logging Completeness: Persist which auth/protocol permutations succeeded and expose them in available_methods/persistence.
+- Fallback Coverage: Implement SSH path and make manual layer emit actionable scripts/report; log fallback successes into available methods.
+- API Consumption: Wire PrepareStatusService into audit/remediate/sync entrypoints; align preferred_method choice with the method selector.
+- Structure: Continue feature-based grouping for non-prepare modules; avoid duplicate implementations while keeping files small/clear.
+- Docs: DOCUMENTATION_HUB/status/prepare are out-of-sync with current engine/persistence; several hub links missing files. Update to reflect the new SOP and schema.
 
-## 🧭 Next Steps (when resuming)
-1) Add TrustedHosts handling (client + target) for IP connections with revert tracking; log successful auth/protocol permutations into available_methods (include CredSSP/Kerberos/NTLM/Basic).
-2) Broaden enforcement (registry/GPO/firewall/listeners) and ensure revert scripts restore captured values; keep gpupdate where needed.
-3) Run pylint across src; fix warnings. Continue feature-based grouping/pruning of remaining dead code.
-4) Expand docs to cover exhaustive remoting flow, status API, persistence schema, and revert policy handling.
+## 📂 Key Files (prepare/remoting focus)
+- `src/autodbaudit/infrastructure/psremoting/connection_manager.py`
+- `src/autodbaudit/infrastructure/psremoting/direct_runner.py`
+- `src/autodbaudit/infrastructure/psremoting/layer2_client.py`
+- `src/autodbaudit/infrastructure/psremoting/layer3_target.py`
+- `src/autodbaudit/infrastructure/psremoting/fallbacks.py`
+- `src/autodbaudit/infrastructure/psremoting/gpo_enforcer.py`
+- `src/autodbaudit/infrastructure/psremoting/credentials.py`
+- `src/autodbaudit/application/prepare/status_service.py`
+- `docs/DOCUMENTATION_HUB.md`, `docs/sync/prepare.md`
+
+## ▶️ Next Actions
+1) Implement TrustedHosts + revert fidelity (client + target) and capture/restore registry/GPO/firewall/listeners; include revert scripts in PSRemotingResult.
+2) Record successful auth/protocol permutations into available_methods/persistence; make manual/SSH fallbacks actionable and captured.
+3) Expose PrepareStatusService to audit/remediate/sync consumers; align preferred_method with the method selector and continue feature-based grouping outside prepare.
+4) Refresh docs (hub/status/prepare) to match the current remoting engine, persistence schema, and SOP/lint posture.

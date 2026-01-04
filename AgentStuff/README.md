@@ -1,17 +1,14 @@
 # AgentStuff Tracking Hub
 
-This folder (`AgentStuff/`) serves as the persistent, git-tracked repository for session data, project progress, and key decisions.
+This folder is the agent-to-agent knowledge base. **Start at `AGENT_HUB.md`** for navigation and rules.
 
 ## Structure
 
-- `sessions/`: Logs for each coding session (auto-generated or manual notes).
-- `decisions/`: Key architectural or project decisions.
-- `backlog/`: TODOs, issues, and future tasks.
+- `AGENT_HUB.md`: Single entry point with links and order of reading.
+- `AGENT_SOP.md`: Session protocol and update checklist.
+- `memory.md`: Current state snapshot (what’s done, gaps, key files, next actions).
+- `sessions/`: Chronological session logs (see `sessions/README.md` for how to consume).
+- `decisions/`: Architecture/strategy decisions (`decisions/log.md`).
+- `backlog/`: TODOs and future tasks.
 
-## Usage
-
-- Update files as we work.
-- Commit changes regularly for persistence.
-- Reference in docs or code as needed.
-
-Last Updated: 2025-12-29
+Last Updated: 2026-01-04
