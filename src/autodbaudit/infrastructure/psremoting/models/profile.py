@@ -1,6 +1,8 @@
 # pylint: disable=missing-module-docstring,line-too-long
 from typing import Optional, Dict, Any, List
-from pydantic import BaseModel, Field
+# pyright: reportMissingImports=false
+# pylint: disable=no-name-in-module
+from pydantic import BaseModel, Field, ConfigDict
 
 from .connection_method import ConnectionMethod
 
@@ -29,6 +31,4 @@ class ConnectionProfile(BaseModel):
     created_at: str = Field(..., description="When this profile was first created")
     updated_at: str = Field(..., description="When this profile was last updated")
 
-    class Config:
-        """Pydantic configuration."""
-        use_enum_values = True
+    model_config = ConfigDict(use_enum_values=True)

@@ -1,32 +1,33 @@
 # Project Status
 
-**Last Updated**: 2025-12-28
-**Current Phase**: Stabilization & Remediation Hardening
+**Last Updated**: 2026-01-06
+**Current Phase**: Prepare/PS Remoting Hardening
 
 ## Overview
-AutoDBAudit is in the final stages of hardening. The core engines (Audit, Sync, Remediation) are functional. Recent focus has been on robust cross-platform support and performance.
+AutoDBAudit is strengthening the prepare/PS remoting pipeline to guarantee offline-first, admin-level connectivity with full revert capability. Core audit/sync/remediation remain intact; current focus is exhaustive remoting, persistence, and structured APIs for downstream consumers.
 
 ## Recent Milestones
-- [x] **Remediation Hybrid Engine**: Implemented Platform-Specific logic (PowerShell for Windows, T-SQL Only for Linux/Docker).
-- [x] **Connectivity Robustness**: Addressed Hostname/IP mismatches via `TargetServer` header injection.
-- [x] **Parallel Execution**: Implemented ThreadSafe parallel auditing for multiple targets.
-- [x] **Sync Engine Stability**: Resolved critical "UnboundLocalError" and simplified state transitions.
+- [x] PS remoting persistence aligned to models (protocol/port/credential_type/server_name; auto-migrations).
+- [x] CREDSSP/auth permutations fixed; status API returns richer snapshots.
+- [x] Facade + parallel runner added for structured status/command execution; legacy executor shimmed.
+- [x] TrustedHosts + baseline capture/revert for WinRM service/firewall/registry/listeners.
+- [x] Pyright/pylint clean for prepare + psremoting.
+- [x] PS remoting codebase fully modularized: connection manager is a shim over `manager/orchestrator.py` + `manager/connect_flow.py`; direct layer helpers live under `layers/direct/`; repository split into `repository/base.py`, `schema.py`, `profiles_reader.py`, `profiles_writer.py`, `attempts.py`, `state.py`.
 
 ## Known Issues (Loose Ends)
-### 1. Service Remediation Persistence ("Zombie Services")
-*   **Status**: Partial Fix via Platform Check.
-*   **Detail**: While we prevented PS errors on Linux, services on Windows might still require a **Restart** to fully stop if they are in a "Stopping" state or have dependencies. The current script uses `Stop-Service -Force`, but deep persistent services (like VSS Writers) might auto-recover or require OS-level intervention beyond simple Service Control.
-*   **Workaround**: Manual verification recommended for services marked as "Fix Applied" but still running in subsequent scans.
-
-### 2. Encryption Layout
-*   **Status**: Fixed.
-*   **Detail**: Center alignment applied to grouping columns.
+- Fallback coverage: SSH/manual not yet actionable; need to log/persist successful fallbacks.
+- Prepare consumption: facade/status not yet wired into audit/remediate/sync.
+- Credential execution on localhost requires re-validation with explicit creds/elevation.
+- Docs still catching up to new facade/grouping.
 
 ## Roadmap / Next Steps
-1.  **Staging Deployment**: Validate parallel execution on a network with >10 hosts.
-2.  **Linux Agent**: Explore native Linux remedial scripts (Bash/Python) to replace the "T-SQL Only" fallback (Future feature).
-3.  **UI/Dashboard**: Move beyond Excel to a Web UI (Long term).
+1. Make fallbacks/manual actionable; persist successful auth/protocol permutations into available_methods.
+2. Wire PrepareStatusService/PSRemotingFacade into audit/remediate/sync (method selector + admin enforcement).
+3. Validate elevated runs (client/target layers, fallbacks) and refresh docs accordingly.
+4. Continue feature-based grouping and doc cross-links (DOCUMENTATION_HUB/prepare/status).
 
 ## Architecture Notes
-*   **Parallelism**: Uses `ThreadPoolExecutor` (Max 5 workers).
-*   **Remediation**: strict `host_platform` check prevents cross-OS script contamination.
+- PS remoting uses layered approach (direct → client config → target config → fallbacks → manual) with RevertTracker.
+- Facade provides structured status/command APIs; persistence stores successful profiles/attempts for reuse.
+- Strict offline-first; explicit credentials required (no interactive prompts).
+- Code layout (prepare/remoting): `manager/orchestrator.py`, `manager/connect_flow.py`, `manager/revert_service.py`; direct helpers under `layers/direct/`; repository package split into base/schema/profiles_reader/profiles_writer/attempts/state.

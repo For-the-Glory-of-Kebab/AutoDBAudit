@@ -1,5 +1,7 @@
 # pylint: disable=missing-module-docstring,line-too-long
-from pydantic import BaseModel, Field
+# pyright: reportMissingImports=false
+# pylint: disable=no-name-in-module
+from pydantic import BaseModel, Field, ConfigDict
 
 
 class ElevationStatus(BaseModel):
@@ -12,6 +14,4 @@ class ElevationStatus(BaseModel):
     can_elevate: bool = Field(default=True, description="Whether elevation is possible")
     elevation_method: str | None = Field(None, description="Method to use for elevation (UAC, runas, etc.)")
 
-    class Config:
-        """Pydantic configuration."""
-        use_enum_values = True
+    model_config = ConfigDict(use_enum_values=True)

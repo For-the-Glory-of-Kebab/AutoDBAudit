@@ -1,6 +1,8 @@
 # pylint: disable=missing-module-docstring,line-too-long
 from typing import Optional, Dict, Any, List
-from pydantic import BaseModel, Field
+# pyright: reportMissingImports=false
+# pylint: disable=no-name-in-module
+from pydantic import BaseModel, Field, ConfigDict
 
 
 class ServerState(BaseModel):
@@ -49,6 +51,4 @@ class ServerState(BaseModel):
     # Collected Data
     full_state_json: Optional[Dict[str, Any]] = Field(None, description="Complete JSON snapshot")
 
-    class Config:
-        """Pydantic configuration."""
-        use_enum_values = True
+    model_config = ConfigDict(use_enum_values=True)

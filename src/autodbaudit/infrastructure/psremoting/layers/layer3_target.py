@@ -7,7 +7,7 @@ from typing import List, Callable
 
 from ..models import ConnectionAttempt, PSRemotingResult, CredentialBundle
 from .direct_runner import DirectAttemptRunner
-from ..config.target_config import TargetConfigurator
+from ..config.target import TargetConfigurator
 from .revert_tracker import RevertTracker
 from ..config.gpo_enforcer import apply_winrm_policy, build_revert_script
 

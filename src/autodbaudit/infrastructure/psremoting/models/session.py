@@ -1,5 +1,7 @@
 # pylint: disable=missing-module-docstring,line-too-long
-from pydantic import BaseModel, Field
+# pyright: reportMissingImports=false
+# pylint: disable=no-name-in-module
+from pydantic import BaseModel, Field, ConfigDict
 
 from .profile import ConnectionProfile
 
@@ -15,6 +17,4 @@ class PSSession(BaseModel):
     is_elevated: bool = Field(default=False, description="Whether session has elevated privileges")
     created_at: str = Field(..., description="When session was established")
 
-    class Config:
-        """Pydantic configuration."""
-        use_enum_values = True
+    model_config = ConfigDict(use_enum_values=True)

@@ -1,6 +1,8 @@
 # pylint: disable=missing-module-docstring,line-too-long
 from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, Field
+# pyright: reportMissingImports=false
+# pylint: disable=no-name-in-module
+from pydantic import BaseModel, Field, ConfigDict
 
 from .attempt import ConnectionAttempt
 from .session import PSSession
@@ -39,10 +41,7 @@ class PSRemotingResult(BaseModel):
     def get_error(self) -> Optional[str]:
         """Get error message if failed."""
         return self.error_message if not self.success else None
-
-    class Config:
-        """Pydantic configuration."""
-        use_enum_values = True
+    model_config = ConfigDict(use_enum_values=True)
 
 
 class CommandResult(BaseModel):
@@ -64,7 +63,4 @@ class CommandResult(BaseModel):
     troubleshooting: Optional[str] = Field(
         None, description="Troubleshooting report if available"
     )
-
-    class Config:
-        """Pydantic configuration."""
-        use_enum_values = True
+    model_config = ConfigDict(use_enum_values=True)

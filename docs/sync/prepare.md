@@ -5,6 +5,14 @@
 **Source Code**: `src/autodbaudit/interface/cli.py` (prepare command implementation)
 
 **Status**: Implemented with server consolidation, 5-layer PS remoting, automated target/client configuration, and manual override fallbacks. See `docs/cli/reference.md` for command specifications.
+**Code Map (PS Remoting)**:
+- `connection_manager.py`: shim exposing the manager facade.
+- `manager/orchestrator.py`: dependency wiring; delegates to `manager/connect_flow.py` for layered connect logic and `manager/revert_service.py` for revert handling.
+- `layers/direct/`: helpers for Layer 1 (plan, command builder, profile builder, executor, utils).
+- `layers/fallbacks/`: SSH/WMI/RPC/PsExec fallbacks + utils.
+- `config/target/`: target WinRM helpers (service/firewall/registry/listeners/trustedhosts/gpupdate).
+- `repository/`: split into `base.py`, `schema.py`, `profiles_reader.py`, `profiles_writer.py`, `attempts.py`, `state.py`, and `core.py` facade.
+- `facade/`: PSRemotingFacade for status/commands (integration deferred to audit/remediate/sync).
 
 **Localhost Testing**: When targeting `localhost`/`127.0.0.1`, the prepare flow auto-enables WinRM, firewall rules, and required registry settings locally so developers can validate remoting without external servers. Revert cleans these changes.
 
@@ -180,6 +188,17 @@ If all automated methods fail:
    - Log every attempt with specific error codes
    - Capture network traces if possible
    - Record system state before/after changes
+
+## Current State (2026-01-06)
+- Layered remoting engine in place (direct → client → target → fallbacks → manual) with persistence and revert tracking.
+- Baseline capture/revert implemented for WinRM service, firewall, registry (LATFP/loopback), listeners, client/target TrustedHosts, and WinRM policy (auth/AllowUnencrypted/CredSSP) with gpupdate.
+- Facade available for structured status/command execution; status API returns available_methods, protocol/auth/port/credential_type details.
+- Codebase modularized for maintainability (see Code Map above); pyright/pylint clean; offline-first, explicit credentials required (no interactive prompts).
+
+## Next Steps
+- Make SSH/manual fallbacks actionable and persist successful auth/protocol permutations into available_methods.
+- Wire PrepareStatusService/PSRemotingFacade into audit/remediate/sync consumers.
+- Refresh docs cross-links (DOCUMENTATION_HUB/status) as integrations land.
 
 2. **Manual Intervention Points**:
    - Generate detailed setup instructions for user

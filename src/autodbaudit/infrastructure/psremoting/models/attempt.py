@@ -1,6 +1,8 @@
 # pylint: disable=missing-module-docstring,line-too-long
 from typing import Optional, Dict, Any
-from pydantic import BaseModel, Field
+# pyright: reportMissingImports=false
+# pylint: disable=no-name-in-module
+from pydantic import BaseModel, Field, ConfigDict
 
 from .connection_method import ConnectionMethod
 
@@ -30,6 +32,4 @@ class ConnectionAttempt(BaseModel):
     manual_script_path: Optional[str] = Field(None, description="Path to generated manual override script")
     created_at: Optional[str] = Field(None, description="When attempt was recorded")
 
-    class Config:
-        """Pydantic configuration."""
-        use_enum_values = True
+    model_config = ConfigDict(use_enum_values=True)

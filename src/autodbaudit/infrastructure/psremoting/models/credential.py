@@ -1,7 +1,9 @@
 # pylint: disable=missing-module-docstring,line-too-long
 from enum import Enum
 from typing import Optional, Dict
-from pydantic import BaseModel, Field
+# pyright: reportMissingImports=false
+# pylint: disable=no-name-in-module
+from pydantic import BaseModel, Field, ConfigDict
 
 
 class CredentialType(Enum):
@@ -27,6 +29,4 @@ class CredentialBundle(BaseModel):
         """Check if any credentials are available."""
         return self.windows_explicit is not None or self.pscredential is not None
 
-    class Config:
-        """Pydantic configuration."""
-        use_enum_values = True
+    model_config = ConfigDict(use_enum_values=True)
