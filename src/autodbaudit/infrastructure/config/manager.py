@@ -155,7 +155,8 @@ class ConfigManager:
         # Validate credentials for each target
         for target in targets:
             try:
-                self.get_credential(target.credentials_ref, use_cache=False)
+                if target.credentials_ref:
+                    self.get_credential(target.credentials_ref, use_cache=False)
             except Exception as e:
                 errors.append(f"Credential validation failed for target '{target.name}': {e}")
 

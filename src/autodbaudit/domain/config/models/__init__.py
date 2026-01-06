@@ -9,7 +9,7 @@ from .credential import Credential
 from .enums import AuthType, ConnectionMethod, OSType
 from .prepare_result import PrepareResult
 from .server_connection_info import ServerConnectionInfo
-from .sql_target import SqlTarget
+from .sql_target import SqlTarget, TargetMetadata
 
 __all__ = [
     "AuditConfig",
@@ -20,4 +20,5 @@ __all__ = [
     "PrepareResult",
     "ServerConnectionInfo",
     "SqlTarget",
+    "TargetMetadata",
 ]

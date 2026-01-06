@@ -1,0 +1,54 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SQL Targets",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "targets": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/target" },
+      "minItems": 1
+    },
+    "global_settings": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "timeout_seconds": { "type": "integer", "minimum": 1 },
+        "encrypt_connection": { "type": "boolean" },
+        "trust_server_certificate": { "type": "boolean" }
+      }
+    }
+  },
+  "required": ["targets"],
+  "definitions": {
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "ip_address": { "type": "string" },
+        "description": { "type": "string" }
+      }
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "server": { "type": "string", "minLength": 1 },
+        "instance": { "type": ["string", "null"] },
+        "port": { "type": ["integer", "null"], "minimum": 1, "maximum": 65535 },
+        "database": { "type": ["string", "null"] },
+        "auth": { "type": "string", "enum": ["integrated", "sql"] },
+        "username": { "type": ["string", "null"] },
+        "credential_ref": { "type": ["string", "null"] },
+        "os_credential_ref": { "type": ["string", "null"] },
+        "connect_timeout": { "type": "integer", "minimum": 1 },
+        "enabled": { "type": "boolean" },
+        "metadata": { "$ref": "#/definitions/metadata" }
+      },
+      "required": ["id", "name", "server", "auth"]
+    }
+  }
+}

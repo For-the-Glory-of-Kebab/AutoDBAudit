@@ -1,0 +1,89 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Audit Config",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "organization": { "type": "string", "minLength": 1 },
+    "audit_year": { "type": "integer", "minimum": 2000 },
+    "audit_date": { "type": "string" },
+    "requirements": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "minimum_sql_version": { "type": "string" },
+        "expected_builds": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        }
+      }
+    },
+    "output": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "directory": { "type": "string" },
+        "filename_pattern": { "type": "string" },
+        "verbosity": { "type": "string", "enum": ["minimal", "standard", "detailed"] },
+        "include_charts": { "type": "boolean" }
+      }
+    },
+    "remediation": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "generate_scripts": { "type": "boolean" },
+        "script_format": { "type": "string", "enum": ["single", "sectioned", "per_issue"] },
+        "include_rollback": { "type": "boolean" }
+      }
+    },
+    "os_remediation": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "use_ps_remoting": { "type": "boolean" },
+        "ps_script_path": { "type": "string" },
+        "allowed_hosts": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "performance": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "max_parallel_tasks": { "type": "integer", "minimum": 1 },
+        "default_timeout_seconds": { "type": "integer", "minimum": 1 },
+        "psremoting_timeout_seconds": { "type": "integer", "minimum": 1 },
+        "sql_command_timeout_seconds": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "retry_policy": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "max_retries": { "type": "integer", "minimum": 0 },
+        "backoff_seconds": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "logging": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "level": { "type": "string", "enum": ["debug", "info", "warn", "error"] },
+        "structured": { "type": "boolean" }
+      }
+    },
+    "feature_flags": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "enable_fallbacks": { "type": "boolean" },
+        "enable_manual_guidance": { "type": "boolean" }
+      }
+    },
+    "os_credentials_ref": { "type": "string" }
+  },
+  "required": ["organization", "audit_year"]
+}

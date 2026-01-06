@@ -7,8 +7,7 @@ This directory contains configuration files for AutoDBAudit.
 | Extension | Purpose |
 |-----------|---------|
 | `.json` | Production config (gitignored) |
-| `.jsonc` | Examples with inline comments |
-| `.example.json` | Legacy examples (plain JSON) |
+| `.jsonc` | Examples with inline comments (canonical examples) |
 
 ## Getting Started
 
@@ -39,17 +38,25 @@ Main audit configuration:
 
 ### sql_targets.json
 
-Target servers to audit:
-- Connection details (server, instance, port)
-- Authentication method (integrated/sql)
-- Credential file references
-- Tags for filtering
+Target servers to audit (grouped, readable schema):
+- `id` (slug) and `name` (display, Unicode ok)
+- `server`, `instance`, `port`, `auth` (`integrated`/`sql`), `username`, `credential_ref`
+- `os_credential_ref` (Windows creds for OS/PS remoting; if absent, use current user)
+- `connect_timeout`, `enabled`
+- `metadata`: `tags`, `ip_address`, `description`
 
 ### credentials/*.json
 
 Sensitive credentials (gitignored):
 - SQL Authentication username/password
-- OS credentials for WMI/PowerShell remoting
+- OS credentials for PS remoting (see `credentials/os_admin.example.jsonc`)
+
+## Schemas
+- SQL targets: `config/schemas/sql_targets.schema.json`
+- Audit config: `config/schemas/audit_config.schema.json`
+- Credentials: `config/schemas/credential.schema.json`
+
+Validate your JSON (after stripping JSONC comments) against these schemas for consistency.
 
 ## Security Notes
 

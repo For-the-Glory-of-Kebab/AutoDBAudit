@@ -1,108 +1,46 @@
-// SQL Server Audit Targets Configuration - Example File
-// =====================================================
-// Copy this file to 'sql_targets.json' and customize for your environment.
-// The actual sql_targets.json is excluded from git.
-//
-// This file defines which SQL Server instances to audit and how to connect.
-//
-// Authentication Options:
-// - "integrated" : Windows Authentication (current user credentials)
-// - "sql"        : SQL Server Authentication (requires credential_file)
-//
-// Credential files should be placed in config/credentials/ and are gitignored.
+// SQL Server targets configuration - canonical example
+// Copy to 'sql_targets.json' and customize. Real configs should be JSON (no comments).
 {
-    // ==========================================================================
-    // Target Servers
-    // ==========================================================================
-    "targets": [
-        // ---------- Example 1: Windows Authentication to Named Instance ----------
-        {
-            "id": "prod-sql-main", // Unique identifier (used in logs/reports)
-            "name": "Production SQL Server", // Human-readable display name
-            // Connection settings
-            "server": "sql-server.example.com", // Hostname or IP
-            "instance": "PROD", // Named instance (null for default)
-            "port": null, // Override port (null = auto-detect)
-            // SQL Server authentication
-            "auth": "integrated", // "integrated" = Windows Auth
-            "username": null, // Not used for integrated auth
-            "credential_file": null, // Not used for integrated auth
-            // OS-level authentication (for service checks, WMI queries)
-            "os_auth": "windows", // Use Windows credentials
-            "os_credential_file": null, // Optional: separate OS admin credentials
-            // Connection options
-            "connect_timeout": 30, // Seconds to wait for connection
-            // Organization/filtering
-            "tags": [
-                "production",
-                "critical"
-            ], // Custom tags for filtering
-            "enabled": true, // Set false to skip this target
-            // Optional metadata
-            "ip_address": "10.0.1.50" // Used in reports if DNS differs
-        },
-        // ---------- Example 2: SQL Authentication with Credential File ----------
-        {
-            "id": "dev-sql-docker",
-            "name": "Development SQL Server (Docker)",
-            "server": "localhost",
-            "instance": null, // Default instance
-            "port": 1433, // Docker published port
-            // SQL Auth - credentials stored in separate file
-            "auth": "sql",
-            "credential_file": "credentials/dev_sql.json",
-            // Credential file format: {"username": "sa", "password": "..."}
-            // OS credentials for WMI/service checks
-            "os_auth": "windows",
-            "os_credential_file": "credentials/os_admin.json",
-            "connect_timeout": 30,
-            "tags": [
-                "development",
-                "docker"
-            ],
-            "enabled": true
-        },
-        // ---------- Example 3: Named Instance on Non-Standard Port ----------
-        {
-            "id": "staging-sql",
-            "name": "Staging Environment",
-            "server": "staging-db",
-            "instance": "STAGE",
-            "port": 14330, // Non-standard port (bypasses SQL Browser)
-            "auth": "sql",
-            "credential_file": "credentials/staging.json",
-            "connect_timeout": 60, // Longer timeout for slow networks
-            "tags": [
-                "staging"
-            ],
-            "enabled": false // Disabled - won't be audited
-        },
-        // ---------- Example 4: Cloud/Azure SQL (if applicable) ----------
-        {
-            "id": "azure-prod",
-            "name": "Azure SQL Database",
-            "server": "your-server.database.windows.net",
-            "instance": null, // Azure SQL doesn't use instances
-            "port": 1433,
-            "auth": "sql",
-            "credential_file": "credentials/azure.json",
-            "connect_timeout": 45,
-            "tags": [
-                "azure",
-                "production"
-            ],
-            "enabled": false // Example only
-        }
-    ],
-    // ==========================================================================
-    // Global Settings (Defaults for All Targets)
-    // ==========================================================================
-    "global_settings": {
-        // Default connection timeout (can be overridden per-target)
-        "timeout_seconds": 30,
-        // Encrypt SQL connection (recommended for production)
-        "encrypt_connection": true,
-        // Trust server's SSL certificate (set false for strict validation)
-        "trust_server_certificate": true
+  "targets": [
+    {
+      "id": "prod-sql-main",
+      "name": "Production SQL Server",
+      "server": "sql-server.example.com",
+      "instance": "PROD",
+      "port": 1433,
+      "auth": "integrated",
+      "username": null,
+      "credential_ref": null,
+      "os_credential_ref": "os_admin",
+      "connect_timeout": 30,
+      "enabled": true,
+      "metadata": {
+        "tags": ["production", "critical"],
+        "ip_address": "10.0.1.50",
+        "description": "Primary OLTP cluster"
+      }
+    },
+    {
+      "id": "dev-sql-docker",
+      "name": "Development SQL Server (Docker)",
+      "server": "localhost",
+      "instance": null,
+      "port": 1433,
+      "auth": "sql",
+      "username": null,
+      "credential_ref": "dev_sql",
+      "os_credential_ref": "os_admin",
+      "connect_timeout": 30,
+      "enabled": true,
+      "metadata": {
+        "tags": ["development", "docker"],
+        "description": "Local Docker instance"
+      }
     }
+  ],
+  "global_settings": {
+    "timeout_seconds": 30,
+    "encrypt_connection": true,
+    "trust_server_certificate": true
+  }
 }

@@ -15,9 +15,28 @@ from autodbaudit.domain.config import AuditConfig, Credential, SqlTarget, SqlTar
 # Simple JSONC (JSON with comments) support
 def _strip_comments(jsonc_content: str) -> str:
     """Strip comments from JSONC content."""
-    # For now, just return the content as-is since we mainly support regular JSON
-    # TODO: Implement proper JSONC parsing if needed
-    return jsonc_content
+    result: list[str] = []
+    in_string = False
+    escape = False
+    for line in jsonc_content.splitlines():
+        new_line = []
+        i = 0
+        while i < len(line):
+            ch = line[i]
+            if ch == '"' and not escape:
+                in_string = not in_string
+            if not in_string and ch == "/" and i + 1 < len(line) and line[i + 1] == "/":
+                break  # comment start
+            if ch == "\\" and not escape:
+                escape = True
+            else:
+                escape = False
+            new_line.append(ch)
+            i += 1
+        stripped = "".join(new_line).strip()
+        if stripped:
+            result.append(stripped)
+    return "\n".join(result)
 
 logger = logging.getLogger(__name__)
 
@@ -154,12 +173,11 @@ class ConfigRepository:
             if not isinstance(targets_data, list):
                 raise ValueError("sql_targets must contain a 'targets' array or be an array")
 
-            targets = []
+            targets: list[SqlTarget] = []
             for i, target_data in enumerate(targets_data):
                 try:
-                    # Handle backward compatibility for field name changes
-                    target_data = self._migrate_target_fields(target_data)
-                    target = SqlTarget(**target_data)
+                    migrated = self._migrate_target_fields(target_data)
+                    target = SqlTarget(**migrated)
                     targets.append(target)
                 except Exception as e:
                     logger.error("Invalid target at index %d: %s", i, e)
@@ -182,34 +200,50 @@ class ConfigRepository:
         """
         migrated = target_data.copy()
 
-        # Migrate 'auth' to 'auth_type'
-        if 'auth' in migrated and 'auth_type' not in migrated:
-            migrated['auth_type'] = migrated.pop('auth')
+        # Normalize auth naming
+        if "auth_type" not in migrated and "auth" in migrated:
+            migrated["auth_type"] = migrated["auth"]
 
         # Migrate 'credential_file' to 'credentials_ref'
-        if 'credential_file' in migrated and 'credentials_ref' not in migrated:
-            cred_file = migrated.pop('credential_file')
-            if cred_file:
-                cred_ref = cred_file.replace('credentials/', '').replace('.json', '')
-                migrated['credentials_ref'] = cred_ref
+        cred_file = migrated.get("credential_file")
+        if cred_file and "credentials_ref" not in migrated:
+            migrated["credentials_ref"] = self._normalize_cred_ref(cred_file)
 
         # Migrate OS credential fields
-        if 'os_credential_file' in migrated and 'os_credentials_ref' not in migrated:
-            os_cred_file = migrated.pop('os_credential_file')
-            if os_cred_file:
-                os_cred_ref = os_cred_file.replace('credentials/', '').replace('.json', '')
-                migrated['os_credentials_ref'] = os_cred_ref
+        os_cred_file = migrated.get("os_credential_file")
+        if os_cred_file and "os_credentials_ref" not in migrated:
+            migrated["os_credentials_ref"] = self._normalize_cred_ref(os_cred_file)
 
-        if 'os_auth' in migrated and migrated['os_auth'] is None:
-            migrated.pop('os_auth')
+        # Legacy top-level metadata fields -> metadata object
+        tags = migrated.pop("tags", None)
+        ip_address = migrated.pop("ip_address", None)
+        description = migrated.pop("description", None)
+        metadata = migrated.get("metadata", {}) or {}
+        if tags is not None:
+            metadata.setdefault("tags", tags)
+        if ip_address is not None:
+            metadata.setdefault("ip_address", ip_address)
+        if description is not None:
+            metadata.setdefault("description", description)
+        migrated["metadata"] = metadata
 
-        if 'database' not in migrated:
-            migrated['database'] = None
+        migrated.setdefault("database", None)
+        migrated.setdefault("connect_timeout", migrated.get("timeout_seconds", 30))
+        migrated.setdefault("enabled", True)
+        migrated.setdefault("port", 1433)
+        migrated.setdefault("instance", None)
 
-        if 'description' not in migrated:
-            migrated['description'] = None
+        # Back-compat for legacy field names
+        if "id" not in migrated and "name" in migrated:
+            migrated["id"] = migrated.get("name")
 
         return migrated
+
+    @staticmethod
+    def _normalize_cred_ref(path_or_name: str) -> str:
+        """Convert a path like credentials/dev.json to a bare reference."""
+        ref = path_or_name.replace("credentials/", "").replace(".json", "")
+        return ref
 
     def load_credential(self, cred_ref: str) -> Credential:
         """

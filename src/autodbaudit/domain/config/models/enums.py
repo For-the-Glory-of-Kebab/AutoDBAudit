@@ -9,7 +9,9 @@ from enum import Enum
 
 class AuthType(Enum):
     """Authentication types for SQL Server connections."""
+
     WINDOWS = "windows"
+    INTEGRATED = "integrated"  # alias for WINDOWS (back-compat with configs)
     SQL = "sql"
 
 
